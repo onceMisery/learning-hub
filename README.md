@@ -36,7 +36,15 @@
 
 ### 读文档
 
-在线站点（推荐）：构建后部署在 GitHub Pages，入口见仓库 About。
+在线站点（推荐，两个地址内容相同，任选其一）：
+
+| 平台 | 地址 |
+|---|---|
+| Vercel | <https://learning-hub-taupe-delta.vercel.app/> |
+| GitHub Pages | <https://oncemisery.github.io/learning-hub/> |
+
+两者吃同一份构建产物，只是 base 路径不同：Vercel 部署在根域名 `/`，
+GitHub Pages 部署在子路径 `/learning-hub/`。部署细节见 [docs/部署说明.md](docs/部署说明.md)。
 
 本地跑：
 
