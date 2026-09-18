@@ -1,0 +1,37 @@
+# 依赖
+node_modules/
+.pnpm-store/
+
+# 构建产物
+dist/
+build/
+release/
+target/
+*.tsbuildinfo
+
+# 站点生成物（由 npm run content 产出）
+site/public/content/
+site/public/_redirects
+
+# 编辑器
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.recommended.json
+
+# 日志与临时文件
+*.log
+*.tmp
+kill.txt
+test-results/
+playwright-report/
+.tmp-examples/
+
+# 本地数据
+*.local
+*.db
+.DS_Store
+Thumbs.db
+
+# 本站历史归档（仅供参考，不参与版本控制）
+.archive/

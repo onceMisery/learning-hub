@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  site:
+    name: 站点构建与冒烟
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: site
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12
+          cache: pnpm
+          cache-dependency-path: site/pnpm-lock.yaml
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 内容体检
+        run: pnpm check
+
+      - name: 生成内容
+        run: pnpm content
+
+      - name: 类型检查
+        run: pnpm typecheck
+
+      - name: 生产构建
+        run: pnpm build
+
+      - name: 冒烟测试
+        run: pnpm smoke
+
+      - name: 上传构建产物
+        if: github.event_name == 'push'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/dist
+
+  content:
+    name: 内容校验
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: site
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12
+          cache: pnpm
+          cache-dependency-path: site/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm content
+
+      # 断链只警告不阻断：内容在演进，允许有临时缺口
+      - name: 断链报告
+        run: |
+          COUNT=$(node -e "const r=require('./public/content/report.json');console.log(r.brokenLinks.length)")
+          echo "断链数量：$COUNT"
+          if [ "$COUNT" != "0" ]; then
+            node -e "const r=require('./public/content/report.json');r.brokenLinks.forEach(l=>console.log('::warning::断链 '+l.raw+' <- '+l.from))"
+          fi
+
+      # 仓库里不允许出现本机绝对路径
+      - name: 检查绝对路径泄露
+        run: |
+          if grep -rn "D:\\\\code" --include="*.md" --include="*.ts" --include="*.tsx" --include="*.json" .. ; then
+            echo "::error::发现本机绝对路径，请改为相对仓库根的路径"
+            exit 1
+          fi
+        continue-on-error: false

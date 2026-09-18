@@ -1,0 +1,30 @@
+{
+  "id": "template",
+  "title": "新轨道模板",
+  "subtitle": "复制本目录后修改此文件即可新增一条轨道",
+  "order": 999,
+  "status": "planned",
+  "accent": "teal",
+  "tags": [],
+  "toolchain": "",
+  "verifiedAt": "",
+  "outline": ["在这里列出计划覆盖的主题"],
+  "sections": [
+    {
+      "id": "tutorial",
+      "title": "教程",
+      "path": "tutorial",
+      "order": 10,
+      "pages": [
+        {
+          "file": "01-第一篇文章.md",
+          "slug": "01-first",
+          "title": "第一篇文章",
+          "tags": []
+        }
+      ]
+    }
+  ],
+  "codeRoots": [],
+  "assets": []
+}

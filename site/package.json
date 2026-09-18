@@ -1,0 +1,45 @@
+{
+  "name": "learning-hub-site",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "From Java to X — 面向 Java 工程师的第二语言学习轨道站点",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  },
+  "scripts": {
+    "content": "tsx scripts/build-content.ts",
+    "check": "tsx scripts/check-content.ts",
+    "dev": "tsx scripts/build-content.ts && vite",
+    "build": "tsx scripts/check-content.ts && tsx scripts/build-content.ts && tsc --noEmit && vite build",
+    "preview": "vite preview --port 4173",
+    "typecheck": "tsc --noEmit",
+    "smoke": "tsx scripts/smoke.ts"
+  },
+  "dependencies": {
+    "motion": "13.3.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-router-dom": "7.18.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.3.3",
+    "@types/jsdom": "^30.0.0",
+    "@types/node": "24.13.4",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.1",
+    "jsdom": "30.0.1",
+    "marked": "18.0.13",
+    "shiki": "4.4.3",
+    "tailwindcss": "4.3.3",
+    "tsx": "4.23.13",
+    "typescript": "7.0.2",
+    "vite": "8.3.0"
+  }
+}

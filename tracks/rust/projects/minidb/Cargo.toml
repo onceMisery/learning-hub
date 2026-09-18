@@ -1,0 +1,89 @@
+[package]
+name = "minidb"
+version = "0.1.0"
+edition = "2021" # 2024 edition 已随 Rust 1.85+ 稳定；这里用 2021 保证老工具链也能编译
+rust-version = "1.75" # MSRV：最低支持版本，等价于 Maven 里 maven.compiler.release
+description = "一个用 Rust 写的 Bitcask 风格嵌入式 KV 存储引擎（教学项目，面向 Java 开发者）"
+license = "MIT"
+authors = ["you"]
+
+# ---------------------------------------------------------------------------
+# Cargo.toml 之于 Rust ≈ pom.xml 之于 Maven，但有几个关键差异：
+#   1. [dependencies] 默认从 crates.io 拉取并锁定在 Cargo.lock（≈ 依赖 + 版本锁定，
+#      库项目通常不提交 Cargo.lock，二进制项目必须提交——和 Maven 相反的习惯）
+#   2. [dev-dependencies] ≈ <scope>test</scope>（JUnit、Mockito 只在这里声明）
+#   3. [profile.release] ≈ maven-compiler-plugin 的优化开关，但粒度更细
+#   4. features ≈ Maven 的 optional dependency / profile，但由编译器做条件编译
+# ---------------------------------------------------------------------------
+
+[dependencies]
+# 序列化框架。≈ Java 的 Jackson / Gson，但通过 derive 宏在编译期生成代码，
+# 运行期没有反射，也没有 SetAccessible 那类开销。
+serde = { version = "1", features = ["derive"] }
+# WAL 用 JSON Lines 落盘：人类可读，方便用 `cat` 排查问题，教学优先于极致性能。
+# 生产实现通常换 bincode / rkyv / 自定义二进制格式（见阶段 9）。
+serde_json = "1"
+# 错误类型派生。≈ Java 里手写 BusinessException 继承树 + SLF4J 格式化，
+# 但 #[derive(Error)] 帮你生成 Display 与 source() 链（≈ getCause）。
+thiserror = "2"
+# CLI 参数解析。≈ picocli。
+clap = { version = "4", features = ["derive"] }
+# 异步运行时。≈ Java 的 ExecutorService + CompletableFuture，但 Rust 标准库不带运行时，
+# 必须由你选择——这是 Java 开发者最容易踩的坑（见阶段 8）。
+# 只开启用到的特性，避免编译整个 tokio（对应 Maven 的 exclusion 思路）。
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "sync", "macros", "time", "signal"] }
+# 日志门面。≈ SLF4J：库只依赖 facade，由二进制决定具体实现（env_logger 等）。
+log = "0.4"
+# 一个够用的日志实现，仅被示例二进制使用。
+env_logger = "0.11"
+
+[dev-dependencies]
+# 临时目录，测试用。≈ JUnit 的 @TempDir。标准库没有，生态里这是事实标准。
+tempfile = "3"
+
+# ---------------------------------------------------------------------------
+# [[bin]] ≈ exec-maven-plugin 的 mainClass 配置。
+# Cargo 的约定是 src/bin/*.rs 自动成为可执行文件，这里显式声明是为了单独取名。
+# ---------------------------------------------------------------------------
+[[bin]]
+name = "minidb-cli"
+path = "src/bin/minidb-cli.rs"
+
+[[bin]]
+name = "minidb-server"
+path = "src/bin/minidb-server.rs"
+
+# ---------------------------------------------------------------------------
+# Rust 的 debug 构建比 release 慢数倍到数十倍，压测务必用 --release。
+# lto/codegen-units 是 LLVM 层优化开关，Maven 里没有对应物（JVM 靠 JIT 做）。
+# ---------------------------------------------------------------------------
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort" # 生产服务常用：panic 直接终止而不是 unwind，避免半死状态
+
+# ---------------------------------------------------------------------------
+# lints 段：把 clippy 警告提升为编译错误，≈ Maven Enforcer / SpotBugs 的 failOnViolation。
+# 质量门禁被前置到编译期，这是 Rust 工程化的核心优势之一。
+# ---------------------------------------------------------------------------
+[lints.rust]
+unsafe_code = "forbid" # 全 crate 禁用 unsafe，教学项目守住这条线
+missing_docs = "warn"
+
+[lints.clippy]
+# pedantic 组对从 Java 转过来的开发者特别有教育意义（会提醒 &str / 必须显式类型等）
+pedantic = { level = "warn", priority = -1 }
+# 禁止把 clone() 当创可贴——Java 开发者最常见的坏习惯
+clone_on_ref_ptr = "warn"
+# 提醒用 &str 而不是 &String 做参数（≈ Java 里用 Collection 而不是 ArrayList 声明入参）
+ptr_arg = "warn"
+
+# ---- 以下三条是**有意为之**的工程决策，不是偷懒 --------------------------------
+# 本项目所有函数返回同一个 `KvError`（见 src/error.rs 的模块文档），
+# 错误来源只有 I/O、协议、数据损坏三类；逐个函数重复写 `# Errors` 段落是纯噪音。
+missing_errors_doc = "allow"
+# 中文文档里夹杂大量 Java/Cargo 专有名词（ReadWriteLock、try-with-resources…），
+# doc_markdown 会把它们当成"该加反引号的标识符"误报，中文项目普遍关掉这一条。
+doc_markdown = "allow"
+# unwrap/expect 只用在"不可能失败"的地方，且都带了 expect 说明文字。
+missing_panics_doc = "allow"

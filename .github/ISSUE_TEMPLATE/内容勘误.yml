@@ -1,0 +1,56 @@
+name: 内容勘误
+description: 文档里的事实错误、失效链接、错别字
+title: '[勘误] '
+labels: ['content', 'bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢指出问题。为了让修复更快，请尽量填全下面的信息。
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: 问题类型
+      options:
+        - 事实错误（概念讲错了）
+        - 代码无法运行
+        - 链接失效
+        - 错别字 / 排版
+        - 版本信息过时
+        - 其他
+    validations:
+      required: true
+
+  - type: input
+    id: location
+    attributes:
+      label: 位置
+      description: 文件路径或页面链接，例如 `tracks/rust/tutorial/02-所有权与生命周期.md`
+      placeholder: tracks/rust/tutorial/02-所有权与生命周期.md
+    validations:
+      required: true
+
+  - type: textarea
+    id: current
+    attributes:
+      label: 现在的内容
+      description: 把有问题的原文贴在这里
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 应该是
+      description: 正确答案或你建议的改法
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: 补充信息
+      description: 运行环境、版本号、参考资料等
+    validations:
+      required: false

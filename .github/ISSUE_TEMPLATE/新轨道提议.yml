@@ -1,0 +1,57 @@
+name: 新轨道提议
+description: 提议增加一条学习轨道，或催更已有的规划轨道
+title: '[新轨道] '
+labels: ['track', 'enhancement']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        新增轨道的成本不低（教程 + 可运行项目 + Java 对照）。
+        为了让讨论更有价值，请说清楚「为什么需要它」而不是只说「想学」。
+
+  - type: dropdown
+    id: target
+    attributes:
+      label: 目标
+      options:
+        - 催更已有的规划轨道（Go）
+        - 催更已有的规划轨道（Python）
+        - 提议一条全新的语言 / 技术栈
+    validations:
+      required: true
+
+  - type: input
+    id: name
+    attributes:
+      label: 新轨道名称
+      description: 仅在「提议全新轨道」时填写
+      placeholder: Kotlin · 从 Java 到 Kotlin
+
+  - type: textarea
+    id: why
+    attributes:
+      label: 为什么需要它
+      description: Java 开发者在什么场景下会需要这条轨道？现有资料缺什么？
+    validations:
+      required: true
+
+  - type: textarea
+    id: outline
+    attributes:
+      label: 建议覆盖的内容
+      description: 列出你觉得必须讲的主题，以及配什么实战项目合适
+      placeholder: |
+        1. 值语义与数据类
+        2. 协程 vs 虚拟线程
+        3. 实战项目：一个 Ktor 服务
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: 参与意愿
+      options:
+        - label: 我愿意参与撰写或审阅
+        - label: 我可以提供实战项目的点子
+        - label: 我只是想催更

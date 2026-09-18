@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# 同一个 PR 上的多次推送只保留最新一次运行
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # 1) 质量门禁：快、便宜、失败要早
+  quality:
+    name: Lint / Typecheck / Unit / Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+        env:
+          # Electron 模式跑 E2E 不需要下载 Chromium/Firefox/WebKit
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+
+      - name: Lint
+        run: npm run lint
+
+      - name: 类型检查
+        run: npm run typecheck
+
+      - name: 单元测试
+        run: npm test
+
+      - name: 构建渲染进程
+        run: npm run build
+
+      - name: 构建主进程
+        run: npm run build:main
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist
+          retention-days: 7
+
+  # 2) 端到端：三平台各跑一遍真实的桌面应用
+  e2e:
+    name: E2E (${{ matrix.os }})
+    needs: quality
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+          # Electron 二进制走国内镜像更快；GitHub 直连失败时的兜底
+          ELECTRON_MIRROR: 'https://npmmirror.com/mirrors/electron/'
+
+      - name: 构建
+        run: npm run build && npm run build:main
+
+      - name: 端到端测试（Linux 需要虚拟显示）
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run e2e
+
+      - name: 端到端测试
+        if: runner.os != 'Linux'
+        run: npm run e2e
+
+      - name: 上传失败截图与日志
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results-${{ matrix.os }}
+          path: test-results
+          retention-days: 7

@@ -1,0 +1,18 @@
+indexedDB available: true
+window.api: injected
+columns: 3
+cards: 4
+titlebar: Lumen Kanban · v43.7.0 - □ ✕
+screenshot: 01-初始界面.png
+cards after add: 5
+screenshot: 02-新增卡片后.png
+search value: RunCheck
+cards after search: 1
+screenshot: 03-搜索过滤.png
+cards after reload: 5
+cards onlyHigh: 2
+screenshot: 04-只看高优先级.png
+theme: dark
+screenshot: 05-深色主题.png
+dialog open: 1
+screenshot: 06-卡片编辑弹窗.png

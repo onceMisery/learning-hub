@@ -1,0 +1,70 @@
+{
+  "id": "frontend",
+  "title": "前端 · 从 Java 到现代前端",
+  "subtitle": "TypeScript 7 · React 19 · Vite 8 · Tailwind 4 · Motion 13 · Dexie 4 · Electron 43",
+  "order": 10,
+  "status": "active",
+  "accent": "blue",
+  "tags": ["前端", "React", "TypeScript", "桌面应用"],
+  "toolchain": "node-22.22.2",
+  "verifiedAt": "2026-09-14",
+  "outline": [],
+  "sections": [
+    {
+      "id": "roadmap",
+      "title": "学习路线图",
+      "path": "tutorial",
+      "order": 10,
+      "pages": [
+        { "file": "README.md", "slug": "overview", "title": "总览：学习路线与版本矩阵", "tags": ["总览"] },
+        { "file": "01-现代HTML与CSS地基重建.md", "slug": "01-html-css", "title": "阶段 1：现代 HTML + CSS 地基重建", "tags": ["HTML", "CSS", "响应式", "A11y"] },
+        { "file": "02-JavaScript深度补强与去jQuery化.md", "slug": "02-js-deep-dive", "title": "阶段 2：JavaScript 深度补强与去 jQuery 化", "tags": ["JavaScript"] },
+        { "file": "03-TypeScript从类型思维到工程实践.md", "slug": "03-typescript", "title": "阶段 3：TypeScript 从类型思维到工程实践", "tags": ["TypeScript"] },
+        { "file": "04-Vite8与现代前端工程化.md", "slug": "04-vite8", "title": "阶段 4：Vite 8 与现代前端工程化", "tags": ["Vite", "工程化"] },
+        { "file": "05-TailwindCSS4与样式系统.md", "slug": "05-tailwind4", "title": "阶段 5：Tailwind CSS 4 与样式系统", "tags": ["Tailwind", "CSS"] },
+        { "file": "06-React19核心.md", "slug": "06-react19-core", "title": "阶段 6：React 19 核心", "tags": ["React"] },
+        { "file": "07-React19进阶与状态管理.md", "slug": "07-react19-advanced", "title": "阶段 7：React 19 进阶与状态管理", "tags": ["React", "Zustand"] },
+        { "file": "08-Motion13交互动效.md", "slug": "08-motion13", "title": "阶段 8：Motion 13 交互动效", "tags": ["Motion", "动效"] },
+        { "file": "09-Dexie4本地数据持久化.md", "slug": "09-dexie4", "title": "阶段 9：Dexie 4 本地数据持久化", "tags": ["Dexie", "IndexedDB"] },
+        { "file": "10-Electron43桌面应用.md", "slug": "10-electron43", "title": "阶段 10：Electron 43 桌面应用", "tags": ["Electron"] },
+        { "file": "11-综合实战与持续进阶.md", "slug": "11-capstone", "title": "阶段 11：综合实战与持续进阶", "tags": ["综合"] },
+        { "file": "附录-自查清单与速查表.md", "slug": "appendix-checklist", "title": "附录：自查清单与速查表", "tags": ["速查"] }
+      ]
+    },
+    {
+      "id": "project-kanban",
+      "title": "实战项目 · Lumen Kanban",
+      "path": "projects/lumen-kanban/docs",
+      "order": 20,
+      "standalone": true,
+      "projectName": "Lumen Kanban",
+      "projectRoot": "projects/lumen-kanban",
+      "pages": [
+        { "file": "../README.md", "slug": "readme", "title": "项目说明与界面截图", "tags": ["总览", "截图"] },
+        { "file": "00-总览：你要做出什么.md", "slug": "overview", "title": "总览：你要做出什么", "tags": ["总览"] },
+        { "file": "01-阶段0-环境与工程地基.md", "slug": "s0-setup", "title": "阶段 0：环境与工程地基", "tags": ["工程化"] },
+        { "file": "02-阶段1-布局与主题令牌.md", "slug": "s1-layout", "title": "阶段 1：布局与主题令牌", "tags": ["Tailwind", "CSS"] },
+        { "file": "03-阶段2-TypeScript数据建模.md", "slug": "s2-typing", "title": "阶段 2：TypeScript 数据建模", "tags": ["TypeScript"] },
+        { "file": "04-阶段3-React组件与交互.md", "slug": "s3-components", "title": "阶段 3：React 组件与交互", "tags": ["React"] },
+        { "file": "05-阶段4-Dexie本地数据层.md", "slug": "s4-dexie", "title": "阶段 4：Dexie 本地数据层", "tags": ["Dexie"] },
+        { "file": "06-阶段5-状态管理与Zustand.md", "slug": "s5-zustand", "title": "阶段 5：状态管理与 Zustand", "tags": ["Zustand"] },
+        { "file": "07-阶段6-Motion动效.md", "slug": "s6-motion", "title": "阶段 6：Motion 动效", "tags": ["Motion"] },
+        { "file": "08-阶段7-Electron桌面化与发布.md", "slug": "s7-electron", "title": "阶段 7：Electron 桌面化与发布", "tags": ["Electron"] },
+        { "file": "09-排错手册.md", "slug": "troubleshooting", "title": "排错手册", "tags": ["排错"] },
+        { "file": "10-交付与验收清单.md", "slug": "checklist", "title": "交付与验收清单", "tags": ["验收"] },
+        { "file": "11-撤销重做与端到端测试.md", "slug": "undo-redo", "title": "撤销重做与端到端测试", "tags": ["测试"] }
+      ]
+    },
+    {
+      "id": "guide",
+      "title": "写作指南",
+      "path": "guide",
+      "order": 90,
+      "pages": [
+        { "file": "01-自定义组件.md", "slug": "custom-blocks", "title": "如何在文档里内联真实源码", "tags": ["写作", "SourceRef"] }
+      ]
+    }
+  ],
+  "codeRoots": ["projects/lumen-kanban/src"],
+  "assets": ["projects/lumen-kanban/screenshots"]
+}

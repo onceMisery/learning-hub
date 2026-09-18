@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>布局地基练习</title>
+    <style>
+      /* 1. 设计令牌：所有颜色只在这里出现一次 */
+      :root {
+        --color-bg: #f7f7f8;
+        --color-card: #ffffff;
+        --color-fg: #1c1c1f;
+        --color-muted: #6b6b76;
+        --color-line: #e3e3e8;
+        --radius: 0.75rem;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --color-bg: #16161a;
+          --color-card: #1f1f24;
+          --color-fg: #f2f2f5;
+          --color-muted: #a1a1ad;
+          --color-line: #33333c;
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: var(--color-bg);
+        color: var(--color-fg);
+        font-family: system-ui, -apple-system, 'Microsoft YaHei', sans-serif;
+      }
+
+      /* 2. Flex：一维分布（这里是三列等宽 + 自动换行） */
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+      .card {
+        flex: 1 1 220px;
+        min-width: 0; /* 关键：不让内容把 flex 项撑破 */
+        background: var(--color-card);
+        border: 1px solid var(--color-line);
+        border-radius: var(--radius);
+        padding: 16px;
+      }
+      .card p {
+        color: var(--color-muted);
+        margin: 8px 0 0;
+      }
+
+      /* 3. Grid：二维布局（侧栏 + 自适应主区） */
+      .layout {
+        display: grid;
+        grid-template-columns: 200px 1fr;
+        gap: 12px;
+        margin-top: 24px;
+      }
+      @media (max-width: 640px) {
+        .layout {
+          grid-template-columns: 1fr; /* 窄屏塌成单列 */
+        }
+      }
+      .side,
+      .main {
+        background: var(--color-card);
+        border: 1px solid var(--color-line);
+        border-radius: var(--radius);
+        padding: 16px;
+      }
+
+      /* 4. 容器查询：组件根据自己的宽度变形，而不是看视口 */
+      .container {
+        container-type: inline-size;
+        margin-top: 24px;
+      }
+      .widget {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        background: var(--color-card);
+        border: 1px solid var(--color-line);
+        border-radius: var(--radius);
+        padding: 12px;
+      }
+      @container (min-width: 480px) {
+        .widget {
+          justify-content: space-between;
+        }
+        .widget span {
+          order: 2;
+        }
+      }
+      .narrow {
+        width: 320px;
+      }
+      .wide {
+        width: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>布局地基练习</h1>
+    <p>把窗口拖窄、切换系统深色模式，观察三处变化。</p>
+
+    <div class="row">
+      <div class="card"><strong>Flex 1</strong><p>flex: 1 1 220px</p></div>
+      <div class="card"><strong>Flex 2</strong><p>空间不足自动换行</p></div>
+      <div class="card"><strong>Flex 3</strong><p>min-width: 0 防溢出</p></div>
+    </div>
+
+    <div class="layout">
+      <aside class="side">Grid 侧栏 200px</aside>
+      <main class="main">Grid 主区 1fr（窄屏时整体塌成单列）</main>
+    </div>
+
+    <div class="container narrow">
+      <div class="widget"><strong>窄容器</strong><span>右侧内容</span></div>
+    </div>
+    <div class="container wide">
+      <div class="widget"><strong>宽容器</strong><span>右侧内容（≥480px 时两端对齐）</span></div>
+    </div>
+  </body>
+</html>

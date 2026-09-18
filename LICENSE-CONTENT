@@ -1,0 +1,30 @@
+Creative Commons Attribution 4.0 International (CC BY 4.0)
+
+Copyright (c) 2026 onceMisery
+
+本仓库中的正文内容（tracks/ 与 docs/ 下的 Markdown / 文本文件）采用
+知识共享 署名 4.0 国际许可协议（CC BY 4.0）授权。
+
+你可以自由地：
+
+- 分享 —— 在任何媒介以任何形式复制、发行本作品
+- 改编 —— 重混、转换、基于本作品创作
+
+只要遵守以下条款：
+
+- 署名 —— 必须给出适当的署名（至少注明作者 onceMisery 与仓库
+  https://github.com/onceMisery/learning-hub），提供指向本许可协议的链接，
+  并说明是否对原作品作了修改。
+- 不得附加限制 —— 不得使用法律条款或技术措施限制他人行使许可协议允许的行为。
+
+声明：本许可协议不授予商标权、专利权，也不对内容准确性作任何担保。
+
+完整法律文本见：
+  https://creativecommons.org/licenses/by/4.0/legalcode.zh-Hans
+
+人类可读的许可摘要见：
+  https://creativecommons.org/licenses/by/4.0/deed.zh-Hans
+
+---
+
+代码（tracks/*/projects/ 与 site/ 下的源码）另行采用 MIT 许可，详见 LICENSE。

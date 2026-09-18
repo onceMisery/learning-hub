@@ -1,0 +1,104 @@
+{
+  "id": "rust",
+  "title": "Rust · 写给 Java 开发者",
+  "subtitle": "从 JVM 心智模型迁移到所有权、零成本抽象与无畏并发",
+  "order": 20,
+  "status": "active",
+  "accent": "amber",
+  "tags": ["Rust", "系统级", "并发", "Java 对照"],
+  "toolchain": "rust-1.98",
+  "verifiedAt": "2026-07-11",
+  "outline": [],
+  "sections": [
+    {
+      "id": "tutorial",
+      "title": "教程",
+      "path": "tutorial",
+      "order": 10,
+      "pages": [
+        { "file": "README.md", "slug": "overview", "title": "总览：阅读路线与心智转换", "tags": ["总览"] },
+        { "file": "01-环境搭建与语言基础.md", "slug": "01-env", "title": "环境搭建与语言基础", "tags": ["工具链", "起步"] },
+        { "file": "02-所有权与生命周期.md", "slug": "02-ownership", "title": "所有权与生命周期", "tags": ["所有权", "借用"] },
+        { "file": "03-类型系统与模式匹配.md", "slug": "03-types", "title": "类型系统与模式匹配", "tags": ["类型", "模式匹配"] },
+        { "file": "04-集合字符串与函数式编程.md", "slug": "04-collections", "title": "集合、字符串与函数式编程", "tags": ["集合", "迭代器"] },
+        { "file": "05-工程化特性.md", "slug": "05-engineering", "title": "工程化特性", "tags": ["模块", "宏", "错误处理"] },
+        { "file": "06-异步编程与生态.md", "slug": "06-async", "title": "异步编程与生态", "tags": ["async", "tokio", "axum"] },
+        { "file": "07-测试调试与质量工具.md", "slug": "07-testing", "title": "测试调试与质量工具", "tags": ["测试", "clippy"] },
+        { "file": "08-并发编程专题.md", "slug": "08-concurrency", "title": "并发编程专题", "tags": ["并发", "Send", "Sync"] },
+        { "file": "09-从 Java 项目到 Rust 项目的实战迁移.md", "slug": "09-migration", "title": "从 Java 项目到 Rust 项目的实战迁移", "tags": ["迁移", "架构"] },
+        { "file": "10-性能unsafe与FFI边界.md", "slug": "10-unsafe", "title": "性能、unsafe 与 FFI 边界", "tags": ["性能", "unsafe", "FFI"] },
+        { "file": "11-实战项目TodoAPI.md", "slug": "11-todo-api", "title": "实战项目：Todo API", "tags": ["axum", "实战"] },
+        { "file": "12-部署与发布.md", "slug": "12-deploy", "title": "部署与发布", "tags": ["Docker", "CI"] },
+        { "file": "附录-Java到Rust速查表.md", "slug": "appendix-java-rust", "title": "附录：Java 到 Rust 速查表", "tags": ["对照", "速查"] },
+        { "file": "附录-依赖安全与供应链.md", "slug": "appendix-supply-chain", "title": "附录：依赖安全与供应链", "tags": ["安全", "cargo-deny"] }
+      ]
+    },
+    {
+      "id": "project-minidb",
+      "title": "实战项目 · minidb",
+      "path": "projects",
+      "order": 20,
+      "standalone": true,
+      "projectName": "minidb",
+      "projectRoot": "projects/minidb",
+      "pages": [
+        {
+          "file": "minidb/00-总览与环境.md",
+          "slug": "00-overview",
+          "title": "模块精讲 · 总览与环境",
+          "tags": ["总览", "环境", "Java 对照"]
+        },
+        {
+          "file": "minidb/01-实例与启动.md",
+          "slug": "01-instance",
+          "title": "模块一：数据库实例与启动流程",
+          "tags": ["实例", "启动", "manifest", "目录锁"]
+        },
+        {
+          "file": "minidb/02-文件格式与落盘.md",
+          "slug": "02-file-format",
+          "title": "模块二：数据文件格式与落盘策略",
+          "tags": ["文件格式", "CRC", "fsync", "WAL"]
+        },
+        {
+          "file": "minidb/03-索引与查询.md",
+          "slug": "03-index",
+          "title": "模块三：索引构建与查询路径",
+          "tags": ["索引", "查询", "HashMap", "迭代器"]
+        },
+        {
+          "file": "minidb/04-删除与合并压缩.md",
+          "slug": "04-compaction",
+          "title": "模块四：删除（墓碑）与合并压缩",
+          "tags": ["墓碑", "compaction", "写放大", "空间放大"]
+        },
+        {
+          "file": "minidb/05-崩溃恢复.md",
+          "slug": "05-recovery",
+          "title": "模块五：崩溃恢复",
+          "tags": ["崩溃恢复", "重放", "截断", "持久化"]
+        },
+        {
+          "file": "minidb/06-并发与事务控制.md",
+          "slug": "06-concurrency",
+          "title": "模块六：并发与事务控制",
+          "tags": ["并发", "RwLock", "Send/Sync", "事务", "丢失更新"]
+        },
+        {
+          "file": "minidb/07-协议与服务器.md",
+          "slug": "07-protocol",
+          "title": "模块七：协议与服务器",
+          "tags": ["协议", "RESP", "tokio", "Actor"]
+        },
+        {
+          "file": "minidb/08-实验手册与进阶.md",
+          "slug": "08-lab",
+          "title": "模块八：实验手册与进阶路线",
+          "tags": ["实验", "压测", "进阶"]
+        }
+      ]
+    }
+  ],
+  "codeRoots": ["projects/minidb/src"],
+  "assets": []
+}

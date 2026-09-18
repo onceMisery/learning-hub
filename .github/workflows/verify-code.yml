@@ -1,0 +1,54 @@
+name: Verify Code
+
+# 教程里的代码如果跑挂了，这个 workflow 会变红。
+# 大多数教程仓库做不到这点——这里的两个实战项目都带测试，天然具备条件。
+
+on:
+  schedule:
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tracks/rust/projects/minidb/**'
+      - 'tracks/frontend/projects/lumen-kanban/**'
+
+jobs:
+  minidb:
+    name: minidb · cargo test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tracks/rust/projects/minidb
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: 缓存 cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tracks/rust/projects/minidb
+      - name: 格式检查
+        run: cargo fmt --all -- --check
+      - name: 静态检查
+        run: cargo clippy --all-targets -- -D warnings
+      - name: 测试
+        run: cargo test
+
+  lumen-kanban:
+    name: Lumen Kanban · vitest
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tracks/frontend/projects/lumen-kanban
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12
+      - run: pnpm install --frozen-lockfile
+      - name: 类型检查
+        run: pnpm typecheck
+      - name: 单元测试
+        run: pnpm test

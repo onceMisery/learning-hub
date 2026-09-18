@@ -1,0 +1,78 @@
+{
+  "name": "lumen-kanban",
+  "version": "0.1.0",
+  "private": true,
+  "description": "离线优先的桌面看板应用 - 前端系统学习实战项目",
+  "type": "module",
+  "main": "dist/main.cjs",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint src --max-warnings=0",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "e2e": "playwright test",
+    "build": "tsc --noEmit && vite build",
+    "build:main": "vite build --config vite.main.config.ts",
+    "build:electron": "npm run build && npm run build:main",
+    "start": "npm run build:main && electron .",
+    "capture": "electron scripts/capture.cjs",
+    "dist": "npm run build:electron && electron-builder"
+  },
+  "dependencies": {
+    "clsx": "2.1.1",
+    "dexie": "4.4.6",
+    "dexie-react-hooks": "4.4.0",
+    "motion": "13.2.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "tailwind-merge": "3.6.0",
+    "zod": "4.6.2",
+    "zustand": "5.0.15"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@tailwindcss/vite": "4.3.3",
+    "@testing-library/dom": "10.4.1",
+    "@testing-library/react": "16.3.3",
+    "@types/node": "24.13.4",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.1",
+    "electron": "43.7.0",
+    "electron-builder": "26.15.3",
+    "fake-indexeddb": "6.2.5",
+    "jsdom": "30.0.1",
+    "oxlint": "1.82.0",
+    "prettier": "3.9.6",
+    "tailwindcss": "4.3.3",
+    "typescript": "7.0.2",
+    "vite": "8.3.0",
+    "vitest": "5.0.0"
+  },
+  "build": {
+    "appId": "cn.oncemisery.lumenkanban",
+    "productName": "Lumen Kanban",
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.productivity"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  }
+}

@@ -1,0 +1,89 @@
+@import 'tailwindcss';
+
+/* ---------------------------------------------------------------------------
+ * 1. 设计令牌（primitive -> semantic）
+ *    v4 是 CSS-first 配置：令牌写在 @theme 里，Tailwind 会自动生成对应的工具类。
+ *    例如下面的 --color-surface 会生成 bg-surface / text-surface / border-surface。
+ * ------------------------------------------------------------------------- */
+@theme {
+  --color-brand: oklch(0.62 0.19 255);
+  --color-brand-soft: oklch(0.95 0.03 255);
+
+  --color-surface: oklch(0.99 0 0);
+  --color-surface-raised: #ffffff;
+  --color-surface-sunken: oklch(0.97 0.003 265);
+
+  --color-fg: oklch(0.21 0.02 265);
+  --color-fg-muted: oklch(0.52 0.02 265);
+
+  --color-line: oklch(0.9 0.005 265);
+  --color-line-strong: oklch(0.8 0.008 265);
+
+  --radius-card: 0.75rem;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ---------------------------------------------------------------------------
+ * 2. 深色主题：只覆盖语义令牌，组件里不出现任何硬编码颜色
+ * ------------------------------------------------------------------------- */
+[data-theme='dark'] {
+  --color-surface: oklch(0.18 0.015 265);
+  --color-surface-raised: oklch(0.23 0.015 265);
+  --color-surface-sunken: oklch(0.15 0.015 265);
+
+  --color-fg: oklch(0.95 0.005 265);
+  --color-fg-muted: oklch(0.68 0.015 265);
+
+  --color-line: oklch(0.32 0.015 265);
+  --color-line-strong: oklch(0.42 0.018 265);
+
+  --color-brand-soft: oklch(0.32 0.08 255);
+}
+
+/* 把 dark: 变体从「跟随系统」改成「跟随 data-theme 属性」，
+   这样应用内才能手动切换三态（系统 / 亮 / 暗）。 */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+/* ---------------------------------------------------------------------------
+ * 3. 基础层
+ * ------------------------------------------------------------------------- */
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    background-color: var(--color-surface);
+    color: var(--color-fg);
+    font-family:
+      system-ui,
+      -apple-system,
+      'Segoe UI',
+      'Microsoft YaHei',
+      sans-serif;
+    /* Electron 无边框窗口下禁止原生拖选造成的"整页选蓝" */
+    user-select: none;
+  }
+
+  input,
+  textarea {
+    user-select: text;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+  }
+}
+
+/* 自定义标题栏的拖拽区域 */
+.titlebar-drag {
+  -webkit-app-region: drag;
+}
+
+.titlebar-drag button,
+.titlebar-drag input {
+  -webkit-app-region: no-drag;
+}

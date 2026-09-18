@@ -1,0 +1,22 @@
+{
+  "id": "python",
+  "title": "Python · 从 Java 到 Python",
+  "subtitle": "面向 Java 工程师的 Python 入门：动态类型下的工程化与可维护性",
+  "order": 40,
+  "status": "planned",
+  "accent": "green",
+  "tags": ["Python", "脚本", "数据"],
+  "toolchain": "",
+  "verifiedAt": "",
+  "outline": [
+    "Python 的类型注解与 mypy：动态语言里的静态保障",
+    "虚拟环境、依赖管理与打包：venv / uv / poetry 对照 Maven",
+    "数据模型：dataclass、协议与鸭子类型",
+    "并发现实：GIL、asyncio 与多进程的取舍",
+    "项目结构与测试：pytest 与工程化约定",
+    "实战项目：一个可运行的 CLI 或小服务"
+  ],
+  "sections": [],
+  "codeRoots": [],
+  "assets": []
+}

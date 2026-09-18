@@ -1,0 +1,941 @@
+@import 'tailwindcss';
+
+/* ==================================================================
+   设计令牌
+   所有颜色、间距、圆角、动效时长都集中在此，组件只引用变量，
+   切换主题时只需替换 :root / [data-theme='light'] 下的语义变量。
+   ================================================================== */
+
+:root {
+  /* 正文正文字体栈：macOS / Windows / Linux 的中文无衬线都覆盖到，
+     之前缺 Microsoft YaHei UI，Windows 上会退到宋体，行高观感差一截 */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei UI', 'Microsoft YaHei', 'Noto Sans SC', 'Source Han Sans SC', 'Helvetica Neue', Arial,
+    sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  /* 内容卡片统一圆角：右栏所有卡片共用，避免 10/14px 混用导致的层级混乱 */
+  --radius-card: 16px;
+
+  /* 间距刻度：右栏布局统一引用，替代零散的 mt-4 / mt-5 / gap-1.5 混排 */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  /* 正文排版节奏：中文正文比英文需要更大的行距与段距，
+     字号 16px 是中文长文的下限，再小就会"密不透风" */
+  --prose-fs: 16px;
+  --prose-lh: 1.85;
+  --prose-flow: 1.1em;
+
+  --header-h: 56px;
+  --sidebar-w: 272px;
+  --toc-w: 232px;
+  /* 正文列宽：中文一行 38~42 字（约 800px）最舒服，超过 45 字回扫容易串行 */
+  --content-max: 800px;
+  /* 页面外壳的统一内容宽度。顶栏与主体必须共用同一个容器，
+     否则在宽屏下顶栏贴着视口边缘、主体却居中，两者错开上百像素。 */
+  --shell-max: 1440px;
+
+  /* 动效：只动 transform / opacity，时长分三档 */
+  --ease-out: cubic-bezier(0.215, 0.61, 0.355, 1);
+  --ease-in-out: cubic-bezier(0.645, 0.045, 0.355, 1);
+  --dur-fast: 100ms;
+  --dur-base: 180ms;
+  --dur-slow: 260ms;
+}
+
+/* 深色（默认） */
+:root,
+[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #0a0c10;
+  --bg-soft: #0f1218;
+  --surface: #14181f;
+  --surface-2: #1a1f28;
+  --surface-3: #212734;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --text: #e7e9ee;
+  --text-2: #9ba3b0;
+  --text-3: #6b7382;
+  --brand: #7c9cff;
+  --brand-soft: rgba(124, 156, 255, 0.14);
+  --danger: #f87171;
+  --warn: #fbbf24;
+  --success: #4ade80;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.32);
+  --code-bg: #0d1117;
+  --mark: rgba(124, 156, 255, 0.28);
+
+  /* 正文强调色：标题装饰、重点高亮、行内代码共用一色，
+     保证整页只有"一个强调色"，不会花 */
+  --prose-accent: #7c9cff;
+  --prose-em-bg: rgba(124, 156, 255, 0.24);
+  --prose-inline-bg: rgba(124, 156, 255, 0.1);
+  --prose-inline-fg: #a9bcff;
+  --prose-quote-bg: rgba(124, 156, 255, 0.06);
+  /* 段落分割线：中性色，只取 border-strong 的七成强度，两端渐隐。
+     分隔线是"骨架"不是"内容"，所以不参与强调色体系，
+     层级只靠强度拉开：h2 分隔线 > hr > 段落线 */
+  --prose-flow-rule: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.115) 12%,
+    rgba(255, 255, 255, 0.115) 88%,
+    transparent
+  );
+
+  /* 划线笔记。
+     三个语义变量是"当前划线色"的插槽，实际取值由 .lh-hl--c-* 按笔记自己的颜色注入，
+     所以 hover、下划线、定位闪烁全都自动跟随，不需要各写一份。
+     这里的默认值就是蓝色 —— 既是历史默认，也是旧数据（没有 color 字段）的回落色。
+     强度刻意低于正文的加粗荧光笔，避免用户自己划的线反而比正文更抢眼。 */
+  --note-mark: rgba(124, 156, 255, 0.26);
+  --note-mark-hover: rgba(124, 156, 255, 0.4);
+  --note-underline: rgba(124, 156, 255, 0.85);
+
+  /* 五色色板（深色主题）。深色底上底色可以浓一点，
+     但 alpha 上限仍以"文字压在合成后的底色上仍过 4.5:1"为准（脚本实测）。 */
+  --note-yellow-mark: rgba(250, 204, 21, 0.24);
+  --note-yellow-hover: rgba(250, 204, 21, 0.38);
+  --note-yellow-line: rgba(250, 204, 21, 0.85);
+  --note-green-mark: rgba(74, 222, 128, 0.24);
+  --note-green-hover: rgba(74, 222, 128, 0.38);
+  --note-green-line: rgba(74, 222, 128, 0.85);
+  --note-blue-mark: rgba(124, 156, 255, 0.26);
+  --note-blue-hover: rgba(124, 156, 255, 0.4);
+  --note-blue-line: rgba(124, 156, 255, 0.85);
+  --note-pink-mark: rgba(244, 114, 182, 0.26);
+  --note-pink-hover: rgba(244, 114, 182, 0.4);
+  --note-pink-line: rgba(244, 114, 182, 0.85);
+  --note-purple-mark: rgba(192, 132, 252, 0.26);
+  --note-purple-hover: rgba(192, 132, 252, 0.4);
+  --note-purple-line: rgba(192, 132, 252, 0.85);
+
+  /* 色板色点用的实色，与上面三档是两套取值，不要混用：
+     底色要够淡才不盖住文字，下划线要够深才在纸白底上看得见，
+     而色点代表的是"这个颜色本身"，只有不透明实色才和用户看到的高亮对得上。
+     实色在深浅两套主题下都够显眼，所以只定义一次。 */
+  --note-yellow-dot: #eab308;
+  --note-green-dot: #22c55e;
+  --note-blue-dot: #4f6bed;
+  --note-pink-dot: #ec4899;
+  --note-purple-dot: #a855f7;
+
+  /* 状态徽章前景色（已发布 / 编写中）。
+     状态是跨轨道的全局语义，所以刻意不接入 --accent 那套轨道主题色 ——
+     否则同一条"已发布"在蓝色轨道和橙色轨道上会长成两个颜色。
+     底色与描边由前景色 color-mix 派生，见 .lh-chip--status。 */
+  --status-active: #4ade80;
+  --status-wip: #fbbf24;
+}
+
+/* 浅色 */
+[data-theme='light'] {
+  color-scheme: light;
+  --bg: #ffffff;
+  --bg-soft: #f7f8fa;
+  --surface: #ffffff;
+  --surface-2: #f4f6f9;
+  --surface-3: #eaeef4;
+  --border: rgba(16, 24, 40, 0.1);
+  --border-strong: rgba(16, 24, 40, 0.2);
+  --text: #16191f;
+  --text-2: #5b6472;
+  --text-3: #8b94a3;
+  --brand: #4f6bed;
+  --brand-soft: rgba(79, 107, 237, 0.12);
+  --danger: #dc2626;
+  --warn: #b45309;
+  --success: #16a34a;
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 8px 24px rgba(16, 24, 40, 0.08);
+  --code-bg: #f6f8fa;
+  --mark: rgba(79, 107, 237, 0.2);
+
+  /* 正文强调色（浅色主题）：饱和度压低，避免在纸白底上"跳"出来 */
+  --prose-accent: #4f6bed;
+  --prose-em-bg: rgba(79, 107, 237, 0.16);
+  --prose-inline-bg: rgba(79, 107, 237, 0.08);
+  --prose-inline-fg: #3a51c8;
+  --prose-quote-bg: rgba(79, 107, 237, 0.05);
+  /* 段落分割线（浅色主题）：纸白底上要稍微实一点才看得见，
+     但仍低于 h2 分隔线，保证"标题 > 硬分隔 > 段落"的层级不被反转 */
+  --prose-flow-rule: linear-gradient(
+    90deg,
+    transparent,
+    rgba(16, 24, 40, 0.14) 12%,
+    rgba(16, 24, 40, 0.14) 88%,
+    transparent
+  );
+
+  /* 划线笔记（浅色主题）：纸白底上底色要压得更淡，否则会盖住文字 */
+  --note-mark: rgba(79, 107, 237, 0.18);
+  --note-mark-hover: rgba(79, 107, 237, 0.3);
+  --note-underline: rgba(79, 107, 237, 0.75);
+
+  /* 五色色板（浅色主题）。近黑文字压在浅底上，底色可以比深色主题饱和一些；
+     黄色是高光色，alpha 给到 0.42 才够"高亮笔"的观感，同时对比度仍有富余。 */
+  --note-yellow-mark: rgba(250, 204, 21, 0.42);
+  --note-yellow-hover: rgba(250, 204, 21, 0.58);
+  --note-yellow-line: rgba(161, 98, 7, 0.85);
+  --note-green-mark: rgba(34, 197, 94, 0.26);
+  --note-green-hover: rgba(34, 197, 94, 0.4);
+  --note-green-line: rgba(21, 128, 61, 0.85);
+  --note-blue-mark: rgba(79, 107, 237, 0.18);
+  --note-blue-hover: rgba(79, 107, 237, 0.3);
+  --note-blue-line: rgba(79, 107, 237, 0.75);
+  --note-pink-mark: rgba(236, 72, 153, 0.22);
+  --note-pink-hover: rgba(236, 72, 153, 0.36);
+  --note-pink-line: rgba(190, 24, 93, 0.85);
+  --note-purple-mark: rgba(168, 85, 247, 0.22);
+  --note-purple-hover: rgba(168, 85, 247, 0.36);
+  --note-purple-line: rgba(126, 34, 206, 0.85);
+
+  /* 状态徽章前景色（浅色主题）：徽章底色本身就是从前景色派生的浅色，
+     文字实际是压在浅绿/浅棕底上而非纯白底，所以要比 --success 再深一档，
+     否则 12px 文字对比度只有 4.1:1，读起来发虚 */
+  --status-active: #166534;
+  --status-wip: #9a3412;
+}
+
+/* 轨道主题色：按 accent 生成一组变量，供卡片与标签使用 */
+[data-accent='blue'] { --accent: #60a5fa; --accent-soft: rgba(96, 165, 250, 0.16); }
+[data-accent='amber'] { --accent: #fbbf24; --accent-soft: rgba(251, 191, 36, 0.16); }
+[data-accent='cyan'] { --accent: #22d3ee; --accent-soft: rgba(34, 211, 238, 0.16); }
+[data-accent='green'] { --accent: #4ade80; --accent-soft: rgba(74, 222, 128, 0.16); }
+[data-accent='teal'] { --accent: #2dd4bf; --accent-soft: rgba(45, 212, 191, 0.16); }
+
+/* ==================================================================
+   基础
+   ================================================================== */
+
+/* ==================================================================
+   基础层
+   所有基础样式都必须放进 @layer base。
+   原因：Tailwind v4 把 utilities 放在 @layer utilities，而「未分层」（没写 @layer）
+   的规则在层叠中会压过所有分层规则。原先裸写的 `* { border-color: var(--border) }`
+   就是这样把 `border-[var(--border-strong)]`、`hover:border-*`、`focus-within:border-*`
+   这些工具类全部压掉了 —— 全站边框永远同一个颜色，强化边框与聚焦反馈都不生效。
+   放进 base 后，元素选择器负责兜底，组件工具类可以正常覆盖。
+   ================================================================== */
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: calc(var(--header-h) + 16px);
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* 主题切换瞬间禁用过渡，避免整站颜色一起渐变导致的闪烁 */
+  body.lh-theme-switching *,
+  body.lh-theme-switching *::before,
+  body.lh-theme-switching *::after {
+    transition: none !important;
+  }
+
+  ::selection {
+    background: var(--brand-soft);
+    color: var(--text);
+  }
+
+  /* 通用焦点环。
+     1. 不改写 border-radius —— 现代浏览器的 outline 会自动贴合元素已有圆角，
+        强行设成 6px 会把按钮/卡片的圆角在聚焦瞬间压平。
+     2. 文本输入控件由容器承担聚焦反馈（下划线/边框变色），
+        再给通栏输入框套一圈外框，在浮层里会显得很突兀。 */
+  :focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    outline: none;
+  }
+
+  /* 滚动条 */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+  *::-webkit-scrollbar { width: 10px; height: 10px; }
+  *::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-track { background: transparent; }
+}
+
+/* ==================================================================
+   组件层
+   这些 lh-* 类必须写在 @layer components 内，不能裸写（不加 @layer）。
+   裸写属于「未分层」规则，在层叠中优先级高于所有分层规则，会静默压掉
+   Tailwind 的 utilities —— 已经因此踩了三次坑：
+     · lh-btn + lg:hidden      → 汉堡按钮在桌面端照样显示，而它要打开的抽屉
+                                  被正确隐藏，于是变成一个点了没反应的死按钮
+     · [&_.lh-code]:rounded-none → 想压平 SourceRef 内嵌代码块圆角的意图失效
+     · border-[var(--border-strong)] / hover:border-* → 全站强化边框与悬停反馈失效
+   放进 components 后层叠顺序为 base（兜底）< components（组件）< utilities（工具类），
+   与 Tailwind 的模型一致，页面代码用工具类覆盖组件样式不再需要 !important。
+   ================================================================== */
+
+@layer components {
+  /* ==================================================================
+     通用组件类
+     ================================================================== */
+
+  .lh-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+  }
+
+  .lh-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 34px;
+    padding: 0 12px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-2);
+    font-size: 13px;
+    cursor: pointer;
+    transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease,
+      border-color var(--dur-fast) ease, transform var(--dur-fast) ease;
+  }
+  .lh-btn:hover { background: var(--surface-2); color: var(--text); border-color: var(--border-strong); }
+  .lh-btn:active { transform: scale(0.97); }
+  .lh-btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+
+  /* 标签胶囊：整体放大一档，缓解侧边栏与卡片里的拥挤感 */
+  .lh-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 24px;
+    padding: 0 10px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text-3);
+    font-size: 12px;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  /* 状态徽章：表达"这条轨道处在什么状态"，是全局语义，配色固定。
+     与轨道主题色（--accent）彻底解耦 —— 轨道身份靠卡片主题色和进度条表达，
+     状态靠这三个颜色表达，两套语汇互不干扰。
+     三态在这里一次性定义完整，新增状态时只改这一处。 */
+  .lh-chip--status[data-status='active'] {
+    color: var(--status-active);
+    background: color-mix(in srgb, var(--status-active) 15%, transparent);
+    border-color: color-mix(in srgb, var(--status-active) 34%, transparent);
+  }
+  .lh-chip--status[data-status='wip'] {
+    color: var(--status-wip);
+    background: color-mix(in srgb, var(--status-wip) 15%, transparent);
+    border-color: color-mix(in srgb, var(--status-wip) 34%, transparent);
+  }
+  /* 规划中刻意不做彩色：它表示"还没有内容"，压成中性色才不会被误读成一种进度。
+     但中性不等于可以糊 —— 这里用 --text-2 而不是 --text-3：
+     后者 12px 时对比度只有 2.8:1，状态标签会糊成一团灰看不清。 */
+  .lh-chip--status[data-status='planned'] {
+    color: var(--text-2);
+    background: var(--surface-2);
+    border-color: var(--border);
+  }
+
+  /* 分组小标题：右栏各区块共用，统一字号、字距与颜色 */
+  .lh-eyebrow {
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+
+  /* ==================================================================
+     正文排版
+     ================================================================== */
+
+  /* ==================================================================
+     正文排版
+     —— 层级只用「字号 + 字重 + 一个强调色」三层表达：
+        h2 是渐隐分隔线 + 强调色竖条，h3 用更细更短的竖条，
+        h4 只降色不加装饰。避免每个标题都抢注意力。
+     ================================================================== */
+
+  .lh-prose {
+    color: var(--text);
+    font-size: var(--prose-fs);
+    line-height: var(--prose-lh);
+    word-wrap: break-word;
+  }
+  .lh-prose > * + * { margin-top: var(--prose-flow); }
+
+  .lh-prose h1,
+  .lh-prose h2,
+  .lh-prose h3,
+  .lh-prose h4 {
+    position: relative;
+    font-weight: 600;
+    line-height: 1.36;
+    letter-spacing: -0.012em;
+    scroll-margin-top: calc(var(--header-h) + 20px);
+  }
+  .lh-prose h1 { font-size: 1.85em; margin-top: 1.6em; }
+
+  /* h2：上方一条向右渐隐的分隔线 + 左侧强调色竖条（只伴随首行，不整块拉满） */
+  .lh-prose h2 {
+    font-size: 1.5em;
+    margin-top: 2.7em;
+    padding-top: 1.15em;
+    padding-left: 0.7em;
+  }
+  .lh-prose h2::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, var(--border-strong), transparent 72%);
+  }
+  .lh-prose h2::after {
+    content: '';
+    position: absolute;
+    top: 1.15em;
+    left: 0;
+    width: 3px;
+    height: 1.02em;
+    border-radius: 2px;
+    background: linear-gradient(
+      180deg,
+      var(--prose-accent),
+      color-mix(in srgb, var(--prose-accent) 32%, transparent)
+    );
+  }
+
+  /* h3：与 h2 同一套视觉语言，只是更细、更矮 */
+  .lh-prose h3 {
+    font-size: 1.17em;
+    margin-top: 2em;
+    padding-left: 0.62em;
+  }
+  .lh-prose h3::after {
+    content: '';
+    position: absolute;
+    top: 0.21em;
+    left: 0;
+    width: 2px;
+    height: 0.95em;
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--prose-accent) 62%, transparent);
+  }
+
+  .lh-prose h4 {
+    font-size: 1.04em;
+    margin-top: 1.7em;
+    letter-spacing: 0;
+    color: var(--text-2);
+  }
+
+  /* 正文首块不需要自己的上间距：紧挨着的上方就是页面头部，
+     页头已经把"这是什么文档"交代清楚了，这里再顶出 2.7em 只会让首屏发空。
+     注意只归零 margin —— 标题自带的分隔线与竖条要保留：
+     与页头重复的那个标题已经在渲染层被丢掉（见 lib/doc-structure.ts），
+     此刻出现在首位的 h2 是真正的章节标题，削掉装饰反而会让层级塌掉。 */
+  .lh-prose > :first-child { margin-top: 0; }
+
+  .lh-prose p { color: var(--text); }
+
+  /* ------------------------------------------------------------------
+     段落之间的分割线
+     相邻的「正文块」（段落 / 列表 / 引用）之间画一条两端渐隐的细线。
+     线只负责"把一段话和下一段话分开"，所以强度和长度都低于标题线：
+       标题线 > hr > 段落线，三级依次退让，读者注意力仍落在文字上。
+     以下位置不再叠线（由选择器天然排除，不需要额外兜底）：
+       · 标题        —— h2 自带上方分隔线，h3/h4 靠强调色竖条起段
+       · 代码块 / 多语言对照 / 提示块 / 图片
+                     —— 自带边框或留白，边界已经清楚，再画线会变吵
+       · 表格        —— 外层 .lh-table-wrap 是 overflow 容器会裁掉伪元素，
+                        且它本身就有边框，故不参与
+       · 嵌套正文    —— 提示块内部的 .lh-prose 带 --nested 修饰，盒中不再画线
+     ------------------------------------------------------------------ */
+  .lh-prose:not(.lh-prose--nested)
+    > :is(p, ul, ol, blockquote)
+    + :is(p, ul, ol, blockquote) {
+    position: relative;
+    /* 有线的间距要比纯留白大一点：线才有地方"待"，不会贴住上下文字 */
+    margin-top: calc(var(--prose-flow) * 1.35);
+  }
+  .lh-prose:not(.lh-prose--nested)
+    > :is(p, ul, ol, blockquote)
+    + :is(p, ul, ol, blockquote)::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    /* 正好落在两段的中间（= 上面 margin-top 的一半） */
+    top: calc(var(--prose-flow) * -0.675);
+    height: 1px;
+    background: var(--prose-flow-rule);
+  }
+
+  /* 重点：加粗之外再压一层"荧光笔"底色。长文扫读时，颜色比字重更容易抓住眼睛 */
+  .lh-prose strong {
+    font-weight: 650;
+    color: var(--text);
+    padding: 0 1px;
+    border-radius: 2px;
+    background-image: linear-gradient(180deg, transparent 58%, var(--prose-em-bg) 58%);
+  }
+  /* 加粗块里若嵌了行内代码，去掉它自己的底色与边框，避免两层底色打架 */
+  .lh-prose strong .lh-inline-code {
+    padding: 0;
+    background: transparent;
+    border-color: transparent;
+    color: inherit;
+  }
+
+  .lh-prose em {
+    font-style: italic;
+    color: color-mix(in srgb, var(--text) 86%, var(--prose-accent));
+  }
+
+  /* ------------------------------------------------------------------
+     划线笔记
+     标记由 Markdown.tsx 在行内节点树上切分后包成 <mark class="lh-hl">。
+     两个维度叠加：样式 × 颜色。
+       样式（形状）：高亮 = 底色；下划线 = 虚线（与实线的超链接明确区分）
+       强度（信息）：+有笔记 → 高亮补一道底部实线，下划线的虚线变实线
+       颜色（分类）：五色由笔记自己携带，注入 --note-mark/-hover/-underline 三个插槽
+     颜色不承载"重要程度"，只做用户自己的分类，所以色板里不给色名标签。
+     ------------------------------------------------------------------ */
+  .lh-hl {
+    background: var(--note-mark);
+    color: inherit;
+    border-radius: 2px;
+    padding: 0 0.04em;
+    cursor: pointer;
+    /* 跨行时让圆角与底色在每一行片段上独立生效，而不是拉出一整块 */
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+    transition: background var(--dur-fast) var(--ease-out);
+  }
+  .lh-hl:hover { background: var(--note-mark-hover); }
+
+  /* 颜色由笔记自己携带，靠这三个插槽变量注入：
+     只改变量、不重复写 background / text-decoration，
+     于是 hover 底色、下划线虚线、定位闪烁全都自动跟着笔记的颜色走。 */
+  .lh-hl--c-yellow {
+    --note-mark: var(--note-yellow-mark);
+    --note-mark-hover: var(--note-yellow-hover);
+    --note-underline: var(--note-yellow-line);
+  }
+  .lh-hl--c-green {
+    --note-mark: var(--note-green-mark);
+    --note-mark-hover: var(--note-green-hover);
+    --note-underline: var(--note-green-line);
+  }
+  .lh-hl--c-blue {
+    --note-mark: var(--note-blue-mark);
+    --note-mark-hover: var(--note-blue-hover);
+    --note-underline: var(--note-blue-line);
+  }
+  .lh-hl--c-pink {
+    --note-mark: var(--note-pink-mark);
+    --note-mark-hover: var(--note-pink-hover);
+    --note-underline: var(--note-pink-line);
+  }
+  .lh-hl--c-purple {
+    --note-mark: var(--note-purple-mark);
+    --note-mark-hover: var(--note-purple-hover);
+    --note-underline: var(--note-purple-line);
+  }
+
+  .lh-hl--underline {
+    background: transparent;
+    padding: 0;
+    text-decoration: underline dashed var(--note-underline);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 3px;
+  }
+  .lh-hl--underline:hover { background: var(--note-mark); }
+
+  .lh-hl--noted { box-shadow: inset 0 -1px 0 var(--note-underline); }
+  .lh-hl--underline.lh-hl--noted { text-decoration-style: solid; }
+
+  /* 色板上的色点：用不透明实色，和"高亮底色 / 下划线色"那两档刻意分开。
+     若复用 line 那一档，浅色主题为了白底可见会把黄色压成深琥珀，
+     色点就会显示成棕色，与用户实际得到的黄色高亮对不上。
+     选中态用外圈光环而不是改大小，避免色点在浮层里跳动。 */
+  .lh-note-swatch {
+    --sw: var(--note-blue-dot);
+    position: relative;
+    width: 16px;
+    height: 16px;
+    flex: none;
+    border-radius: 999px;
+    background: var(--sw);
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.14);
+    transition: box-shadow var(--dur-fast) var(--ease-out);
+  }
+  .lh-note-swatch[data-color='yellow'] { --sw: var(--note-yellow-dot); }
+  .lh-note-swatch[data-color='green'] { --sw: var(--note-green-dot); }
+  .lh-note-swatch[data-color='blue'] { --sw: var(--note-blue-dot); }
+  .lh-note-swatch[data-color='pink'] { --sw: var(--note-pink-dot); }
+  .lh-note-swatch[data-color='purple'] { --sw: var(--note-purple-dot); }
+  .lh-note-swatch:hover { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.14), 0 0 0 2px var(--surface-3); }
+  .lh-note-swatch[aria-pressed='true'] { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.14), 0 0 0 2px var(--surface), 0 0 0 4px var(--sw); }
+
+  /* 从笔记列表「定位」过来时闪几下，帮用户在长文里找到位置 */
+  .lh-hl--flash { animation: lh-hl-flash var(--dur-slow) var(--ease-in-out) 4; }
+  @keyframes lh-hl-flash {
+    0%, 100% { background: var(--note-mark); }
+    50% { background: var(--note-mark-hover); box-shadow: 0 0 0 3px var(--note-mark); }
+  }
+
+  /* 笔记里引用的原文：左侧竖条 + 浅底，和正文引用块同一套语言 */
+  .lh-note-quote {
+    border-left: 3px solid color-mix(in srgb, var(--prose-accent) 52%, transparent);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    background: var(--prose-quote-bg);
+    color: var(--text-2);
+    font-size: 13.5px;
+    line-height: 1.7;
+  }
+
+  .lh-prose a {
+    color: var(--brand);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-decoration-color: color-mix(in srgb, var(--brand) 38%, transparent);
+    text-underline-offset: 3px;
+    border-radius: 3px;
+    transition:
+      text-decoration-color var(--dur-fast) ease,
+      background var(--dur-fast) ease;
+  }
+  .lh-prose a:hover {
+    text-decoration-color: var(--brand);
+    background: var(--brand-soft);
+  }
+
+  .lh-prose ul,
+  .lh-prose ol { padding-left: 1.4em; }
+  .lh-prose ul { list-style: disc; }
+  .lh-prose ol { list-style: decimal; }
+  .lh-prose li { margin-top: 0.42em; }
+  .lh-prose li::marker { color: color-mix(in srgb, var(--prose-accent) 68%, var(--text-3)); }
+  .lh-prose li > ul,
+  .lh-prose li > ol,
+  .lh-prose li > p { margin-top: 0.42em; }
+
+  .lh-prose blockquote {
+    margin: 0;
+    padding: 0.7em 1.05em;
+    border-left: 3px solid color-mix(in srgb, var(--prose-accent) 52%, transparent);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    background: var(--prose-quote-bg);
+    color: var(--text-2);
+  }
+  .lh-prose blockquote > * + * { margin-top: 0.7em; }
+
+  .lh-prose hr {
+    border: none;
+    height: 1px;
+    margin: 2.4em 0;
+    background: linear-gradient(90deg, transparent, var(--border-strong), transparent);
+  }
+
+  .lh-prose img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+  }
+
+  /* 行内代码：与强调色同源，让"代码标识符"在中文正文里一眼可辨 */
+  .lh-inline-code {
+    font-family: var(--font-mono);
+    font-size: 0.855em;
+    padding: 0.12em 0.4em;
+    border-radius: 5px;
+    background: var(--prose-inline-bg);
+    border: 1px solid color-mix(in srgb, var(--prose-accent) 22%, transparent);
+    color: var(--prose-inline-fg);
+    white-space: nowrap;
+  }
+
+  /* 表格：外层可横向滚动，移动端不会撑破布局 */
+  .lh-table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+  }
+  .lh-prose table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14.5px;
+  }
+  .lh-prose thead {
+    background: color-mix(in srgb, var(--prose-accent) 9%, var(--surface-2));
+  }
+  .lh-prose th,
+  .lh-prose td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+    vertical-align: top;
+  }
+  .lh-prose tbody tr {
+    transition: background var(--dur-fast) ease;
+  }
+  /* 斑马纹用极低对比，只为长表格"不串行"，不制造视觉噪音 */
+  .lh-prose tbody tr:nth-child(even) {
+    background: color-mix(in srgb, var(--surface-2) 55%, transparent);
+  }
+  .lh-prose tbody tr:hover {
+    background: color-mix(in srgb, var(--prose-accent) 8%, transparent);
+  }
+  .lh-prose tbody tr:last-child td { border-bottom: none; }
+  .lh-prose th {
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+    border-bottom: 1px solid color-mix(in srgb, var(--prose-accent) 26%, var(--border));
+  }
+
+  /* 任务列表 */
+  .lh-task {
+    list-style: none;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .lh-task-box {
+    flex: none;
+    width: 15px;
+    height: 15px;
+    margin-top: 5px;
+    border-radius: 4px;
+    border: 1.5px solid var(--border-strong);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--brand);
+  }
+  .lh-task-box[data-checked='true'] {
+    background: var(--brand);
+    border-color: var(--brand);
+    color: #fff;
+  }
+
+  /* ==================================================================
+     代码块（Shiki 双主题）
+     ================================================================== */
+
+  .lh-code {
+    position: relative;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--code-bg);
+    overflow: hidden;
+    /* 极淡的投影把代码块从正文里"托"起来；深色下几乎不可见，不会脏 */
+    box-shadow: 0 12px 32px -26px rgba(0, 0, 0, 0.65);
+  }
+  /* 顶边一道强调色渐隐高光，作为代码块的身份标识 */
+  .lh-code::before,
+  .lh-langtabs::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in srgb, var(--prose-accent) 42%, transparent),
+      transparent
+    );
+    pointer-events: none;
+  }
+  .lh-code-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    height: 34px;
+    padding: 0 8px 0 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-2);
+    font-size: 11.5px;
+    color: var(--text-3);
+  }
+  /* 语言名用强调色 + 字距，和正文里的行内代码形成同一识别系统 */
+  .lh-code-bar > span:first-child {
+    color: var(--prose-accent);
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    opacity: 0.92;
+  }
+  .lh-code pre {
+    margin: 0;
+    padding: 14px 16px;
+    overflow-x: auto;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.65;
+    background: transparent !important;
+  }
+  .lh-code pre code { display: block; font-family: inherit; }
+  .lh-code[data-collapsed='true'] pre { max-height: 320px; overflow: hidden; }
+  .lh-code-fade {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 88px;
+    background: linear-gradient(to bottom, transparent, var(--code-bg));
+    pointer-events: none;
+  }
+  /* Shiki 双主题：默认用 dark 组，浅色模式下切到 light 组 */
+  .lh-code .shiki,
+  .lh-code .shiki span {
+    color: var(--shiki-dark);
+    background-color: transparent;
+  }
+  [data-theme='light'] .lh-code .shiki,
+  [data-theme='light'] .lh-code .shiki span {
+    color: var(--shiki-light);
+  }
+
+  /* ==================================================================
+     多语言语法对照（标签切换）
+     与 .lh-code 共用 Shiki 双主题变量，视觉上属于同一族
+     ================================================================== */
+
+  .lh-langtabs {
+    position: relative;
+    margin: 18px 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--code-bg);
+    overflow: hidden;
+    box-shadow: 0 12px 32px -26px rgba(0, 0, 0, 0.65);
+  }
+  .lh-langtabs-title {
+    margin: 0;
+    padding: 11px 14px 2px;
+    font-size: 12.5px;
+    color: var(--text-3);
+  }
+  .lh-langtabs-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 5px 8px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-2);
+  }
+  .lh-langtabs-tablist {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .lh-langtabs-tablist::-webkit-scrollbar { display: none; }
+  .lh-langtabs-tab {
+    display: inline-flex;
+    align-items: center;
+    height: 26px;
+    padding: 0 10px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-3);
+    font-size: 12px;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
+  }
+  .lh-langtabs-tab:hover { color: var(--text); background: var(--surface-3); }
+  .lh-langtabs-tab[data-active='true'] {
+    color: var(--text);
+    background: var(--surface-3);
+    border-color: color-mix(in srgb, var(--prose-accent) 48%, transparent);
+    font-weight: 500;
+  }
+  .lh-langtabs-panel pre {
+    margin: 0;
+    padding: 14px 16px;
+    overflow-x: auto;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.65;
+    background: transparent !important;
+  }
+  .lh-langtabs-panel pre code { display: block; font-family: inherit; }
+  .lh-langtabs-panel .shiki,
+  .lh-langtabs-panel .shiki span {
+    color: var(--shiki-dark);
+    background-color: transparent;
+  }
+  [data-theme='light'] .lh-langtabs-panel .shiki,
+  [data-theme='light'] .lh-langtabs-panel .shiki span {
+    color: var(--shiki-light);
+  }
+}
+
+/* ==================================================================
+   无障碍：尊重系统「减少动态效果」
+   降级策略是「位移 → 淡入」，而不是全部删除
+   ================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
