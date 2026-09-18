@@ -82,11 +82,6 @@ jobs:
             node -e "const r=require('./public/content/report.json');r.brokenLinks.forEach(l=>console.log('::warning::断链 '+l.raw+' <- '+l.from))"
           fi
 
-      # 仓库里不允许出现本机绝对路径
+      # 仓库里不允许出现本机绝对路径（示例可用 lh-allow-abs-path 注释放行）
       - name: 检查绝对路径泄露
-        run: |
-          if grep -rn "D:\\\\code" --include="*.md" --include="*.ts" --include="*.tsx" --include="*.json" .. ; then
-            echo "::error::发现本机绝对路径，请改为相对仓库根的路径"
-            exit 1
-          fi
-        continue-on-error: false
+        run: pnpm paths

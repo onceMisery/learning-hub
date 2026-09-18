@@ -14,7 +14,8 @@
   },
   "scripts": {
     "content": "tsx scripts/build-content.ts",
-    "check": "tsx scripts/check-content.ts",
+    "check": "tsx scripts/check-content.ts && node scripts/check-paths.mjs ..",
+    "paths": "node scripts/check-paths.mjs ..",
     "dev": "tsx scripts/build-content.ts && vite",
     "build": "tsx scripts/check-content.ts && tsx scripts/build-content.ts && tsc --noEmit && vite build",
     "preview": "vite preview --port 4173",

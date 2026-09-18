@@ -37,7 +37,8 @@ Node 版本要求 **>= 22.12**。
 - 围栏语言请写标准 id：`rust` / `java` / `typescript` / `bash` / `toml` / `json`。
   管道会自动归一化别名（`js` → `javascript`、`sh` → `bash`），但写标准值更好。
 - 文件统一 UTF-8 无 BOM、LF 换行（仓库根目录有 `.editorconfig`）。
-- 不要在文档里写本机绝对路径（如 `D:\code\...`），一律用相对仓库根的路径。
+- 不要在文档里写本机绝对路径（如 `D:\code\...`），一律用相对仓库根的路径。<!-- lh-allow-abs-path -->
+  `pnpm paths` 会拦截；文档里确实要举反例时，在该行或它的上一行加 `lh-allow-abs-path` 注释放行。
 - 需要对照 Java 时用表格，这是本站内容的核心形态。
 
 ### 可用的自定义组件
