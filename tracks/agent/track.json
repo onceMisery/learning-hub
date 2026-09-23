@@ -1,0 +1,135 @@
+{
+  "id": "agent",
+  "title": "Agent 开发 · 工程实践",
+  "subtitle": "把意图识别、上下文、工具调度这些「调大模型」的事，做成可评估、可灰度的工程模块",
+  "order": 50,
+  "status": "active",
+  "accent": "cyan",
+  "tags": [
+    "Agent",
+    "意图识别",
+    "上下文工程",
+    "工具调用"
+  ],
+  "toolchain": "",
+  "verifiedAt": "2026-09-22",
+  "outline": [
+    "意图识别",
+    "执行核心：Plan 与 ReAct/TAO",
+    "上下文管理",
+    "检索与 RAG",
+    "评估与反馈",
+    "协作与治理",
+    "项目深挖与工程表达"
+  ],
+  "sections": [
+    {
+      "id": "tutorial",
+      "title": "教程",
+      "path": "tutorial",
+      "order": 10,
+      "pages": [
+        {
+          "file": "README.md",
+          "slug": "overview",
+          "title": "Agent 系统学习目录",
+          "tags": [
+            "总览",
+            "学习路线",
+            "设计模式",
+            "生产排雷"
+          ]
+        },
+        {
+          "file": "01-意图识别.md",
+          "slug": "01-intent-recognition",
+          "title": "意图识别：Agent 的第一道分诊台",
+          "tags": [
+            "意图识别",
+            "Slot Filling",
+            "路由"
+          ]
+        },
+        {
+          "file": "02-执行核心.md",
+          "slug": "02-execution-core",
+          "title": "执行核心：把「边想边做」装进可恢复的循环",
+          "tags": [
+            "Plan",
+            "G4C",
+            "Replan",
+            "TAO",
+            "工具调度",
+            "护栏"
+          ]
+        },
+        {
+          "file": "03-上下文管理.md",
+          "slug": "03-context-management",
+          "title": "上下文管理：把「模型看见什么」做成一个函数",
+          "tags": [
+            "Context Window",
+            "分诊",
+            "压缩",
+            "召回",
+            "用户画像"
+          ]
+        },
+        {
+          "file": "04-检索与RAG.md",
+          "slug": "04-retrieval-rag",
+          "title": "检索与 RAG：概率系统里的最小充分检索",
+          "tags": [
+            "RAG",
+            "Chunk",
+            "混合检索",
+            "RRF",
+            "分路召回",
+            "评估"
+          ]
+        },
+        {
+          "file": "05-评估与反馈.md",
+          "slug": "05-evaluation-feedback",
+          "title": "评估与反馈：把「好不好」变成可验证的工程问题",
+          "tags": [
+            "测试集",
+            "LLM-as-a-Judge",
+            "AB实验",
+            "监控",
+            "成本",
+            "自进化"
+          ]
+        },
+        {
+          "file": "06-协作与治理.md",
+          "slug": "06-collaboration-governance",
+          "title": "协作与治理：把边界写清楚，才敢把事交出去",
+          "tags": [
+            "多Agent",
+            "信息契约",
+            "交接链",
+            "权限",
+            "审批门",
+            "零信任"
+          ]
+        },
+        {
+          "file": "07-项目深挖与工程表达.md",
+          "slug": "07-project-deep-dive",
+          "title": "项目深挖与工程表达：把系统讲出深度，把源码读出判断",
+          "tags": [
+            "双轴框架",
+            "逆向五步法",
+            "项目叙事",
+            "架构分层"
+          ]
+        }
+      ]
+    }
+  ],
+  "codeRoots": [],
+  "assets": [
+    "assets"
+  ]
+}
