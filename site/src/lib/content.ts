@@ -148,3 +148,17 @@ export function editUrlFor(repoUrl: string, branch: string, sourceFile: string):
 export function pageJsonUrl(pageId: string): string {
   return `${ROOT}pages/${pageId.replace(/\//g, '__')}.json`;
 }
+
+/**
+ * 给正文里的站内资源地址补上部署 base。
+ *
+ * 图片地址是构建期烘焙进内容 JSON 的根绝对路径（`/content/assets/…`），构建时并不知道
+ * 站点会被挂在哪个子路径下：GitHub Pages 用 `/learning-hub/`，那样一来 `/content/…`
+ * 就落到域名根上 404（Vercel 挂在 `/` 所以看不出问题）。在渲染时按 BASE_URL 补齐，
+ * 同一份内容产物就能同时服务两种部署，也不依赖「记得给内容构建步骤传环境变量」。
+ */
+export function assetUrl(src: string): string {
+  // 绝对 URL 与协议相对地址（`//host/x`）都交给浏览器自己解析
+  if (!src.startsWith('/') || src.startsWith('//')) return src;
+  return `${BASE.replace(/\/+$/, '')}${src}`;
+}

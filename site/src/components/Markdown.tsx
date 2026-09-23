@@ -1,5 +1,6 @@
 import { Fragment, type ReactNode } from 'react';
 import type { Block, Inline, ListItem as ListItemData } from '@/types/content';
+import { assetUrl } from '@/lib/content';
 import { cn } from '@/lib/format';
 import {
   childPath,
@@ -140,7 +141,7 @@ function renderNodes(nodes: readonly Inline[], cursor: { v: number }, marks: rea
         // 图片不产生文本，占位为 0 —— 与 inlineText() 一致
         out.push(
           // eslint-disable-next-line jsx-a11y/alt-text -- alt 由 Markdown 提供
-          <img key={key} src={node.src} alt={node.alt} loading="lazy" />,
+          <img key={key} src={assetUrl(node.src)} alt={node.alt} loading="lazy" />,
         );
         break;
       case 'break':
@@ -335,7 +336,7 @@ function BlockView({ block, path, repoUrl, trackDir, segmentsOf }: BlockViewProp
     case 'image':
       return (
         <figure className="my-6">
-          <img src={block.src} alt={block.alt} loading="lazy" />
+          <img src={assetUrl(block.src)} alt={block.alt} loading="lazy" />
           {block.alt ? (
             <figcaption className="mt-2 text-center text-[12.5px] text-[var(--text-3)]">{block.alt}</figcaption>
           ) : null}
