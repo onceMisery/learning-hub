@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { Icon } from './Icon';
-import { cn } from '@/lib/format';
+import { cn, pageOrderBadge } from '@/lib/format';
 import type { ContentIndex, TrackMeta } from '@/types/content';
 
 interface SidebarProps {
@@ -133,6 +133,7 @@ function TrackGroup({ track, open, onToggle, activePageId, doneIds, onNavigate }
                   {section.pages.map((page) => {
                     const active = page.id === activePageId;
                     const done = doneIds?.has(page.id) ?? false;
+                    const order = pageOrderBadge(page);
                     return (
                       <NavLink
                         key={page.id}
@@ -153,7 +154,12 @@ function TrackGroup({ track, open, onToggle, activePageId, doneIds, onNavigate }
                           }}
                           aria-hidden="true"
                         />
-                        <span className="min-w-0 flex-1">{page.title}</span>
+                        <span className="min-w-0 flex-1">
+                          {order ? (
+                            <span className="tabular-nums text-[var(--text-3)]">{order} </span>
+                          ) : null}
+                          {page.title}
+                        </span>
                         {done ? (
                           <span className="mt-[3px] text-[var(--success)]" aria-label="已完成">
                             <Icon name="check" size={11} />

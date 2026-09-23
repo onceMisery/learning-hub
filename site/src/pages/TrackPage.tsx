@@ -4,7 +4,7 @@ import { Icon } from '@/components/Icon';
 import { useShell } from '@/components/Layout';
 import { ErrorState } from '@/components/ui/States';
 import { useProgress } from '@/lib/progress';
-import { formatDate } from '@/lib/format';
+import { formatDate, pageOrderBadge } from '@/lib/format';
 
 export function TrackPage() {
   const { trackId } = useParams<{ trackId: string }>();
@@ -127,6 +127,7 @@ export function TrackPage() {
                 <ul className="grid gap-3 sm:grid-cols-2">
                   {section.pages.map((page) => {
                     const finished = statusOf(page.id) === 'done';
+                    const order = pageOrderBadge(page);
                     return (
                       <li key={page.id} className="h-full">
                         <Link
@@ -135,6 +136,9 @@ export function TrackPage() {
                         >
                           <span className="flex items-start justify-between gap-3">
                             <span className="text-[14.5px] font-medium leading-snug text-[var(--text)]">
+                              {order ? (
+                                <span className="tabular-nums text-[var(--text-3)]">{order} </span>
+                              ) : null}
                               {page.title}
                             </span>
                             {finished ? (
