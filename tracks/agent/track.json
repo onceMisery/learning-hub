@@ -30,17 +30,6 @@
       "order": 10,
       "pages": [
         {
-          "file": "README.md",
-          "slug": "overview",
-          "title": "Agent 系统学习目录",
-          "tags": [
-            "总览",
-            "学习路线",
-            "设计模式",
-            "生产排雷"
-          ]
-        },
-        {
           "file": "01-意图识别.md",
           "slug": "01-intent-recognition",
           "title": "意图识别：Agent 的第一道分诊台",
