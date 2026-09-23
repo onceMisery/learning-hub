@@ -17,7 +17,14 @@ export function HomePage() {
     setRight(null);
   }, [setRight]);
 
-  const tracks = useMemo(() => index?.tracks ?? [], [index]);
+  // 只有首页按最新发布优先：索引里的 order 仍是侧边栏与进度页沿用的课程顺序
+  const tracks = useMemo(
+    () =>
+      [...(index?.tracks ?? [])].sort((a, b) =>
+        a.verifiedAt < b.verifiedAt ? 1 : a.verifiedAt > b.verifiedAt ? -1 : a.order - b.order,
+      ),
+    [index],
+  );
 
   const doneByTrack = useMemo(() => {
     const map = new Map<string, number>();
