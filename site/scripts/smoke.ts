@@ -74,7 +74,7 @@ g.IntersectionObserver = FakeIntersectionObserver;
 (win as unknown as Record<string, unknown>).IntersectionObserver = FakeIntersectionObserver;
 
 /** 把 /content/** 的请求映射到本地生成物 */
-g.fetch = async (input: unknown): Promise<Response> => {
+g.fetch = async (input: unknown, init?: { signal?: AbortSignal }): Promise<Response> => {
   const url = String(input);
   const marker = '/content/';
   const index = url.indexOf(marker);
@@ -83,17 +83,23 @@ g.fetch = async (input: unknown): Promise<Response> => {
   }
   const relative = url.slice(index + marker.length).split('?')[0] ?? '';
   const filePath = path.join(OUTPUT_DIR, decodeURIComponent(relative));
+  let text: string;
   try {
-    const text = await fs.readFile(filePath, 'utf8');
-    return {
-      ok: true,
-      status: 200,
-      json: async () => JSON.parse(text),
-      text: async () => text,
-    } as unknown as Response;
+    text = await fs.readFile(filePath, 'utf8');
   } catch {
     return { ok: false, status: 404, json: async () => ({}) } as unknown as Response;
   }
+  // 真实 fetch 被 abort 时以 AbortError 落败。这里必须照做，否则「某个调用方取消
+  // 却拖垮整条共享请求」这类缺陷在冒烟里永远暴露不出来。
+  if (init?.signal?.aborted) {
+    throw new dom.window.DOMException('signal is aborted without reason', 'AbortError');
+  }
+  return {
+    ok: true,
+    status: 200,
+    json: async () => JSON.parse(text),
+    text: async () => text,
+  } as unknown as Response;
 };
 
 const consoleErrors: string[] = [];
@@ -110,7 +116,7 @@ async function main(): Promise<void> {
     throw new Error('未找到生成内容，请先执行 `pnpm content`');
   }
 
-  const { act, createElement } = await import('react');
+  const { act, createElement, StrictMode } = await import('react');
   const { createRoot } = await import('react-dom/client');
   const { MemoryRouter } = await import('react-router-dom');
   const { App } = await import('../src/App');
@@ -135,7 +141,15 @@ async function main(): Promise<void> {
     mount.appendChild(container);
     const root = createRoot(container);
     await act(async () => {
-      root.render(createElement(MemoryRouter, { initialEntries: [route] }, createElement(App)));
+      // 用 StrictMode 挂载：开发模式下 React 会把 effect 跑两遍并 abort 掉第一遍，
+      // 内容加载正是靠 effect 发起的。不用 StrictMode 就会漏掉只有 dev 才暴露的问题。
+      root.render(
+        createElement(
+          StrictMode,
+          null,
+          createElement(MemoryRouter, { initialEntries: [route] }, createElement(App)),
+        ),
+      );
     });
     await flush();
     const html = container.innerHTML;

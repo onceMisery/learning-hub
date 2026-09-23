@@ -62,12 +62,11 @@ async function readJson<T>(response: Response, path: string): Promise<T> {
   }
 }
 
-async function fetchJson<T>(path: string, signal?: AbortSignal, attempt = 0): Promise<T> {
+async function fetchJson<T>(path: string, attempt = 0): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(`${ROOT}${path}`, { signal });
-  } catch (error) {
-    if ((error as Error).name === 'AbortError') throw error;
+    response = await fetch(`${ROOT}${path}`);
+  } catch {
     throw new ContentError('无法连接内容服务，请确认已执行 npm run content');
   }
   if (!response.ok) {
@@ -78,12 +77,31 @@ async function fetchJson<T>(path: string, signal?: AbortSignal, attempt = 0): Pr
   } catch (error) {
     // 重新生成内容时文件会被整体替换，单次请求有可能正好落在窗口里。
     // 这不是真实故障，退避重试一次就能好——比让用户自己去刷新体验好得多。
-    if (attempt === 0 && !signal?.aborted) {
+    if (attempt === 0) {
       await sleep(RETRY_DELAY_MS);
-      return fetchJson<T>(path, signal, attempt + 1);
+      return fetchJson<T>(path, attempt + 1);
     }
     throw error;
   }
+}
+
+/**
+ * 让调用方停止等待，但不掐断共享的请求本身。
+ *
+ * 把 signal 一路传给 fetch 会让先卸载的调用方拖垮后加入的人：请求是共享的，
+ * 一旦被 abort，所有等待者都会收到 AbortError，而调用方通常选择忽略这个错误——
+ * 于是界面永久停在 loading。开发模式下 StrictMode 必定双跑一次 effect，所以必踩。
+ */
+function waitFor<T>(task: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return task;
+  return new Promise<T>((resolve, reject) => {
+    task.then(resolve, reject);
+    signal.addEventListener(
+      'abort',
+      () => reject(Object.assign(new Error('内容请求已取消'), { name: 'AbortError' })),
+      { once: true },
+    );
+  });
 }
 
 /** 相同 key 的并发请求复用同一次网络调用 */
@@ -97,7 +115,7 @@ function dedupe<T>(key: string, task: () => Promise<T>): Promise<T> {
 
 export async function loadIndex(signal?: AbortSignal): Promise<ContentIndex> {
   if (indexCache.value) return indexCache.value;
-  const value = await dedupe('index', () => fetchJson<ContentIndex>('index.json', signal));
+  const value = await waitFor(dedupe('index', () => fetchJson<ContentIndex>('index.json')), signal);
   indexCache.value = value;
   return value;
 }
@@ -106,14 +124,17 @@ export async function loadPage(pageId: string, signal?: AbortSignal): Promise<Pa
   const cached = pageCache.get(pageId);
   if (cached) return cached;
   const file = `${pageId.replace(/\//g, '__')}.json`;
-  const doc = await dedupe(`page:${pageId}`, () => fetchJson<PageDocument>(`pages/${file}`, signal));
+  const doc = await waitFor(
+    dedupe(`page:${pageId}`, () => fetchJson<PageDocument>(`pages/${file}`)),
+    signal,
+  );
   pageCache.set(pageId, doc);
   return doc;
 }
 
 export async function loadSearchDocs(signal?: AbortSignal): Promise<SearchDoc[]> {
   if (searchCache) return searchCache;
-  const docs = await dedupe('search', () => fetchJson<SearchDoc[]>('search.json', signal));
+  const docs = await waitFor(dedupe('search', () => fetchJson<SearchDoc[]>('search.json')), signal);
   searchCache = docs;
   return docs;
 }
