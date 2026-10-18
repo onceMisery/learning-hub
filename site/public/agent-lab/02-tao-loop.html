@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TAO 循环 · Agent 运行原理实验室 第 2 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:920px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:680px}
+.method-chain{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:18px}
+.method-chain .mnode{background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 14px;font-size:13px;font-weight:500}
+.method-chain .marr{color:#C46A0A;font-weight:600}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:500;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:12px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:500;fill:#1F1E1A}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:80px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:11px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:9px 10px;text-align:center}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：执行核心</a>
+  <span class="idx">第 2 / 7 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · 动静结合认知法</div>
+<h1>TAO 循环：以大模型为变迁引擎的状态机</h1>
+<p>ReAct 循环转了 847 圈、日志全绿、账单爆了——问题不在 Prompt 怎么写漂亮，在这个循环的<b>状态怎么维护得住</b>。TAO 的本质是一个状态机，只是把代码写的迁移规则换成了模型现场决定。这页课按认知链展开，动画支持<b>自动运转</b>和<b>分步点击</b>两种模式。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span><span class="marr">→</span>
+<span class="mnode">② 静态分解</span><span class="marr">→</span>
+<span class="mnode">③ 动态分析</span><span class="marr">→</span>
+<span class="mnode">④ 动静融合</span><span class="marr">→</span>
+<span class="mnode">⑤ 环境场景</span><span class="marr">→</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 560" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>TAO 循环状态机运转动画</title>
+<defs>
+<marker id="flw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/>
+</marker>
+</defs>
+<text class="th" x="500" y="24" text-anchor="middle">TAO 循环 · 运转示意</text>
+<text class="ts" x="500" y="44" text-anchor="middle">读状态 → Think → Action → Observation → 更新状态，模型决定每一步迁移，治理层管预算与出口</text>
+<text class="ts" x="985" y="24" text-anchor="end">琥珀色 = 当前活跃工位 / 采纳路径</text>
+<g id="scene"></g>
+</svg>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 任务 / 7.7 秒</span>
+</div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav">
+<button class="btn" onclick="goStep(stepIdx-1)">‹ 上一步</button>
+<button class="btn warn" onclick="goStep(stepIdx+1)">下一步 ›</button>
+</span>
+</div>
+</div>
+</div>
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：先把它当黑盒</h2></div>
+<p class="sec-sub">第一步不拆机器，只看它对外表现出什么行为。</p>
+<div class="quote">「对事物的观察包括了静态结构 + 动态生命周期 + 环境场景三个方面的内容。」<i>—— 人月聊IT · 思维系列</i></div>
+<p>从外部看，一个执行中的 Agent 做的事只有一件：<b>一句目标进来，一个结果出去；中间是一圈一圈的「想一步、做一步、看一步」</b>。每一圈都可能调用工具、改写状态。至于圈内怎么想、什么时候该停，暂时不用管——先把输入和输出看清楚：</p>
+<div class="flow">
+<span class="node">目标 + 上下文（输入）</span><span class="arr">→</span>
+<span class="node">TAO 循环（黑盒）</span><span class="arr">→</span>
+<span class="node">任务结果（主产物）</span>
+<span class="node">追问 / 中断 / 账单（副产物）</span>
+</div>
+<p>黑盒观察的结论：这是一台<b>把概率性思考编译成可恢复流程的装置</b>——「智能」以 token 计价，工程以状态、事件、闸门计价。带着这个结论，现在打开黑盒。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：它由什么组成</h2></div>
+<p class="sec-sub">打开黑盒，沿空间维度拆解。点部件卡片，动画中对应部分会亮成琥珀色。</p>
+<div class="quote">「它由什么构成？核心方法是分解、分类、结构化——分解需符合 MECE 法则，同层必须粒度一致。」<i>—— 人月聊IT · 思维系列</i></div>
+<p>一个最小可用的 TAO Runtime 可按功能分成<b>五组</b>：</p>
+<div class="partgroup">
+<div class="gname">循环本体组 —— 负责「一圈怎么走」</div>
+<div class="parts">
+<button class="part" data-part="think"><b>Think（想）</b><span>每轮四类判断：目标、状态、路径、停止；输出必须是六个出口之一。</span></button>
+<button class="part" data-part="action"><b>Action（做）</b><span>业务完整一步的二次封装，内部可聚合多接口、多路降级，甚至整个子 Agent。</span></button>
+<button class="part" data-part="obs"><b>Observation（看）</b><span>存储 + 解读返回值。解读远比存储重要：200 不代表成功。</span></button>
+<button class="part" data-part="think"><b>状态更新</b><span>把这一圈的结论写回状态库——轮次、预算、事实、缺口全部落账。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">状态组 —— 负责「世界被结构化」</div>
+<div class="parts">
+<button class="part" data-part="state"><b>状态库五态</b><span>Goal / Action / Observation / Fact / Control。ControlState（预算余量）是唯一不能省的状态。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">出口组 —— 负责「循环怎么停」</div>
+<div class="parts">
+<button class="part" data-part="exits"><b>六个出口</b><span>Continue / Finish / Clarify / Retry / Replan / Error。没有 Error 兜底，模型不知道如何收尾会一直想。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">治理组 —— 负责「别烧穿、别闯祸」</div>
+<div class="parts">
+<button class="part" data-part="budget"><b>预算四件套</b><span>最大轮数、最大时长、最大 token、最大金额。每轮第一件事就是查它，越权必断。</span></button>
+<button class="part" data-part="action"><b>提议-准入分离</b><span>模型只是提议者：注册表校验 → 参数匹配 → 权限注入 → 高风险转人审。</span></button>
+<button class="part" data-part="budget"><b>终止权外置</b><span>模型说「做完了」不算，系统验证才算——校验要吃硬证据，不吃自然语言结论。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">留痕组 —— 负责「出事能重建」</div>
+<div class="parts">
+<button class="part" data-part="tape"><b>事件流</b><span>StepStarted / StepCompleted / 预算变更逐条追加。恢复 = 读最近快照 + 重放增量，不是回读聊天记录。</span></button>
+</div>
+</div>
+<p class="hint">静态分解只回答了「有什么」。这些部件怎样在时间里配合出一圈循环、又怎样停下来？必须切换到时间维度——下一节。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：它如何运转</h2></div>
+<p class="sec-sub">盯住那个琥珀色令牌。用动画下方的 9 个步骤点逐帧走完一次任务。</p>
+<div class="quote">「它如何演变与运作？关注时间轴上的发展规律、行为模式和内部流程。核心方法是流程分析、行为追溯。」<i>—— 人月聊IT · 思维系列</i></div>
+<p><b>操作：</b>点击动画下方步骤条上的圆点（或「下一步」按钮），画面会定格在对应时刻。建议完整走两遍：第一遍只看令牌绕圈，第二遍同时看右侧六个出口哪个在亮、预算条怎么掉。</p>
+<table class="grid">
+<tr><th>阶段</th><th>时刻</th><th>活跃工位</th><th>预算余量</th><th>这一步在干什么</th></tr>
+<tr><td>① 读取状态</td><td>0°–70°</td><td class="act">状态库</td><td>100%</td><td>循环第一步不是想，是读：五态就位，ControlState 记账</td></tr>
+<tr><td>② Think #1</td><td>110°–190°</td><td class="act">Think</td><td>100%</td><td>目标未完成、有可推进动作 → Continue 出口</td></tr>
+<tr><td>③ Action #1</td><td>250°–300°</td><td class="act">Action</td><td>100%</td><td>提议过准入四道 → 执行 → 绿灯（成功）</td></tr>
+<tr><td>④ Observation #1</td><td>350°–400°</td><td class="act">Observation</td><td>100%</td><td>解读返回值：真成功了吗、新事实、违反约束、世界被改了什么</td></tr>
+<tr><td>⑤ 状态更新 #1</td><td>440°–470°</td><td class="act">状态库</td><td class="hot">75%</td><td>轮次 +1、预算 -25%，新事实写入 FactState</td></tr>
+<tr><td>⑥ Think #2</td><td>510°–580°</td><td class="act">Think</td><td>75%</td><td>缺口识别：还差一个槽位；继续推进 → Continue</td></tr>
+<tr><td>⑦ Action #2</td><td>620°–660°</td><td class="hot">Action</td><td>75%</td><td>第一次超时（黄灯≠没执行）→ 退避重试 → 第二次成功</td></tr>
+<tr><td>⑧ Observation #2</td><td>660°–690°</td><td class="act">Observation</td><td>75%</td><td>进展按槽位填充计：填上一个槽位算一步，不靠感觉</td></tr>
+<tr><td>⑨ Think #3 → Finish</td><td>700°–720°</td><td class="hot">Think → 出口</td><td>75%</td><td>停止判断：成功标准已满足 → Finish；系统验证过才收尾</td></tr>
+</table>
+<p>两个容易错过、但值得在分步模式里细看的点：① <b>第二轮的超时是「黄灯」，不是「没执行」</b>——网络超时不代表远端没执行，UNKNOWN 状态要先拿幂等键查外部真实结果，而不是立刻重试；② 预算条每一步都在掉，<b>ControlState 是唯一不能省的状态</b>——没有它，循环停不停全看模型自觉。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件如何协同出「可恢复的执行」</h2></div>
+<p class="sec-sub">把第 2 节的「结构」和第 3 节的「流程」叠在一起——这才是理解的完成态。</p>
+<div class="quote">「动静融合的关键是建立映射：将组成部件与操作步骤一一对应，理解各部件如何协同产生外在行为。系统 = 元素 + 连接 + 目标。」<i>—— 人月聊IT · 思维系列</i></div>
+<p>映射表：<b>每个部件在每个阶段里承担什么角色</b>。竖着看是一个阶段的全体协同，横着看是一个部件的完整职责。</p>
+<table class="grid">
+<tr><th>部件 ＼ 阶段</th><th>① 读状态</th><th>② Think</th><th>③ Action</th><th>④ Observation</th><th>⑤ 更新</th><th>⑨ 收尾</th></tr>
+<tr><td>状态库</td><td class="hot">被读取</td><td class="act">被引用（目标锚点）</td><td>参数来源</td><td class="act">写入事实</td><td class="hot">落账</td><td>被验证</td></tr>
+<tr><td>Think</td><td>—</td><td class="hot">四类判断、选出口</td><td>—</td><td>—</td><td>—</td><td class="hot">Finish 判断</td></tr>
+<tr><td>Action</td><td>—</td><td>被选中</td><td class="hot">受控执行</td><td>—</td><td>结果入账</td><td>—</td></tr>
+<tr><td>Observation</td><td>—</td><td>—</td><td class="act">产生返回值</td><td class="hot">解读（≠存储）</td><td>新事实入 FactState</td><td>—</td></tr>
+<tr><td>预算四件套</td><td>读取余量</td><td>检查</td><td class="act">每轮扣减</td><td>—</td><td class="hot">记账</td><td>余量结算</td></tr>
+<tr><td>六个出口</td><td>—</td><td class="hot">Continue 亮</td><td>—</td><td>—</td><td>—</td><td class="hot">Finish 亮</td></tr>
+<tr><td>事件流</td><td>读快照</td><td>—</td><td class="act">StepStarted</td><td>StepCompleted</td><td class="hot">追加写入</td><td>终态事件先落盘</td></tr>
+</table>
+<p>点题一句：<b>「崩了能接着跑」这个外在行为，不是任何单个部件的属性，而是「状态外置 + 事件追加 + 双账本」整体协同涌现的</b>。朴素 ReAct 把执行权整个交给概率模型，日志全绿也能把钱出两次；把循环翻译成状态、事件、闸门与账本之后，同样一个模型才能安全地跑长任务。对称设计的代价也要说清：事件流只进不出，日志会膨胀——所以压缩必须带 replacement_history 式的完整快照，而不是打一个截断标记。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：它依赖什么才能工作</h2></div>
+<p class="sec-sub">主体之外，还有一圈支撑系统。</p>
+<div class="quote">「对事物的认识 = 空间属性 + 时间属性 + 环境属性（外在关系和依赖）。」<i>—— 人月聊IT · 思维系列</i></div>
+<div class="envcards">
+<div class="env"><b>模型服务</b><span>变迁引擎本身。它的概率性、延迟、限流策略，全部透过预算与熔断层被计价管理。</span></div>
+<div class="env"><b>工具与外部系统</b><span>Action 的真正落点。每个工具自带副作用等级、幂等要求、超时上限的强类型声明。</span></div>
+<div class="env"><b>事件溯源存储</b><span>追加写的日志与定期快照。恢复 = 加载最近检查点 + 重放增量事件，跟数据库 WAL + Checkpoint 一个道理。</span></div>
+<div class="env"><b>幂等账本</b><span>记录「外部动作发生过几次」。和流程账本分开记——最凶险的窗口是外部已入账、本地还没来得及写 DONE。</span></div>
+<div class="env"><b>沙箱与审批</b><span>高风险动作的笼子。沙箱拒绝要不要自动升权重试，是一次明确的策略取舍而非默认补救。</span></div>
+<div class="env"><b>监控与 Trace</b><span>Generation / Score 两类传统监控没有的对象。没有它，「为什么这么决定」这个问题无人回答。</span></div>
+</div>
+<p>动画里的循环能转起来，前提是这六个系统在「环境」里就位。拆掉任何一个，外在行为立即消失——尤其是<b>事件存储和幂等账本</b>：拆掉它们，「崩溃后接着跑」立刻退化成「崩溃后钱出两次」。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测：学习-实践-复盘的闭环</h2></div>
+<p class="sec-sub">用自己的话能讲清楚，才算真的懂。先答题，再对照解析。</p>
+<div id="quiz"></div>
+</section>
+
+<div class="summary">
+<h2>一页带走</h2>
+<p class="chant">模型是引擎，循环才是整车；想、做、看、账，一圈一账。</p>
+<p>· 方法：表象（概率思考 → 可恢复流程）→ 结构（五组部件）→ 流程（九阶段）→ 融合（可恢复是涌现属性）。</p>
+<p>· 结构：T/A/O + 状态更新、状态库五态、六个出口、预算四件套、事件流。</p>
+<p>· 行为：每轮「读状态 → 想 → 做 → 看 → 记账」；超时走黄灯重试；成功标准满足才 Finish。</p>
+<p>· 协同：终止权外置 + 事件追加 + 双账本，才让同一个概率模型敢跑长任务。</p>
+</div>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+
+<script>
+(function(){
+// ============ 主题专属数据 ============
+var PERIOD=4600,PHASE_MAX=720;
+var STEPS=[
+{d:0,t:'读取状态',x:'循环第一步不是想，是读：Goal / Action / Observation / Fact / Control 五态就位；ControlState（预算余量）是唯一不能省的状态'},
+{d:110,t:'Think #1',x:'四类判断：目标（未完成）/ 状态（事实够吗）/ 路径（候选里挑哪条）/ 停止（能收吗）。结论：目标未完成且有可推进动作 → Continue'},
+{d:250,t:'Action #1',x:'模型只是提议者：注册表强校验 → 参数匹配 → 权限上下文注入 →（本例只读，免审批）→ 受控执行 → 绿灯'},
+{d:350,t:'Observation #1',x:'200 不代表成功。解读八问：真成功了吗 / 得到哪些新事实 / 与预期对吗 / 违反约束吗 / 推翻了哪个假设 / 世界被改了什么'},
+{d:440,t:'状态更新 #1',x:'轮次 +1、预算 100% → 75%；新事实写入 FactState；代码存、模型做语义解读——纯让模型存会漏会改写'},
+{d:510,t:'Think #2',x:'缺口识别：还差一个槽位。进展按槽位填充计——填上一个槽位算一步，别靠感觉'},
+{d:620,t:'Action #2',x:'第一次超时亮黄灯：网络超时不代表远端没执行！UNKNOWN 不得立即重试，先拿幂等键查外部真实结果；确认失败才退避重试，第二次成功'},
+{d:660,t:'Observation #2',x:'补充事实入库；观察的是「我还差什么、后续怎么获得」，不是只总结「我得到了什么」'},
+{d:700,t:'Think #3 → Finish',x:'停止判断：成功标准已满足 → Finish 出口。但模型说「做完了」不算——终止权外置，系统拿硬证据验证过才收尾'}
+];
+var PARTS={
+think:['stThink','turnT'],
+action:['stAction','gateBox'],
+obs:['stObs','obsBox'],
+state:['stateBox','sc0','sc1','sc2','sc3','sc4'],
+exits:['exitBox','ex0','ex1','ex2','ex3','ex4','ex5'],
+budget:['budBox','budBar','budTxt','turnTxt'],
+tape:['tapeBox','ev0','ev1','ev2','ev3','ev4','ev5','ev6','ev7']
+};
+var QUIZ=[
+{q:'认识 TAO 循环这类系统，正确的认知顺序是？',opts:['先背三阶段 Prompt 写法，再背工具注册流程','表象观察 → 静态分解 → 动态分析 → 动静融合','从模型论文原理出发自上而下推演'],a:1,exp:'先看外在行为（黑盒：目标进、结果出、中间一圈圈想-做-看），再拆静态结构，再追动态流程，最后把结构和流程映射起来。'},
+{q:'TAO 和「用代码写死的普通状态机」本质区别是什么？',opts:['只是 Prompt 写法不同','迁移规则由谁决定：代码写死 vs 模型现场决定——所以工程重心变成状态怎么维护得住','TAO 一定比代码状态机更可靠'],a:1,exp:'TAO 是状态机，只是变迁引擎换成了大模型。换了驱动方，工程重心整个挪了位置：不在 Prompt 漂亮，在循环的状态、预算、恢复。'},
+{q:'为什么说「停止条件是循环里最难的一块」？',opts:['因为模型不会写字','两头都是坑：停太早（标准含糊 / 一味求快），停不下来（为一丁点质量增益烧 token）；要把「成功」写成可验证标准','因为停止按钮不好按'],a:1,exp:'工程解法：设计阶段就把成功写成可验证的标准，再加三道判断——关键信息够不够、再跑能不能明显提高质量、预算是否见底。'},
+{q:'Observation 阶段最容易被做错的是什么？',opts:['把返回值原样存下来就完了','只存不解读——解读远比存储重要：200 不代表成功，要过「真成功了吗 / 新事实 / 违反约束 / 世界被改了什么」八问','存得越全越好'],a:1,exp:'纯让模型做存储不可取，它会漏、会改写；务实形态是代码存、模型做语义解读。'},
+{q:'Action 和工具的关系是？',opts:['一个 Action 就等于一个接口','Action 是业务上独立完整一步的二次封装，内部可聚合多接口、多路降级、甚至整个子 Agent；用户交互本身也是一种 Action','工具越多 Action 越准'],a:1,exp:'Action ≠ 工具 ≠ 接口。「请放好证件」「请确认授权」跟调接口没有本质区别，都是一步。'},
+{q:'模型某一轮宣布「任务已完成」，循环可以结束吗？',opts:['可以，它说了算','不可以——终止权外置：系统验证才算；校验必须吃硬证据（外部回执、确定性验证器），不吃自然语言结论','看它confidence 多高'],a:1,exp:'微观是 goal_achieved(run) 校验函数，宏观是换一个校验模型点头。但要防执行方伪造「看似成功的证据」骗过校验方。'}
+];
+// ============ 场景构建 ============
+var H='';
+// 循环轨道
+H+='<circle cx="330" cy="290" r="140" fill="none" stroke="#ECEAE2" stroke-width="2" stroke-dasharray="3 5"/>';
+function arc(a1,a2){ // 顺时针小弧
+var p1=[330+140*Math.cos(a1*Math.PI/180),290+140*Math.sin(a1*Math.PI/180)];
+var p2=[330+140*Math.cos(a2*Math.PI/180),290+140*Math.sin(a2*Math.PI/180)];
+return '<path d="M'+p1[0].toFixed(1)+' '+p1[1].toFixed(1)+' A140 140 0 0 1 '+p2[0].toFixed(1)+' '+p2[1].toFixed(1)+'" stroke="#C46A0A" stroke-width="1.6" fill="none" marker-end="url(#flw)" opacity="0.85"/>';
+}
+H+=arc(-72,-18)+arc(18,72)+arc(108,162)+arc(198,252);
+// 状态库（中心）
+H+='<g id="stateBox"><rect x="252" y="246" width="156" height="94" rx="10" fill="#FBFAF6" stroke="#3B3A34" stroke-width="1.4"/>'
++'<text class="tn" x="330" y="266" text-anchor="middle">状态库（外置）</text>';
+var stNames=['GoalState 目标锚点','ActionState 动作与结果','ObservationState 解读','FactState 已确认事实','ControlState 预算余量'];
+for(var s=0;s<5;s++){
+H+='<g id="sc'+s+'"><rect x="262" y="'+(276+s*13)+'" width="136" height="11" rx="3" fill="#F5F4EF" stroke="#ECEAE2" stroke-width="0.6"/>'
++'<text class="ts" x="268" y="'+(285+s*13)+'">'+stNames[s]+'</text></g>';
+}
+H+='</g>';
+// 四个工位
+function station(id,cx,cy,w,h,name,sub){
+return '<g id="'+id+'"><rect x="'+(cx-w/2)+'" y="'+(cy-h/2)+'" width="'+w+'" height="'+h+'" rx="10" fill="#ffffff" stroke="#3B3A34" stroke-width="1.4"/>'
++'<text class="tn" x="'+cx+'" y="'+(cy-4)+'" text-anchor="middle">'+name+'</text>'
++'<text class="ts" x="'+cx+'" y="'+(cy+14)+'" text-anchor="middle">'+sub+'</text></g>';
+}
+H+=station('stThink',330,150,116,54,'Think','四类判断 · 六出口');
+H+=station('stAction',470,290,116,54,'Action','受控执行');
+H+=station('stObs',330,430,116,54,'Observation','存储 + 解读');
+H+='<g id="stUpdate"><rect x="132" y="263" width="116" height="54" rx="10" fill="#ffffff" stroke="#3B3A34" stroke-width="1.4"/>'
++'<text class="tn" x="190" y="286" text-anchor="middle">状态更新</text><text class="ts" x="190" y="304" text-anchor="middle">轮次 +1 · 记账</text></g>';
+// Action 准入四道
+H+='<g id="gateBox"><rect x="408" y="330" width="140" height="86" rx="8" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1"/>'
++'<text class="ts" x="478" y="348" text-anchor="middle">准入四道（提议≠放行）</text>'
++'<text class="ts" x="478" y="366" text-anchor="middle">① 注册表强校验</text>'
++'<text class="ts" x="478" y="382" text-anchor="middle">② 参数类型匹配</text>'
++'<text class="ts" x="478" y="398" text-anchor="middle">③ 权限注入 ④ 高风险转人审</text></g>';
+// Observation 解读
+H+='<g id="obsBox"><rect x="236" y="466" width="188" height="52" rx="8" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1"/>'
++'<text class="ts" x="330" y="484" text-anchor="middle">解读八问：真成功了吗 / 新事实 /</text>'
++'<text class="ts" x="330" y="500" text-anchor="middle">与预期对吗 / 违反约束吗</text></g>';
+// 预算条
+H+='<g id="budBox"><rect x="580" y="56" width="380" height="52" rx="10" fill="#FBFAF6" stroke="#3B3A34" stroke-width="1.2"/>'
++'<text class="tn" x="596" y="76">预算四件套 · ControlState</text>'
++'<rect id="budBar" x="596" y="86" width="348" height="12" rx="6" fill="#EAF3DE" stroke="#639922" stroke-width="0.8"/>'
++'<text id="budTxt" class="ts" x="956" y="76" text-anchor="end" fill="#854F0B">余量 100%</text></g>';
+// 六个出口
+H+='<g id="exitBox"><rect x="580" y="122" width="380" height="216" rx="10" fill="#ffffff" stroke="#3B3A34" stroke-width="1.4"/>'
++'<text class="tn" x="596" y="144">Think 的六个出口（每轮必须是其中之一）</text>';
+var exits=[['Continue','目标未完成且有可推进动作','#EAF3DE','#639922'],['Finish','成功标准已满足（待系统验证）','#EAF3DE','#639922'],['Clarify','缺关键信息，继续猜会违反硬约束','#FFF6E8','#EF9F27'],['Retry','路径没问题，偶发失败（超时/格式错）','#FFF6E8','#EF9F27'],['Replan','路径 / 假设 / 工具选择本身有问题','#FCEBEB','#E24B4A'],['Error / Interrupt','明确做不下去（关键工具不可用）','#FCEBEB','#E24B4A']];
+for(var e=0;e<6;e++){
+var ey=158+e*29;
+H+='<g id="ex'+e+'" opacity="0.35"><rect x="596" y="'+ey+'" width="348" height="23" rx="6" fill="'+exits[e][2]+'" stroke="'+exits[e][3]+'" stroke-width="1"/>'
++'<text class="tb" x="608" y="'+(ey+16)+'">'+exits[e][0]+'</text>'
++'<text class="ts" x="750" y="'+(ey+16)+'">'+exits[e][1]+'</text></g>';
+}
+H+='</g>';
+// 轮次与完成标记
+H+='<g id="turnT"><text id="turnTxt" class="tn" x="896" y="360" text-anchor="middle">轮次 0 / 2</text></g>';
+// 事件流
+H+='<g id="tapeBox"><rect x="28" y="524" width="944" height="30" rx="8" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1"/>'
++'<text class="ts" x="40" y="543">事件流（append-only）：</text>';
+var evs=['StepStarted(1)','StepCompleted(1)','FactState +1','StepStarted(2)','Timeout 黄灯','Retry#2 OK','StepCompleted(2)','Finish 已验证'];
+for(var v=0;v<8;v++){
+H+='<g id="ev'+v+'" opacity="0.15"><rect x="'+(168+v*98)+'" y="530" width="90" height="18" rx="5" fill="#F5F4EF" stroke="#D3D1C7" stroke-width="0.8"/>'
++'<text class="ts" x="'+(213+v*98)+'" y="543" text-anchor="middle">'+evs[v]+'</text></g>';
+}
+H+='</g>';
+// 令牌
+H+='<circle id="tok" cx="330" cy="290" r="11" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/>';
+document.getElementById('scene').innerHTML=H;
+// ============ 通用脚手架 ============
+var el={};
+['sc0','sc1','sc2','sc3','sc4','ex0','ex1','ex2','ex3','ex4','ex5','ev0','ev1','ev2','ev3','ev4','ev5','ev6','ev7','budBar','budTxt','tok','turnTxt'].forEach(function(id){el[id]=document.getElementById(id);});
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var dots=[];
+for(var s=0;s<STEPS.length;s++){
+(function(n){
+var b=document.createElement('button');
+b.className='stepnode';
+b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+b.onclick=function(){goStep(n);};
+stepBar.appendChild(b);dots.push(b);
+})(s);
+}
+var stepIdx=-1;
+function setAuto(on){
+mode='auto';run=on;btn.textContent=on?'暂停':'播放';
+if(on){stepIdx=-1;dots.forEach(function(d){d.classList.remove('on');});
+stepT.textContent='自动运转模式';
+stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格。';}
+}
+window.goStep=function(i){
+stepIdx=(i+STEPS.length)%STEPS.length;
+mode='step';run=false;
+phase=STEPS[stepIdx].d/PHASE_MAX*PERIOD;
+btn.textContent='继续自动运转';
+dots.forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+stepX.textContent=STEPS[stepIdx].x;
+};
+btn.textContent=run?'暂停':'播放';
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+// ---- 运动学：令牌沿循环关键帧插值（waypoint + smoothstep），进度条宽度按预算公式衰减 ----
+var WP=[[0,330,290],[70,330,290],[140,330,150],[190,330,150],[260,470,290],[300,470,290],[360,330,430],[400,330,430],[460,190,290],[470,190,290],[520,330,150],[580,330,150],[630,470,290],[660,470,290],[700,330,150],[712,700,352]];
+function smooth(t){return t*t*(3-2*t);}
+function tokPos(th){
+if(th>=705)return[700,352];
+var i=0;while(i<WP.length-2&&th>WP[i+1][0])i++;
+var a=WP[i],b=WP[i+1];var t=smooth((th-a[0])/(b[0]-a[0]));
+return[a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+}
+function setOpacity(node,v){if(node)node.setAttribute('opacity',v.toFixed(2));}
+var curPhase=-1;
+function tick(now){
+var dt=Math.min(50,now-last);last=now;
+if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+var th=phase/PERIOD*PHASE_MAX;
+var p=tokPos(th);
+el.tok.setAttribute('cx',p[0].toFixed(1));el.tok.setAttribute('cy',p[1].toFixed(1));
+// 预算：0→100%，440→75%，700 后保持 75%（Finish 后结算）
+var budget=th<440?100:(th<700?75:75);
+var frac=budget/100;
+el.budBar.setAttribute('width',(348*frac).toFixed(1));
+el.budBar.setAttribute('fill',frac>0.7?'#EAF3DE':'#FFF6E8');
+el.budBar.setAttribute('stroke',frac>0.7?'#639922':'#EF9F27');
+el.budTxt.textContent='余量 '+budget+'%';
+var turn=th<440?1:(th<700?2:2);
+el.turnTxt.textContent='轮次 '+turn+' / 2';
+// 状态库：按阶段点亮对应态
+setOpacity(el.sc0,th>=110&&th<200?1:0.5);           // Goal（Think 引用）
+setOpacity(el.sc1,th>=250&&th<310?1:0.5);           // Action
+setOpacity(el.sc2,th>=350&&th<410?1:0.5);           // Observation
+setOpacity(el.sc3,th>=400||th>=690?1:0.5);          // Fact
+setOpacity(el.sc4,1);                                 // Control 常亮
+// 六出口
+setOpacity(el.ex0,(th>=110&&th<200)||(th>=510&&th<580)?1:0.35); // Continue
+setOpacity(el.ex3,th>=625&&th<650?1:0.35);                       // Retry（黄灯闪）
+setOpacity(el.ex1,th>=700?1:0.35);                                // Finish
+// 事件流逐条点亮
+var evOn=[th>=250,th>=350,th>=400,th>=620,th>=632,th>=655,th>=690,th>=712];
+for(var v=0;v<8;v++){
+setOpacity(el['ev'+v],evOn[v]?1:0.15);
+var r=el['ev'+v].children[0];
+r.setAttribute('fill',evOn[v]?'#FFF6E8':'#F5F4EF');
+r.setAttribute('stroke',evOn[v]?'#EF9F27':'#D3D1C7');
+}
+requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+document.querySelectorAll('.part').forEach(function(b){
+b.onclick=function(){
+var ids=PARTS[b.getAttribute('data-part')]||[];
+ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+};
+});
+var BASE=(location.pathname.split('/agent-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/agent/lab';
+document.getElementById('lnkArt').href=BASE+'/agent/tutorial/02-execution-core';
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+var d=document.createElement('div');d.className='q';
+var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+h+='<div class="exp">'+it.exp+'</div>';
+d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+var b=e.target.closest('.opt');if(!b)return;
+var box2=b.parentElement;if(box2.classList.contains('done'))return;
+box2.classList.add('done');
+var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+box2.querySelectorAll('.opt').forEach(function(x){
+var xi=+x.getAttribute('data-oi');
+if(xi===QUIZ[qi].a)x.classList.add('right');
+else if(x===b)x.classList.add('wrong');
+});
+});
+})();
+</script>
+</body>
+</html>

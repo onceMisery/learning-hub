@@ -80,6 +80,36 @@ export function TrackPage() {
         </div>
       </header>
 
+      {track.lab ? (
+        <Link
+          to={track.lab.route}
+          className="group mb-10 flex items-start gap-4 rounded-[var(--radius-card)] border border-[var(--accent)] bg-[var(--accent-soft)] p-5 transition-colors duration-150 hover:border-[var(--accent)]"
+        >
+          <span
+            className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] text-white"
+            style={{ background: 'var(--accent)' }}
+            aria-hidden="true"
+          >
+            <Icon name="sparkles" size={16} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-2 text-[15px] font-semibold text-[var(--text)]">
+              {track.lab.title}
+              <span className="rounded-full border border-[var(--accent)] px-2 py-0.5 text-[10.5px] font-medium text-[var(--accent)]">
+                可交互
+              </span>
+            </span>
+            <span className="mt-1.5 block text-[13px] leading-[1.7] text-[var(--text-2)]">
+              {track.lab.subtitle}
+            </span>
+            <span className="mt-2.5 inline-flex items-center gap-1 text-[13px] font-medium text-[var(--accent)]">
+              进入实验室
+              <Icon name="arrow-right" size={12} />
+            </span>
+          </span>
+        </Link>
+      ) : null}
+
       {track.status === 'planned' ? (
         <div className="rounded-[var(--radius-lg)] border border-dashed border-[var(--border-strong)] p-6">
           <p className="flex items-center gap-1.5 text-[13.5px] font-medium text-[var(--text)]">

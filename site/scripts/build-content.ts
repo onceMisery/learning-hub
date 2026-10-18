@@ -309,6 +309,9 @@ function toTrackMeta(track: LoadedTrack, sectionPages: Map<string, PageMeta[]>):
     outline: config.outline ?? [],
     sections,
     codeRoots: config.codeRoots ?? [],
+    lab: config.lab
+      ? { title: config.lab.title, subtitle: config.lab.subtitle, route: config.lab.route ?? `/${config.id}/lab` }
+      : null,
   };
 }
 

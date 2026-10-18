@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>过境海关 · Agent 运行原理实验室 第 6 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:920px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:680px}
+.method-chain{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:18px}
+.method-chain .mnode{background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 14px;font-size:13px;font-weight:500}
+.method-chain .marr{color:#C46A0A;font-weight:600}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:500;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:11.5px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:500;fill:#1F1E1A}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:74px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:11px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:9px 10px;text-align:center}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：协作与治理</a>
+  <span class="idx">第 6 / 7 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · 动静结合认知法</div>
+<h1>过境海关：把边界写清楚，才敢把事交出去</h1>
+<p>「绝不能删除数据」只写在路由 Agent 的系统提示里，交接时没人带给执行 Agent，于是它顺手删了——事后两边都没撒谎，错在<b>边界没有语言</b>。这页课把 Agent 间每次信息交换建成一道海关：下行走白名单任务包，上行过五道关卡，动画支持<b>自动运转</b>和<b>分步点击</b>两种模式。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span><span class="marr">→</span>
+<span class="mnode">② 静态分解</span><span class="marr">→</span>
+<span class="mnode">③ 动态分析</span><span class="marr">→</span>
+<span class="mnode">④ 动静融合</span><span class="marr">→</span>
+<span class="mnode">⑤ 环境场景</span><span class="marr">→</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 560" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>Agent 间信息过境海关动画</title>
+<defs>
+<marker id="flw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/>
+</marker>
+<pattern id="hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+<line x1="0" y1="0" x2="0" y2="7" stroke="#B4B2A9" stroke-width="0.7"/>
+</pattern>
+</defs>
+<text class="th" x="500" y="24" text-anchor="middle">Agent 间协作 · 过境海关剖面示意</text>
+<text class="ts" x="500" y="44" text-anchor="middle">一次过境一次海关：下行白名单任务包过两关，上行自由生成结果单过五关；关口建一次，所有协作方式共用</text>
+<text class="ts" x="985" y="24" text-anchor="end">琥珀 = 包裹 / 活跃关卡</text>
+<g id="scene"></g>
+</svg>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 次过境 / 6.4 秒</span>
+</div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav">
+<button class="btn" onclick="goStep(stepIdx-1)">‹ 上一步</button>
+<button class="btn warn" onclick="goStep(stepIdx+1)">下一步 ›</button>
+</span>
+</div>
+</div>
+</div>
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：先把它当黑盒</h2></div>
+<p class="sec-sub">第一步不拆机器，只看它对外表现出什么行为。</p>
+<div class="quote">「对事物的观察包括了静态结构 + 动态生命周期 + 环境场景三个方面的内容。」<i>—— 人月聊IT · 思维系列</i></div>
+<p>从外部看，多 Agent 协作系统做的事只有一件：<b>把一个大目标拆成责任，派出去、做回来、验整体</b>。三个动作缺一不可——只会第一个的，得到的不叫团队，是一群各自宣布完工的执行者。输入是总目标，输出是可验收的整体交付；中间每一次信息交换，都该有一次「过境」。</p>
+<div class="flow">
+<span class="node">总目标（父持有）</span><span class="arr">→</span>
+<span class="node">海关 + 委派（黑盒）</span><span class="arr">→</span>
+<span class="node">整体交付（主产物）</span>
+<span class="node">拒收 / 重派 / 审批记录（副产物）</span>
+</div>
+<p>黑盒观察的结论：这是一台<b>责任与信息的边界机器</b>——协作的收益来自隔离与分工，协作的风险全部来自边界。带着这个结论，现在打开黑盒。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：它由什么组成</h2></div>
+<p class="sec-sub">打开黑盒，沿空间维度拆解。点部件卡片，动画中对应部分会亮成琥珀色。</p>
+<div class="quote">「它由什么构成？核心方法是分解、分类、结构化——分解需符合 MECE 法则，同层必须粒度一致。」<i>—— 人月聊IT · 思维系列</i></div>
+<p>过境海关可按功能分成<b>五组</b>：</p>
+<div class="partgroup">
+<div class="gname">下行组 —— 负责「把任务交代清楚」</div>
+<div class="parts">
+<button class="part" data-part="pkg"><b>白名单任务包</b><span>框架代码组装：task / 约束 / 授权工具各进各栏——表里根本没有「父对话历史」这一栏，所以它不是被过滤掉的，是压根没有入口。</span></button>
+<button class="part" data-part="pkg"><b>约束显式携带</b><span>「绝不能删除数据」作为一个字段传下去，而不是一句留在上游提示词里的情怀——约束蒸发物理上就断了。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">上行组 —— 负责「把结果还原成工件」</div>
+<div class="parts">
+<button class="part" data-part="par"><b>结果单</b><span>LLM 自由生成，天然夹带推理、幻觉与试错。进门第一件事就是剥掉 reasoning——要紧的判断，就该堂堂正正写在输出字段里。</span></button>
+<button class="part" data-part="par"><b>结构裁剪</b><span>按白名单砍字段、按上限截正文。8000 token 的执行史在这里缩成 200 token 的工件。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">海关组 —— 负责「该不该放行」</div>
+<div class="parts">
+<button class="part" data-part="gt"><b>报关单六字段</b><span>message_id 认货、trace_id 追链、direction+kind 定流程、from/to 定追责——每个字段都对着一类具体事故。</span></button>
+<button class="part" data-part="gt"><b>上行五道关</b><span>身份核验 → 结构裁剪 → 契约校验 → 安全门 → 审计。宁可拒收，不可放行——拒收的损失是重跑一个孩子，放行的损失是整条链返工。</span></button>
+<button class="part" data-part="gt"><b>审计放最后</b><span>它记的是真正越了境的东西。放前面，会把后来被砍掉的也记进去，那份日志就成了假的。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">验收组 —— 负责「局部正确 ≠ 整体正确」</div>
+<div class="parts">
+<button class="part" data-part="gate"><b>组合闸</b><span>Counter(lane) → missing / duplicates → accepted。三个责任面各出现一次吗？同一员工算两遍吗？总额越线吗？</span></button>
+<button class="part" data-part="gate"><b>工件闸 + 删除测试</b><span>单卡查字段 / 来源 / 任务版本；删掉一个 Agent，交付会明确少掉什么？答不上来它就是一次昂贵的重复调用。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">治理组 —— 负责「授权有边界」</div>
+<div class="parts">
+<button class="part" data-part="gov"><b>交接链版本</b><span>Baton 不可变版本化，接缝检查 draft_digest == verified_digest——上游纠错后下游把旧稿捡回来发布，从此在接缝处被机器拦下。</span></button>
+<button class="part" data-part="gov"><b>审批门五维绑定</b><span>谁批准的、批准哪项动作、作用于哪些对象、多久内有效、最多用几次。默认 DENY，超时 Fail-Close。</span></button>
+</div>
+</div>
+<p class="hint">静态分解只回答了「有什么」。一次「派工 → 回传」怎样穿过海关、在哪一关被拦下？必须切换到时间维度——下一节。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：它如何运转</h2></div>
+<p class="sec-sub">盯住两个包裹。用动画下方的 10 个步骤点逐帧走完一次完整过境。</p>
+<div class="quote">「它如何演变与运作？关注时间轴上的发展规律、行为模式和内部流程。核心方法是流程分析、行为追溯。」<i>—— 人月聊IT · 思维系列</i></div>
+<p><b>操作：</b>点击动画下方步骤条上的圆点（或「下一步」按钮），画面会定格在对应时刻。建议完整走两遍：第一遍看任务包走下行、结果单走上行，第二遍盯住上行第三关——看「拒收」长什么样。</p>
+<table class="grid">
+<tr><th>阶段</th><th>时刻</th><th>通道</th><th>关卡</th><th>这一步在干什么</th></tr>
+<tr><td>① 派工组装</td><td>0°–70°</td><td>—</td><td>—</td><td>父 Agent 把任务包组装成白名单字段表，不塞对话历史</td></tr>
+<tr><td>② 下行过境</td><td>70°–190°</td><td class="act">下行</td><td class="act">两关</td><td>身份核验（message_id 查重）+ 安全门；包是框架组装的，天生干净</td></tr>
+<tr><td>③ 隔离执行</td><td>190°–260°</td><td class="act">子 Agent</td><td>—</td><td>Worker 只拿够本次任务的上下文、工具与预算，不继承主管全部历史</td></tr>
+<tr><td>④ 回传生成</td><td>260°–320°</td><td>—</td><td>—</td><td>结果单自由生成：8000 token，夹带 reasoning 和三遍试错 SQL</td></tr>
+<tr><td>⑤ 上行前两关</td><td>320°–400°</td><td class="act">上行</td><td class="act">查重 / 裁剪</td><td>身份核验查重；结构裁剪剥 reasoning——8000 → 600</td></tr>
+<tr><td>⑥ 契约校验</td><td>400°–470°</td><td class="act">上行</td><td class="hot">v1 拒收 → v2 放行</td><td>required 字段核对：缺 source_id 整包退回；补齐才进父上下文</td></tr>
+<tr><td>⑦ 安检 + 审计</td><td>470°–560°</td><td class="act">上行</td><td class="act">两关</td><td>安全门扫注入；审计记录真正越境物——放最后，日志才不假</td></tr>
+<tr><td>⑧ 父收工件</td><td>560°–640°</td><td>—</td><td>—</td><td>200 token ResearchCard：claim + source_id + lane，压缩的是过程，没丢掉追溯</td></tr>
+<tr><td>⑨ 组合闸验收</td><td>640°–700°</td><td>—</td><td class="hot">missing / duplicates</td><td>摊开所有卡：覆盖齐吗、有重复吗、踩全局约束吗——整体完成 ≠ 局部返回</td></tr>
+<tr><td>⑩ 交接与授权</td><td>700°–720°</td><td>—</td><td class="act">版本 + 五维</td><td>交接带版本与回执；批准五维绑定——一次批准不许悄悄长成「以后都可以」</td></tr>
+</table>
+<p>两个容易错过、但值得在分步模式里细看的点：① 第 ⑥ 阶段<b>「拒收」不是故障，是设计</b>——父上下文从头到尾没看过那 8000 token 一眼，拒收的损失只是重跑一个孩子；② 第 ⑧ 阶段工件小到 200 token 但<b>带 source_id 和 lane</b>——压缩的是过程，没丢掉追溯：真要调查，沿引用展开就行。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件如何协同出「可信的协作」</h2></div>
+<p class="sec-sub">把第 2 节的「结构」和第 3 节的「流程」叠在一起——这才是理解的完成态。</p>
+<div class="quote">「动静融合的关键是建立映射：将组成部件与操作步骤一一对应，理解各部件如何协同产生外在行为。系统 = 元素 + 连接 + 目标。」<i>—— 人月聊IT · 思维系列</i></div>
+<p>映射表：<b>每个部件在每个阶段里承担什么角色</b>。竖着看是一个阶段的全体协同，横着看是一个部件的完整职责。</p>
+<table class="grid">
+<tr><th>部件 ＼ 阶段</th><th>① 派工</th><th>② 下行</th><th>③ 执行</th><th>④ 回传</th><th>⑤⑥⑦ 上行</th><th>⑧ 收工件</th><th>⑨ 验收</th></tr>
+<tr><td>任务包</td><td class="hot">白名单组装</td><td class="act">过两关</td><td>被消费</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>隔离执行</td><td>划边界</td><td>—</td><td class="hot">最小上下文</td><td>产出过程</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>结果单</td><td>—</td><td>—</td><td>—</td><td class="hot">8000 tok 夹带</td><td class="hot">缩到 600</td><td class="act">200 tok 工件</td><td>被摊开</td></tr>
+<tr><td>五道关</td><td>—</td><td>下行两关</td><td>—</td><td>—</td><td class="hot">逐关设卡</td><td>—</td><td>—</td></tr>
+<tr><td>报关单</td><td>—</td><td class="act">message_id</td><td>—</td><td class="act">trace_id</td><td>direction 定流程</td><td>—</td><td>追责依据</td></tr>
+<tr><td>组合闸</td><td>定责任面</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td class="hot">Counter(lane)</td></tr>
+<tr><td>交接链 + 审批</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td class="act">版本回执 + 五维</td></tr>
+</table>
+<p>点题一句：<b>「敢把事交出去」这个外在行为，不是任何一个部件的属性，而是「白名单下行 + 五关上行 + 组合验收 + 版本交接」整体协同涌现的</b>。把协作当微服务调用的系统， Default 传的是对话历史本身——不加清洗就把内部状态直连，等于让两颗大脑互相污染。这里也有对称设计：下行白名单把「父历史」的入口直接取消（最好的过滤是不需要过滤），上行契约校验把「拒收」做成默认动作（宁可拒收，不可放行）。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：它依赖什么才能工作</h2></div>
+<p class="sec-sub">主体之外，还有一圈支撑系统。</p>
+<div class="quote">「对事物的认识 = 空间属性 + 时间属性 + 环境属性（外在关系和依赖）。」<i>—— 人月聊IT · 思维系列</i></div>
+<div class="envcards">
+<div class="env"><b>隔离基础设施</b><span>新会话、worktree、独立凭证作用域。上下文隔离 ≠ 权限隔离——子 Agent 开了新会话却继承付款工具，风险只是搬进没人盯的房间。</span></div>
+<div class="env"><b>策略引擎</b><span>策略即代码，规则进 Git：生产删表双人审批、非生产只读直接 ALLOW、默认 DENY。安全要清晰可审计，不要模型算的风险分。</span></div>
+<div class="env"><b>DLP 与出口管控</b><span>外发只留网关一条路，扫邮件正文 / body / query / 上传内容；LLM 网关管上下文外发、发前脱敏。</span></div>
+<div class="env"><b>OBO 委托令牌</b><span>短期、任务级 scope、sub 是用户 act 是 Agent。别给 Agent 配独立超级账号写进 .env。</span></div>
+<div class="env"><b>审批服务与审计</b><span>审批单持久化可恢复、证据包高信噪比、TraceID 贯穿。审批疲劳下的第 201 次点击，就是事故本身。</span></div>
+<div class="env"><b>零信任分级</b><span>内容 / 来源 / 行为三维打分，只减不增；数据进 &lt;data&gt; 标签不执行其中指令——既然分不清指令与数据，就只允许声明过的那几栏被当成指令。</span></div>
+</div>
+<p>动画里的海关能转起来，前提是这六个系统在「环境」里就位。拆掉任何一个，外在行为立即消失——尤其是<b>隔离基础设施和审计</b>：拆掉它们，「把事交出去」立刻退化成「把锅甩出去」。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测：学习-实践-复盘的闭环</h2></div>
+<p class="sec-sub">用自己的话能讲清楚，才算真的懂。先答题，再对照解析。</p>
+<div id="quiz"></div>
+</section>
+
+<div class="summary">
+<h2>一页带走</h2>
+<p class="chant">任务有身份、事实有来源、工件有版本、改变有责任、接收有回执。</p>
+<p>· 方法：表象（责任与信息的边界机器）→ 结构（五组部件）→ 流程（十阶段）→ 融合（可信协作是涌现属性）。</p>
+<p>· 结构：白名单任务包 + 上行五道关 + 报关单 + 组合闸 + 交接链 + 审批门。</p>
+<p>· 行为：任务包过两关进子 Agent；8000 token 结果单剥推理、验字段、扫注入、留审计，缩成 200 token 工件回父。</p>
+<p>· 协同：下行没有入口所以不需要过滤，上行拒收优先所以放行珍贵——边界语言五句，句句都是事故换的。</p>
+</div>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+
+<script>
+(function(){
+// ============ 主题专属数据 ============
+var PERIOD=4600,PHASE_MAX=720;
+var STEPS=[
+{d:0,t:'派工组装',x:'父 Agent 把任务包组装成白名单字段表：task / 约束 / 授权工具各进各栏——注意这张表里根本没有「父对话历史」这一栏，所以那段历史不是被谁过滤掉的，是压根没有能躺的位置'},
+{d:70,t:'下行过境',x:'下行只挂两道关：身份核验（message_id 查重）+ 安全门。包是框架代码组装的，天生干净——不需要过滤动作，任务包本身就是白名单'},
+{d:190,t:'隔离执行',x:'Worker 只拿够完成本次任务的上下文、工具与预算，不继承主管的全部会话历史。上下文隔离 ≠ 权限隔离：新会话不等于新凭证作用域'},
+{d:260,t:'回传生成',x:'结果单是 LLM 自由生成的，天然夹带推理、幻觉与试错：8000 token，里面躺着三遍试错的 SQL、两次格式失败的推理、几个脑补出来的假设'},
+{d:320,t:'上行前两关',x:'身份核验查重（重复投递凭单号退回）；结构裁剪按白名单砍字段——未申报的 reasoning 就消失在这里，8000 → 600'},
+{d:400,t:'契约校验',x:'output_contract 逐字段验存在与类型，白名单外一律剥离。v1 缺 source_id：整包退回，父上下文一眼都没看过它；v2 补齐才放行——宁可拒收，不可放行'},
+{d:470,t:'安检 + 审计',x:'安全门扫「忽略之前指令」这类注入（框架懂结构，内容规则由应用注入）；审计必须放最后——它要记的是真正越了境的东西，放前面会把后来被砍掉的也记进去，那份日志就是假的'},
+{d:560,t:'父收工件',x:'200 token 的 ResearchCard：claim + source_id + lane。压缩的是过程，没丢掉追溯——完整轨迹还留在子会话与 Trace 里，主管默认只收压缩工件，真要调查沿引用展开'},
+{d:640,t:'组合闸验收',x:'摊开所有卡：三个责任面各出现一次吗？合计真的覆盖 800 人吗？同一员工算两遍吗？总额越没越过资金线？Counter(lane) → missing / duplicates → accepted'},
+{d:700,t:'交接与授权',x:'交接带版本与回执，控制权在验收之后才移动；批准是五维绑定（谁 / 哪项 / 哪些对象 / 多久 / 几次），默认 DENY、超时 Fail-Close——一次批准不许悄悄长成「以后都可以」'}
+];
+var PARTS={
+pkg:['pkg','gd1','gd2'],
+par:['par','parT','rsn'],
+gt:['customs','g1','g2','g3','g4','g5','stamp'],
+gate:['combGate','cbm'],
+gov:['handBox','apvBox']
+};
+var QUIZ=[
+{q:'认识多 Agent 协作这类系统，正确的认知顺序是？',opts:['先背框架的拓扑选型表，再压测吞吐','表象观察 → 静态分解 → 动态分析 → 动静融合','从消息队列的实现原理出发自下而上'],a:1,exp:'先看外在行为（黑盒：总目标进、整体交付出），再拆静态结构，再追动态流程，最后把结构和流程映射起来——整体不等于零件之和。'},
+{q:'下行任务包为什么用「白名单字段表」而不是「过滤父历史」？',opts:['过滤写起来太麻烦','表里根本没有「父对话历史」这一栏——最好的过滤是不需要过滤；约束显式携带，约束蒸发物理上就断了','白名单性能更好'],a:1,exp:'不设这道设计，路由就把一周上下文整包甩下去；设了之后，没人做判断、没人写过滤规则，系统也没拦什么——它根本没有入口。'},
+{q:'上行结果单进门，第一件事为什么是剥掉 reasoning？',opts:['reasoning 占用 token','要紧的判断，就该堂堂正正写在输出字段里——指望从推理堆里智能提取，等于把整条链的可靠性押在模型的提取能力上','reasoning 里有隐私'],a:1,exp:'今天捞对了，明天就捞错。写不出来是契约没定好，不是模型的功劳。'},
+{q:'契约校验关的能力边界是什么？',opts:['什么都能验，包括对错','它分不清「订单已发货」和「删库跑吧」——形状归框架管，好坏归你管；硬要混在一起做，通常两件都做不好','只能验 JSON 语法'],a:1,exp:'所以内容是字符串、类型对得上，一律放行；语义不变量（金额非负、借贷平衡）是应用自己的闸门。'},
+{q:'为什么审计必须放在五道关的最后？',opts:['省一点计算','它要记的是真正越了境的东西——放前面，会把后来被砍掉的也记进去，那份日志就成了假的','审计最便宜'],a:1,exp:'审计不拦、不砍、只记录。顺序错了，日志的可信度就没了，而审计是三个月后唯一能救你的东西。'},
+{q:'子 Agent 提交「已完成」声明，可以通过验收吗？',opts:['可以，它自己说了完成','不能——模型可以提交履约声明，没有资格凭声明宣布验收通过；工件闸看单卡，组合闸看摊开的所有卡，运动员不能同时是吹哨的人','看它的置信度'],a:1,exp:'三张卡张张能过单卡检查，整份简报照样缺两块；三个方向都齐了，某张卡也可能没来源、或者属于上一版目标。'}
+];
+// ============ 场景构建 ============
+var H='';
+// 通道标签
+H+='<text class="tb" x="170" y="92">下行通道 · 白名单任务包（框架组装，天生干净）——过两关</text>';
+H+='<text class="tb" x="206" y="366">上行通道 · 自由生成结果单（夹带推理）——过五关 ①②③④⑤ 由近及远</text>';
+// 父 / 子 Agent
+H+='<g id="parBox"><rect x="28" y="200" width="140" height="100" rx="10" fill="#FBFAF6" stroke="#3B3A34" stroke-width="1.5"/>'
++'<text class="tn" x="98" y="224" text-anchor="middle">父 Agent（主管）</text>'
++'<text class="ts" x="98" y="244" text-anchor="middle">稳定责任人</text>'
++'<text class="ts" x="98" y="260" text-anchor="middle">总目标握在手里</text>'
++'<text class="ts" x="98" y="284" text-anchor="middle">派工单四问</text></g>';
+H+='<g id="chBox"><rect x="852" y="200" width="140" height="100" rx="10" fill="#FBFAF6" stroke="#3B3A34" stroke-width="1.5"/>'
++'<text class="tn" x="922" y="224" text-anchor="middle">子 Agent（Worker）</text>'
++'<text class="ts" x="922" y="244" text-anchor="middle">最小上下文</text>'
++'<text class="ts" x="922" y="260" text-anchor="middle">工具白名单 · 预算</text>'
++'<rect id="execBar" x="864" y="272" width="116" height="9" rx="4" fill="#F5F4EF" stroke="#D3D1C7" stroke-width="0.8"/>'
++'<rect id="execFill" x="864" y="272" width="0" height="9" rx="4" fill="#EF9F27"/></g>';
+// 下行两关
+H+='<g id="gd1"><rect x="216" y="96" width="104" height="80" rx="8" fill="#ffffff" stroke="#3B3A34" stroke-width="1.4"/>'
++'<text class="tb" x="268" y="122" text-anchor="middle">身份核验</text>'
++'<text class="ts" x="268" y="140" text-anchor="middle">message_id</text>'
++'<text class="ts" x="268" y="156" text-anchor="middle">查重 · 凭单号退回</text></g>';
+H+='<g id="gd2"><rect x="336" y="96" width="104" height="80" rx="8" fill="#ffffff" stroke="#3B3A34" stroke-width="1.4"/>'
++'<text class="tb" x="388" y="122" text-anchor="middle">安全门</text>'
++'<text class="ts" x="388" y="140" text-anchor="middle">下行两关之一</text>'
++'<text class="ts" x="388" y="156" text-anchor="middle">包天生干净</text></g>';
+// 上行五关（由近及远 ①→⑤）
+function ug(id,x,name,sub){
+return '<g id="'+id+'"><rect x="'+x+'" y="372" width="88" height="80" rx="8" fill="#ffffff" stroke="#3B3A34" stroke-width="1.4"/>'
++'<text class="tb" x="'+(x+44)+'" y="398" text-anchor="middle">'+name+'</text>'
++'<text class="ts" x="'+(x+44)+'" text-anchor="middle" y="416">'+sub+'</text></g>';
+}
+H+=ug('g1',660,'① 身份核验','重投检测');
+H+=ug('g2',562,'② 结构裁剪','剥 reasoning');
+H+=ug('g3',464,'③ 契约校验','字段核对');
+H+=ug('g4',366,'④ 安全门','注入扫描');
+H+=ug('g5',268,'⑤ 审计','记越境物');
+// 流向箭头
+H+='<path d="M452 136 L700 136" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#flw)"/>';
+H+='<path d="M846 412 L700 412" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#flw)"/>';
+H+='<path d="M100 390 L100 306" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#flw)"/>';
+H+='<path d="M922 200 L922 148" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#flw)"/>';
+// 任务包（下行）
+H+='<g id="pkg"><rect x="180" y="118" width="120" height="36" rx="7" fill="#FFF6E8" stroke="#D97E06" stroke-width="1.6"/>'
++'<text class="tb" x="240" y="140" text-anchor="middle">任务包（白名单）</text></g>';
+// 结果包裹（上行，home 在通道中段）
+H+='<g id="par"><rect x="700" y="392" width="156" height="40" rx="7" fill="#ffffff" stroke="#B4B2A9" stroke-width="1.4"/>'
++'<rect id="rsn" x="708" y="400" width="140" height="10" rx="3" fill="#F3E8FF" stroke="#8B5CF6" stroke-width="0.9"/>'
++'<text class="ts" x="712" y="425" fill="#6D28D9">reasoning · 试错 SQL</text>'
++'<text id="parT" class="tb" x="712" y="398">8000 tok · 夹带</text></g>';
+// 拒收章
+H+='<g id="stamp" opacity="0"><rect x="466" y="330" width="84" height="24" rx="6" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.6"/>'
++'<text class="tb" x="508" y="347" text-anchor="middle" fill="#8A2A2A">✗ 拒收</text></g>';
+H+='<g id="passT" opacity="0"><text class="tb" x="508" y="347" text-anchor="middle" fill="#3B7A3B">✓ v2 放行</text></g>';
+// 组合闸
+H+='<g id="combGate"><rect x="28" y="308" width="244" height="64" rx="8" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.2"/>'
++'<text class="tb" x="40" y="328">组合闸（父验收整体）</text>'
++'<text id="cbm" class="ts" x="40" y="346">Counter(lane) → missing / duplicates</text>'
++'<text class="ts" x="40" y="364">责任面×3 覆盖 · 无重复 · 未越线 → accepted</text></g>';
+// 顶部注
+H+='<g id="customs"><rect x="560" y="60" width="420" height="26" rx="13" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1"/>'
++'<text class="ts" x="770" y="77" text-anchor="middle">一次过境 = 一次海关；委派 / 接力 / 黑板 / 抢单，走的都是同一个口岸</text></g>';
+// 底部：交接链
+H+='<g id="handBox"><rect x="28" y="480" width="470" height="66" rx="8" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.2"/>'
++'<text class="tb" x="40" y="500">交接链 · 版本化接力棒</text>'
++'<rect x="40" y="510" width="52" height="20" rx="5" fill="#F5F4EF" stroke="#D3D1C7" stroke-width="1"/><text class="ts" x="66" y="524" text-anchor="middle">v1 初稿</text>'
++'<path d="M94 520 L104 520" stroke="#C46A0A" stroke-width="1.2" marker-end="url(#flw)"/>'
++'<rect x="106" y="510" width="52" height="20" rx="5" fill="#F5F4EF" stroke="#D3D1C7" stroke-width="1"/><text class="ts" x="132" y="524" text-anchor="middle">v2 纠错</text>'
++'<text id="hb1" class="ts" x="164" y="524" fill="#8A877C">交 v2 但工件摘要还是旧的 → 拦下</text>'
++'<path d="M164 536 L420 536" stroke="#D3D1C7" stroke-width="0.8"/>'
++'<text id="hb2" class="ts" x="40" y="550" fill="#8A877C">重交 v3：draft_digest == verified_digest → 放行（stale_claim_binding 不再存活）</text></g>';
+// 底部：审批门
+H+='<g id="apvBox"><rect x="510" y="480" width="462" height="66" rx="8" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.2"/>'
++'<text class="tb" x="522" y="500">审批门 · 批准是五维绑定</text>';
+var dims=['谁批准的','哪项动作','哪些对象','多久有效','最多几次'];
+for(var d=0;d<5;d++){
+H+='<rect x="'+(522+d*88)+'" y="510" width="80" height="20" rx="5" fill="#F5F4EF" stroke="#D3D1C7" stroke-width="1"/>'
++'<text class="ts" x="'+(562+d*88)+'" y="524" text-anchor="middle">'+dims[d]+'</text>';
+}
+H+='<text class="ts" x="522" y="548">默认 DENY · 超时 Fail-Close · 「谁批的」和「批没批」是两个字段</text></g>';
+document.getElementById('scene').innerHTML=H;
+// ============ 通用脚手架 ============
+var el={};
+['pkg','par','rsn','parT','stamp','passT','gd1','gd2','g1','g2','g3','g4','g5','combGate','cbm','customs','handBox','apvBox','hb1','hb2','execFill','parBox','chBox'].forEach(function(id){el[id]=document.getElementById(id);});
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var dots=[];
+for(var s=0;s<STEPS.length;s++){
+(function(n){
+var b=document.createElement('button');
+b.className='stepnode';
+b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+b.onclick=function(){goStep(n);};
+stepBar.appendChild(b);dots.push(b);
+})(s);
+}
+var stepIdx=-1;
+function setAuto(on){
+mode='auto';run=on;btn.textContent=on?'暂停':'播放';
+if(on){stepIdx=-1;dots.forEach(function(d){d.classList.remove('on');});
+stepT.textContent='自动运转模式';
+stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格。';}
+}
+window.goStep=function(i){
+stepIdx=(i+STEPS.length)%STEPS.length;
+mode='step';run=false;
+phase=STEPS[stepIdx].d/PHASE_MAX*PERIOD;
+btn.textContent='继续自动运转';
+dots.forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+stepX.textContent=STEPS[stepIdx].x;
+};
+btn.textContent=run?'暂停':'播放';
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+// ---- 运动学：两包裹沿关键帧插值（place），结果单按关口分段收窄，拒收用高斯回弹 ----
+function smooth(t){return t*t*(3-2*t);}
+function lerp(a,b,t){return a+(b-a)*t;}
+function clamp01(v){return Math.max(0,Math.min(1,v));}
+function place(el,home,stops,th,extra){
+var i=0;while(i<stops.length-2&&th>stops[i+1].t)i++;
+var a=stops[i],b=stops[i+1];
+var t=smooth(clamp01((th-a.t)/(b.t-a.t)));
+var x=lerp(a.x,b.x,t)-home.x,y=lerp(a.y,b.y,t)-home.y;
+if(extra)x+=extra(th);
+el.setAttribute('transform','translate('+x.toFixed(1)+' '+y.toFixed(1)+')');
+}
+var P_HOME={x:180,y:118},R_HOME={x:700,y:392};
+function tick(now){
+var dt=Math.min(50,now-last);last=now;
+if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+var th=phase/PERIOD*PHASE_MAX;
+// 任务包：父 → 下行两关 → 抵达子 Agent 上方通道（420 后淡出）
+place(el.pkg,P_HOME,[
+{t:0,x:180,y:136},{t:70,x:180,y:136},{t:110,x:208,y:136},{t:150,x:208,y:136},{t:190,x:328,y:136},{t:230,x:328,y:136},{t:300,x:862,y:136},{t:420,x:862,y:136},{t:720,x:862,y:136}
+],th);
+el.pkg.setAttribute('opacity',th<430?1:0);
+// 执行条
+var ef=clamp01((th-200)/60)*116;
+el.execFill.setAttribute('width',ef.toFixed(1));
+// 结果单：子 → 五关 → 父（含 400-470 的拒收回弹）
+function bounce(t){return 34*Math.exp(-Math.pow((t-424)/9,2));}
+place(el.par,R_HOME,[
+{t:260,x:700,y:392},{t:320,x:626,y:392},{t:360,x:528,y:392},{t:400,x:430,y:392},{t:470,x:332,y:392},{t:510,x:234,y:392},{t:550,x:168,y:392},{t:600,x:60,y:392},{t:720,x:60,y:392}
+],th,bounce);
+// reasoning 层：② 结构裁剪时消失；抵达前整体淡入
+el.par.setAttribute('opacity',th>=255?1:0);
+el.rsn.setAttribute('opacity',th>=260&&th<360?1:0);
+// 标签按阶段切换
+if(th<340)el.parT.textContent='8000 tok · 夹带';
+else if(th<400)el.parT.textContent='600 tok · 剥完推理';
+else if(th<470)el.parT.textContent='v1 缺 source_id？';
+else el.parT.textContent='v2 · ResearchCard';
+// 拒收章 / 放行章
+el.stamp.setAttribute('opacity',th>=412&&th<450?1:0);
+el.passT.setAttribute('opacity',th>=450&&th<500?1:0);
+// 关卡高亮
+function gOn(g,on){
+var r=g.children[0];
+r.setAttribute('fill',on?'#FFF6E8':'#ffffff');
+r.setAttribute('stroke',on?'#D97E06':'#3B3A34');
+}
+gOn(el.gd1,th>=100&&th<160);
+gOn(el.gd2,th>=170&&th<230);
+gOn(el.g1,th>=310&&th<370);
+gOn(el.g2,th>=350&&th<410);
+gOn(el.g3,th>=395&&th<475);
+gOn(el.g4,th>=460&&th<520);
+gOn(el.g5,th>=500&&th<560);
+// 父子高亮
+gOn(el.parBox,th<190||th>=560);
+gOn(el.chBox,th>=230&&th<300);
+// 组合闸
+el.combGate.setAttribute('opacity',th>=560?1:0.55);
+el.cbm.textContent=th>=640?'missing=0 · duplicates=0 → accepted':'Counter(lane) → missing / duplicates';
+// 交接链与审批门
+el.handBox.setAttribute('opacity',th>=640?1:0.5);
+el.apvBox.setAttribute('opacity',th>=640?1:0.5);
+el.hb1.setAttribute('fill',th>=660?'#8A2A2A':'#8A877C');
+el.hb2.setAttribute('fill',th>=680?'#3B7A3B':'#8A877C');
+requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+document.querySelectorAll('.part').forEach(function(b){
+b.onclick=function(){
+var ids=PARTS[b.getAttribute('data-part')]||[];
+ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+};
+});
+var BASE=(location.pathname.split('/agent-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/agent/lab';
+document.getElementById('lnkArt').href=BASE+'/agent/tutorial/06-collaboration-governance';
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+var d=document.createElement('div');d.className='q';
+var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+h+='<div class="exp">'+it.exp+'</div>';
+d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+var b=e.target.closest('.opt');if(!b)return;
+var box2=b.parentElement;if(box2.classList.contains('done'))return;
+box2.classList.add('done');
+var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+box2.querySelectorAll('.opt').forEach(function(x){
+var xi=+x.getAttribute('data-oi');
+if(xi===QUIZ[qi].a)x.classList.add('right');
+else if(x===b)x.classList.add('wrong');
+});
+});
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>上下文管理 f 函数 · Agent 运行原理实验室 第 3 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:920px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:680px}
+.method-chain{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:18px}
+.method-chain .mnode{background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 14px;font-size:13px;font-weight:500}
+.method-chain .marr{color:#C46A0A;font-weight:600}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:500;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:11px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:500;fill:#1F1E1A}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:80px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:11px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:9px 10px;text-align:center}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：上下文管理</a>
+  <span class="idx">第 3 / 7 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · 动静结合认知法</div>
+<h1>上下文管理：把「模型看见什么」做成一个函数</h1>
+<p>模型的全部世界观，就是这一次喂给它的那块上下文。Context 是仓库，Window 是工作台——<b>仓库里堆多少不算数，台面上摆着哪几样才算</b>。这页课把装配过程做成五段流水线，并让「注意力曲线」直接可见，动画支持<b>自动运转</b>和<b>分步点击</b>两种模式。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span><span class="marr">→</span>
+<span class="mnode">② 静态分解</span><span class="marr">→</span>
+<span class="mnode">③ 动态分析</span><span class="marr">→</span>
+<span class="mnode">④ 动静融合</span><span class="marr">→</span>
+<span class="mnode">⑤ 环境场景</span><span class="marr">→</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 560" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>Context Window = f(Context) 装配流水线动画</title>
+<defs>
+<marker id="flw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/>
+</marker>
+</defs>
+<text class="th" x="500" y="24" text-anchor="middle">Window = f(Context) · 剖面运转示意</text>
+<text class="ts" x="500" y="44" text-anchor="middle">Retrieve → Select → Compress → Order → Inject：找准内容、放进窗口、交给模型</text>
+<text class="ts" x="985" y="24" text-anchor="end">琥珀 = 活跃工位 / 钉住区</text>
+<g id="scene"></g>
+</svg>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 轮装配 / 6.4 秒</span>
+</div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav">
+<button class="btn" onclick="goStep(stepIdx-1)">‹ 上一步</button>
+<button class="btn warn" onclick="goStep(stepIdx+1)">下一步 ›</button>
+</span>
+</div>
+</div>
+</div>
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：先把它当黑盒</h2></div>
+<p class="sec-sub">第一步不拆机器，只看它对外表现出什么行为。</p>
+<div class="quote">「对事物的观察包括了静态结构 + 动态生命周期 + 环境场景三个方面的内容。」<i>—— 人月聊IT · 思维系列</i></div>
+<p>从外部看，上下文管理做的事只有一件：<b>每一次模型调用前，把「这块窗口该装什么」重新决定一遍</b>。它不产生智能，它决定智能的边界——窗口里没有的事实，对模型而言不是「暂时想不起来」，是压根不存在。</p>
+<div class="flow">
+<span class="node">Context 仓库（全部信息空间）</span><span class="arr">→</span>
+<span class="node">f 装配（黑盒）</span><span class="arr">→</span>
+<span class="node">Window 可见工作集（主产物）</span>
+<span class="node">压缩痕迹 / 索引句柄（副产物）</span>
+</div>
+<p>黑盒观察的结论：这是一台<b>注意力预算分配装置</b>——仓库无限、窗口有限、注意力不均，工程就是在「有限窗口 × 有损压缩 × 无限信息」这对矛盾里，维持模型工作集的真实性与相关性。带着这个结论，现在打开黑盒。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：它由什么组成</h2></div>
+<p class="sec-sub">打开黑盒，沿空间维度拆解。点部件卡片，动画中对应部分会亮成琥珀色。</p>
+<div class="quote">「它由什么构成？核心方法是分解、分类、结构化——分解需符合 MECE 法则，同层必须粒度一致。」<i>—— 人月聊IT · 思维系列</i></div>
+<p>上下文装配台可按功能分成<b>五组</b>：</p>
+<div class="partgroup">
+<div class="gname">来源组 —— 负责「仓库里有什么」</div>
+<div class="parts">
+<button class="part" data-part="repo"><b>Context 仓库</b><span>四类来源：用户侧交付物、Agent 自身产物、内部数据、外部数据。按用途分六种：指令 / 目标 / 用户 / 任务 / 工具 / 约束。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">f 组 —— 负责「五段流水线」</div>
+<div class="parts">
+<button class="part" data-part="st0"><b>Retrieve 检索</b><span>偏「可能相关」：按本次调用目标去向量库 / ES / DB 取，与 RAG 同构。</span></button>
+<button class="part" data-part="st1"><b>Select 分诊</b><span>偏「真正相关」：P0-P3 决定信息离模型有多近，不是删材料。</span></button>
+<button class="part" data-part="st2"><b>Compress 压缩</b><span>管粒度：给原文、给摘要还是给索引。结论 / 证据 / 索引三件必留。</span></button>
+<button class="part" data-part="st3"><b>Order 排序</b><span>管位置：同样的内容换个顺序，输出就会变——排序是设计，不是排版。</span></button>
+<button class="part" data-part="st4"><b>Inject 注入</b><span>管装配：最终窗口、预算核算、首尾三明治，然后才交给模型。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">窗口组 —— 负责「台面摆什么」</div>
+<div class="parts">
+<button class="part" data-part="p03"><b>P0-P3 分诊</b><span>P0 贴眼前必须看到；P1 直接进窗口；P2 压缩后进；P3 只挂 handle 按需取。</span></button>
+<button class="part" data-part="window"><b>Window 与预算线</b><span>装配式留白：先扣 L0/L1/L2 与 reminder，剩下的才是 history_budget；60% 主动压。</span></button>
+<button class="part" data-part="attn"><b>注意力曲线</b><span>首尾高、中间衰减（Lost in the Middle）。「在上下文里」和「模型看见了」是两回事。</span></button>
+<button class="part" data-part="pin"><b>首尾三明治</b><span>硬约束钉在头部系统区，每轮组装再在尾部追加一份 constraint reminder。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">压缩组 —— 负责「有损但不失真」</div>
+<div class="parts">
+<button class="part" data-part="cmp"><b>五级渐进压缩</b><span>按窗口占用逐级升级：只压工具结果 → 结构化摘要 → 主题级摘要 → 紧急模式，每级只做最小必要牺牲。</span></button>
+<button class="part" data-part="cmp"><b>绝不能丢清单</b><span>最新用户输入、硬约束、已确认关键事实、Plan 与执行状态、输出格式模板；错误堆栈带 is_error 保护位。</span></button>
+<button class="part" data-part="cmp"><b>anchor 锚</b><span>增量合并而非整体重写：用户要什么 / 已改什么 / 已决定什么 / 已排除什么 / 下一步——「已排除」最易丢。</span></button>
+</div>
+</div>
+<p class="hint">静态分解只回答了「有什么」。一次调用前，这些工位怎样在时间上配合、窗口怎样被填满又压回？必须切换到时间维度——下一节。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：它如何运转</h2></div>
+<p class="sec-sub">盯住那个琥珀色令牌。用动画下方的 9 个步骤点逐帧走完一次完整装配。</p>
+<div class="quote">「它如何演变与运作？关注时间轴上的发展规律、行为模式和内部流程。核心方法是流程分析、行为追溯。」<i>—— 人月聊IT · 思维系列</i></div>
+<p><b>操作：</b>点击动画下方步骤条上的圆点（或「下一步」按钮），画面会定格在对应时刻。建议完整走两遍：第一遍只看令牌走哪个工位、条目怎么落位，第二遍同时看窗口上方的注意力曲线和右侧预算条。</p>
+<table class="grid">
+<tr><th>阶段</th><th>时刻</th><th>活跃工位</th><th>预算占用</th><th>这一步在干什么</th></tr>
+<tr><td>① Retrieve</td><td>0°–80°</td><td class="act">检索</td><td>—</td><td>从仓库初筛「可能相关」；P3 只挂 handle，不展开</td></tr>
+<tr><td>② Select</td><td>80°–160°</td><td class="act">分诊</td><td>—</td><td>P0 贴眼前 / P1 进窗口 / P2 压缩进 / P3 挂入口</td></tr>
+<tr><td>③ 装填</td><td>160°–260°</td><td class="act">窗口</td><td class="hot">20% → 55%</td><td>候选条目陆续进窗——但不放满，要留容错与召回余地</td></tr>
+<tr><td>④ Compress</td><td>260°–320°</td><td class="act">压缩</td><td class="hot">55% → 35%</td><td>触到 60% 线先压再跑：旧轮次转摘要，错误堆栈强制保护</td></tr>
+<tr><td>⑤ Order</td><td>320°–400°</td><td class="act">排序</td><td>35%</td><td>条目从「堆叠」滑到「有序」：System → Goal → 硬约束 → 状态 → 事实 → 证据 → Observation → Action → 摘要</td></tr>
+<tr><td>⑥ Inject</td><td>400°–480°</td><td class="act">注入</td><td>35%</td><td>最终装配：首尾三明治，约束钉头 + 尾部追加 reminder</td></tr>
+<tr><td>⑦ 注意力</td><td>480°–560°</td><td class="act">曲线扫描</td><td>35%</td><td>扫描线扫过窗口：首尾亮、中间暗——「在」≠「被看见」</td></tr>
+<tr><td>⑧ 交托</td><td>560°–640°</td><td class="act">→ 模型</td><td>48%</td><td>一个中等模型读干净的三万 token，胜过最强模型淹在十八万噪声里</td></tr>
+<tr><td>⑨ 回收</td><td>640°–720°</td><td class="act">下一轮</td><td>48% → 20%</td><td>新信息进来，窗口重新装填；压缩后的历史成为下一轮的 Context</td></tr>
+</table>
+<p>两个容易错过、但值得在分步模式里细看的点：① 第 ③ 阶段预算只爬到 <b>55% 就停</b>——「模型支持 128K 就直接放满」的代价是没有容错、没有召回余地、注意力被稀释；② 第 ⑦ 阶段把扫描线停在窗口正中：<b>最关键的约束如果被海量工具返回推到中间，位置本身就等于失效</b>，模型不是忘了，是看不见。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件如何协同出「干净的工作集」</h2></div>
+<p class="sec-sub">把第 2 节的「结构」和第 3 节的「流程」叠在一起——这才是理解的完成态。</p>
+<div class="quote">「动静融合的关键是建立映射：将组成部件与操作步骤一一对应，理解各部件如何协同产生外在行为。系统 = 元素 + 连接 + 目标。」<i>—— 人月聊IT · 思维系列</i></div>
+<p>映射表：<b>每个部件在每个阶段里承担什么角色</b>。竖着看是一个阶段的全体协同，横着看是一个部件的完整职责。</p>
+<table class="grid">
+<tr><th>部件 ＼ 阶段</th><th>① Retrieve</th><th>② Select</th><th>③ 装填</th><th>④ Compress</th><th>⑤ Order</th><th>⑥ Inject</th><th>⑦ 注意力</th></tr>
+<tr><td>Context 仓库</td><td class="hot">被初筛</td><td>候选池</td><td class="act">条目流出</td><td>原文可召回</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>Select 分诊</td><td>—</td><td class="hot">定 P0-P3</td><td>决定谁进窗</td><td>决定谁被压</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>预算线</td><td>—</td><td>—</td><td class="hot">爬升到 55%</td><td class="hot">触发压缩</td><td>约束余量</td><td class="act">核算</td><td>—</td></tr>
+<tr><td>Compress</td><td>—</td><td>—</td><td>—</td><td class="hot">旧轮次→摘要</td><td>摘要参与排序</td><td>—</td><td>—</td></tr>
+<tr><td>Order 排序</td><td>—</td><td>—</td><td>条目堆叠</td><td>—</td><td class="hot">滑到有序位</td><td>—</td><td class="act">位置决定明暗</td></tr>
+<tr><td>首尾三明治</td><td>—</td><td>—</td><td>—</td><td>约束不参与压缩</td><td class="act">钉最前缀</td><td class="hot">尾部追加 reminder</td><td>两端高亮</td></tr>
+<tr><td>注意力曲线</td><td>—</td><td>—</td><td>—</td><td>—</td><td>排序服务它</td><td>注入完成</td><td class="hot">扫描验证</td></tr>
+</table>
+<p>点题一句：<b>「模型这次答得好」这个外在行为，不是任何单一工位的属性，而是「分诊 + 压缩 + 排序 + 三明治」整体协同涌现的</b>——尤其顺序：同样的九条内容，无序堆叠时中间的关键约束亮度只有 0.4，有序装配后头部与尾部都站到了注意力高地上。另一个涌现属性是<b>可自述</b>：截断过的工具返回带着「原文 N token 已省略」的标记，模型知道自己看到的不是全文——裁剪成为可推理的前提，而不是暗厢操作。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：它依赖什么才能工作</h2></div>
+<p class="sec-sub">主体之外，还有一圈支撑系统。</p>
+<div class="quote">「对事物的认识 = 空间属性 + 时间属性 + 环境属性（外在关系和依赖）。」<i>—— 人月聊IT · 思维系列</i></div>
+<div class="envcards">
+<div class="env"><b>写入侧供应链</b><span>入库解析、分片、补元数据、索引清单——写入侧被当软件资产管理（可发布、可灰度、可回滚），检索才有的可查。</span></div>
+<div class="env"><b>检索基础设施</b><span>向量库 / ES / 关键词索引 / 图谱。Select 与 Retrieve 的地基，也是 Refine 细节召回的慢路。</span></div>
+<div class="env"><b>压缩用的轻量模型</b><span>摘要是抽取不是推理。模型可读压缩：删礼貌与转场，只求极致信息密度，但禁改原意。</span></div>
+<div class="env"><b>多副本存储</b><span>DB + Redis、原文 / 摘要 / 索引三种精度共存。要管的是版本与失效：Item 带 version，事实走 upsert，软记忆带 superseded。</span></div>
+<div class="env"><b>分诊埋点</b><span>trace_id / item / priority / decision / reason / tokens_used——没有 trace 的分诊就是黑盒，调参只能调运气。</span></div>
+<div class="env"><b>画像与记忆系统</b><span>长期 / 候选 / 当前三层画像，四 C 稳定性评分。画像属于「老而重要」：新鲜度规则对它不适用。</span></div>
+</div>
+<p>动画里的装配台能转起来，前提是这六个系统在「环境」里就位。拆掉任何一个，外在行为立即消失——尤其是<b>写入侧供应链和分诊埋点</b>：拆掉它们，「哪条内容该进窗口」立刻退化成模型临场自判。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测：学习-实践-复盘的闭环</h2></div>
+<p class="sec-sub">用自己的话能讲清楚，才算真的懂。先答题，再对照解析。</p>
+<div id="quiz"></div>
+</section>
+
+<div class="summary">
+<h2>一页带走</h2>
+<p class="chant">仓库不是工作台；先分诊、再装配；约束钉两头，摘要不吞错。</p>
+<p>· 方法：表象（注意力预算分配）→ 结构（五组部件）→ 流程（九阶段）→ 融合（干净工作集是涌现属性）。</p>
+<p>· 结构：Context 仓库 + f 五段流水线 + P0-P3 分诊 + 预算线 + 注意力曲线 + 首尾三明治。</p>
+<p>· 行为：检索 → 分诊 → 装填到 55% → 60% 触发压缩 → 排序装配 → 注入 → 扫描验证 → 交托模型。</p>
+<p>· 协同：顺序与三明治让同九条内容亮度重排；干净的中等窗口胜过淹没在噪声里的最强模型。</p>
+</div>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+
+<script>
+(function(){
+// ============ 主题专属数据 ============
+var PERIOD=4600,PHASE_MAX=720;
+var STEPS=[
+{d:0,t:'Retrieve 取数',x:'从仓库初筛「可能相关」：按本次调用目标去向量库 / ES / DB 取；P3 只挂 handle 不展开——top_k=50 不是更保险，是让模型站在噪声里'},
+{d:80,t:'Select 分诊',x:'P0 贴眼前（安全策略、当前输入、身份）/ P1 进窗口 / P2 压缩后进 / P3 挂入口按需取。分诊不是删材料，调的是「信息离模型有多近」'},
+{d:160,t:'装填',x:'候选条目陆续进窗，预算占用爬到 55% 就停——不放满：没有容错、没有召回余地、注意力被稀释，放满了谁吃亏'},
+{d:260,t:'Compress 压缩',x:'触到 60% 线：先压缩、不中止。旧轮次转结构化摘要；错误堆栈带 is_error 强制保护位，超预算也进——别把测试套件压成一句话'},
+{d:320,t:'Order 排序',x:'条目从「堆叠」滑到「有序」：System → Goal → 硬约束 → 任务状态 → 关键事实 → 证据 → Observation → 候选 Action → 摘要。同样内容换个顺序，输出就会变'},
+{d:400,t:'Inject 注入',x:'最终装配：首尾三明治——硬约束钉在最前缀（内容极少变动，既是注意力高地又吃缓存），尾部再追加一份 constraint reminder'},
+{d:480,t:'注意力扫描',x:'扫描线扫过窗口：首尾高、中间衰减（Stanford TACL 2024）。「它在上下文里」和「模型看见了」是两回事——第 30 轮的 DROP TABLE 就是这么来的'},
+{d:560,t:'交托模型',x:'一个中等模型读干净的三万 token，常常胜过最强模型淹在十八万噪声里。可用性 Messaging：这条窗口的占用就是模型的全部世界观'},
+{d:640,t:'回收循环',x:'新信息进来，窗口重新装填；这一轮压缩出的摘要，成为下一轮的 Context。f 是每轮都要重跑一遍的函数，不是一次性管道'}
+];
+var PARTS={
+repo:['repoBox','sh0','sh1','sh2','sh3','sh4','sh5'],
+st0:['st0','tok'],st1:['st1','p03'],st2:['st2','cmpA','cmpB','cmpC'],st3:['st3'],st4:['st4','handT'],
+p03:['p03'],
+window:['winBox','budBar','budTxt','zoneH','zoneM','zoneT'],
+attn:['attnC','attnF','attnL','spot'],
+pin:['itR','it2'],
+cmp:['cmpA','cmpB','cmpC','cmpD']
+};
+var QUIZ=[
+{q:'认识上下文管理这类系统，正确的认知顺序是？',opts:['先记 Window 有多大，再记有哪些压缩算法','表象观察 → 静态分解 → 动态分析 → 动静融合','从 embedding 原理出发推演到窗口策略'],a:1,exp:'先看外在行为（黑盒：仓库进、工作集出），再拆静态结构，再追动态流程，最后把结构和流程映射起来——整体不等于零件之和。'},
+{q:'Context、Context Window、Memory 三个词的关系是？',opts:['一个意思的三种说法','Context 是全部信息空间，Window 是筛选压缩后喂给模型的可见工作集，Memory 只是部分 Context 的拟人化别名','Memory 是数据库，Context 是缓存'],a:1,exp:'Context 是仓库，Window 是手边的工作台：仓库里堆多少不算数，台面上摆着哪几样才算。神化 Memory 会让人放弃更底层的 Context 抽象。'},
+{q:'模型支持 128K 窗口，正确的用法是？',opts:['尽量放满，信息越多越安全','不放满：装配式留白，先扣 L0/L1/L2 与 reminder，对话区单独封顶，长期停在 20%-80% 健康区间','放满到 90% 以下就够了'],a:1,exp:'放满的代价：没有容错、没有召回余地、注意力被稀释。而且「塞得更全不是更安全，只是让模型站在噪声里做判断」。'},
+{q:'「信息在上下文里」等于「模型看见了」吗？',opts:['等于，上下文就是模型的记忆','不等于——注意力权重首尾最高、中间显著衰减；关键约束被推到中间，位置本身就等于失效','只要没被截断就一定能看见'],a:1,exp:'Lost in the Middle（TACL 2024）：模型不是忘了，是看不见。工程对策是首尾三明治 + 压缩禁区 + 前缀稳定换缓存。'},
+{q:'摘要必然丢细节。下面哪一类「绝不能丢」？',opts:['礼貌表达与转场句','最新用户输入、硬约束、已确认关键事实、Plan 与执行状态、输出格式模板，以及错误堆栈','模型觉得感想的句子'],a:1,exp:'错误信息是 Agent 的反馈回路：短堆栈原文留，长堆栈留「异常类型 + 关键数字 + 路径行号 + 首尾片段 + 原始日志 handle」——压掉它等于删自己的测试套件。'},
+{q:'滑动窗口（只留最近 N 轮）的致命伤是？',opts:['实现太复杂','最近的上下文不一定是最重要、最相关的——第 2 轮的硬约束第 25 轮就滑出去了，第 24 轮的无关工具返回却留得完整','太省 token 了'],a:1,exp:'滑动窗口只是基线不是答案。效果差时先查这一点：用户最早那句诉求，是不是被「最近优先」挤出了窗口。'}
+];
+// ============ 场景构建 ============
+var H='';
+// 左：Context 仓库
+H+='<g id="repoBox"><rect x="28" y="80" width="172" height="350" rx="10" fill="#FBFAF6" stroke="#3B3A34" stroke-width="1.4"/>'
++'<text class="tn" x="114" y="102" text-anchor="middle">Context 仓库</text>'
++'<text class="ts" x="114" y="120" text-anchor="middle">全部信息空间</text>';
+var shelves=['Instruction 指令','Goal 目标','Constraint 约束','History 历史对话','Tool 工具结果','Retrieval 检索·画像'];
+for(var s=0;s<6;s++){
+var sy=132+s*48;
+var pinned=s<3;
+H+='<g id="sh'+s+'"><rect x="40" y="'+sy+'" width="148" height="38" rx="6" fill="'+(pinned?'#FFF6E8':'#ffffff')+'" stroke="'+(pinned?'#EF9F27':'#D3D1C7')+'" stroke-width="1"/>'
++'<text class="tb" x="48" y="'+(sy+16)+'">'+shelves[s]+'</text>'
++'<rect x="48" y="'+(sy+21)+'" width="26" height="10" rx="2" fill="#F5F4EF" stroke="#B4B2A9" stroke-width="0.7"/>'
++'<rect x="78" y="'+(sy+21)+'" width="26" height="10" rx="2" fill="#F5F4EF" stroke="#B4B2A9" stroke-width="0.7"/>'
++'<rect x="108" y="'+(sy+21)+'" width="26" height="10" rx="2" fill="#F5F4EF" stroke="#B4B2A9" stroke-width="0.7"/></g>';
+}
+H+='</g>';
+H+='<path d="M200 116 L238 116" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)" fill="none"/>';
+// 中：五段流水线
+var stations=[['st0','Retrieve 检索','可能相关'],['st1','Select 分诊','真正相关'],['st2','Compress 压缩','粒度'],['st3','Order 排序','位置'],['st4','Inject 注入','最终装配']];
+for(var q=0;q<5;q++){
+var qy=90+q*70;
+H+='<g id="'+stations[q][0]+'"><rect x="240" y="'+qy+'" width="220" height="52" rx="10" fill="#ffffff" stroke="#3B3A34" stroke-width="1.4"/>'
++'<text class="tn" x="256" y="'+(qy+22)+'">'+(q+1)+'. '+stations[q][1]+'</text>'
++'<text class="ts" x="256" y="'+(qy+40)+'">'+stations[q][2]+'</text></g>';
+if(q<4)H+='<path d="M350 '+(qy+52)+' L350 '+(qy+68)+'" stroke="#C46A0A" stroke-width="1.5" marker-end="url(#flw)" fill="none"/>';
+}
+// P0-P3 chips（在 Select 内）
+for(var c=0;c<4;c++){
+H+='<g id="pc'+c+'"><rect x="'+(246+c*52)+'" y="186" width="48" height="20" rx="6" fill="#F5F4EF" stroke="#D3D1C7" stroke-width="1"/>'
++'<text class="ts" x="'+(270+c*52)+'" y="200" text-anchor="middle">'+['P0 眼前','P1 进窗','P2 压进','P3 挂柄'][c]+'</text></g>';
+}
+H+='<g id="p03"></g>';
+// 右：窗口与预算
+H+='<g id="attnL"><text class="ts" x="520" y="80">注意力权重（首尾高 · 中间衰减）</text></g>';
+H+='<g id="attnF"></g><path id="attnC" d="" stroke="#C46A0A" stroke-width="1.8" fill="none"/>';
+H+='<g id="winBox"><rect x="520" y="250" width="430" height="160" rx="10" fill="#ffffff" stroke="#3B3A34" stroke-width="1.6"/>'
++'<text class="tn" x="530" y="242">Context Window（可见工作集）</text>'
++'<rect id="zoneH" x="526" y="258" width="112" height="144" rx="6" fill="#FFF6E8" stroke="#F2D9A7" stroke-width="1" stroke-dasharray="4 3"/>'
++'<text class="ts" x="582" y="272" text-anchor="middle" fill="#854F0B">头部·高地</text>'
++'<rect id="zoneM" x="642" y="258" width="214" height="144" rx="6" fill="#FAFAF7" stroke="#ECEAE2" stroke-width="1"/>'
++'<text class="ts" x="749" y="272" text-anchor="middle" fill="#8A877C">中部·低敏区</text>'
++'<rect id="zoneT" x="860" y="258" width="84" height="144" rx="6" fill="#FFF6E8" stroke="#F2D9A7" stroke-width="1" stroke-dasharray="4 3"/>'
++'<text class="ts" x="902" y="272" text-anchor="middle" fill="#854F0B">尾部</text></g>';
+// 预算条
+H+='<g id="budBox"><rect x="962" y="250" width="30" height="160" rx="6" fill="#FBFAF6" stroke="#3B3A34" stroke-width="1.2"/>'
++'<rect id="budBar" x="966" y="330" width="22" height="80" rx="4" fill="#EF9F27"/>'
++'<line id="budLine" x1="520" y1="314" x2="956" y2="314" stroke="#E24B4A" stroke-width="1" stroke-dasharray="5 4"/>'
++'<text class="ts" x="956" y="308" text-anchor="end" fill="#8A2A2A">60% 压</text>'
++'<text id="budTxt" class="ts" x="977" y="430" text-anchor="middle" fill="#854F0B">20%</text></g>';
+// 窗口条目
+var ITEMS=[
+{id:'it0',name:'系统指令',sub:'L0 常驻',x:530,y:282,w:104,tail:0},
+{id:'it2',name:'硬约束',sub:'只增不减',x:530,y:346,w:104,pin:1},
+{id:'it1',name:'当前 Goal',sub:'每步量',x:648,y:282,w:62},
+{id:'it3',name:'任务状态',sub:'Plan 节点',x:716,y:282,w:62},
+{id:'it4',name:'关键事实',sub:'已确认',x:784,y:282,w:62},
+{id:'it5',name:'工具 Obs',sub:'',x:648,y:346,w:62,cnt:'5000→700'},
+{id:'it6',name:'候选 Action',sub:'top-K',x:716,y:346,w:62},
+{id:'it7',name:'历史摘要',sub:'',x:784,y:346,w:62,cnt:'多轮→1页'},
+{id:'itR',name:'约束 reminder',sub:'交卷前提醒',x:862,y:282,w:80,tail:1,pin:1},
+{id:'itF',name:'动态 few-shot',sub:'边界样本',x:862,y:346,w:80,tail:1}
+];
+H+='<g id="items"></g>';
+// 压缩对比区
+H+='<g id="cmpA"><rect x="28" y="452" width="180" height="72" rx="8" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.2"/>'
++'<text class="tb" x="40" y="472">工具返回 · 5000 token</text>'
++'<rect x="40" y="482" width="156" height="12" rx="3" fill="#FAC775"/><text class="ts" x="40" y="512">原文 · 全量入栈即截断</text></g>';
+H+='<g id="cmpB"><rect x="240" y="452" width="180" height="72" rx="8" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.2"/>'
++'<text class="tb" x="252" y="472">摘要版 · 700 token</text>'
++'<rect x="252" y="482" width="22" height="12" rx="3" fill="#EF9F27"/>'
++'<text class="ts" x="252" y="512">保头 500 · 尾 200 · 中间一句</text></g>';
+H+='<g id="cmpC"><rect x="452" y="452" width="216" height="72" rx="8" fill="#FFF6E8" stroke="#E24B4A" stroke-width="1.2"/>'
++'<text class="tb" x="464" y="472" fill="#8A2A2A">错误堆栈 · is_error 保护位</text>'
++'<rect x="464" y="482" width="192" height="12" rx="3" fill="#FCEBEB" stroke="#E24B4A" stroke-width="0.8"/>'
++'<text class="ts" x="464" y="512">异常类型+关键数字+路径行号，超预算也进</text></g>';
+H+='<g id="cmpD"><rect x="700" y="452" width="272" height="72" rx="8" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.2"/>'
++'<text class="tb" x="712" y="472">anchor 锚五问（增量合并，不整体重写）</text>'
++'<text class="ts" x="712" y="492">用户要什么 · 已改什么 · 已决定什么</text>'
++'<text class="ts" x="712" y="510" fill="#854F0B">已排除什么（最易丢） · 下一步做什么</text></g>';
+// 交托标记
+H+='<g id="handT" opacity="0"><text class="tn" x="950" y="230" text-anchor="end" fill="#854F0B">→ 交给模型推理</text></g>';
+// 令牌
+H+='<circle id="tok" cx="114" cy="255" r="10" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/>';
+// 扫描线
+H+='<g id="spot" opacity="0"><line id="spotL" x1="520" y1="128" x2="520" y2="240" stroke="#D96C06" stroke-width="1.6"/>'
++'<text id="spotT" class="ts" x="520" y="120" text-anchor="middle" fill="#854F0B">A=0.73</text></g>';
+document.getElementById('scene').innerHTML=H;
+// ============ 条目与曲线 ============
+function smooth(t){return t*t*(3-2*t);}
+function lerp(a,b,t){return a+(b-a)*t;}
+function clamp01(v){return Math.max(0,Math.min(1,v));}
+// 注意力公式：首尾高斯 + 恒定底噪（对应 Lost in the Middle 的 U 型权重）
+function A(u){return 0.12+0.95*Math.exp(-Math.pow((u-0.04)/0.11,2))+0.65*Math.exp(-Math.pow((u-0.94)/0.14,2));}
+// 曲线 path
+var pd='M520 '+(225-160*A(0)).toFixed(1);
+for(var i=1;i<=48;i++){var u=i/48;pd+=' L'+(520+430*u).toFixed(1)+' '+(225-160*A(u)).toFixed(1);}
+document.getElementById('attnC').setAttribute('d',pd);
+var fd=pd+' L950 225 L520 225 Z';
+var fpoly=document.createElementNS('http://www.w3.org/2000/svg','path');
+fpoly.setAttribute('d',fd);fpoly.setAttribute('fill','#FAC775');fpoly.setAttribute('opacity','0.14');
+document.getElementById('attnF').appendChild(fpoly);
+// 条目
+var itemEls=[];
+ITEMS.forEach(function(it,i){
+var g=document.createElementNS('http://www.w3.org/2000/svg','g');
+g.setAttribute('id',it.id);
+var pin=it.pin;
+g.innerHTML='<rect x="'+it.x+'" y="'+it.y+'" width="'+it.w+'" height="50" rx="8" fill="'+(pin?'#FFF6E8':'#ffffff')+'" stroke="'+(pin?'#D97E06':'#D3D1C7')+'" stroke-width="'+(pin?1.6:1)+'"/>'
++'<text class="tb" x="'+(it.x+6)+'" y="'+(it.y+18)+'">'+it.name+'</text>'
++'<text class="ts" x="'+(it.x+6)+'" y="'+(it.y+33)+'">'+it.sub+'</text>'
++(it.cnt?'<text class="ts" x="'+(it.x+6)+'" y="'+(it.y+46)+'" fill="#854F0B">'+it.cnt+'</text>':'');
+document.getElementById('items').appendChild(g);
+it.sx=524+(i%3)*12;it.sy=282+(i%2)*64;
+it.u=((it.x+it.w/2)-520)/430;
+it.el=g;
+itemEls.push(it);
+});
+// ============ 通用脚手架 ============
+var el={};
+['tok','budBar','budTxt','budLine','spot','spotL','spotT','handT','attnC','attnF'].forEach(function(id){el[id]=document.getElementById(id);});
+['pc0','pc1','pc2','pc3'].forEach(function(id,i){el['pc'+i]=document.getElementById(id);});
+['st0','st1','st2','st3','st4'].forEach(function(id){el[id]=document.getElementById(id);});
+['sh0','sh1','sh2','sh3','sh4','sh5'].forEach(function(id){el[id]=document.getElementById(id);});
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var dots=[];
+for(var s=0;s<STEPS.length;s++){
+(function(n){
+var b=document.createElement('button');
+b.className='stepnode';
+b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+b.onclick=function(){goStep(n);};
+stepBar.appendChild(b);dots.push(b);
+})(s);
+}
+var stepIdx=-1;
+function setAuto(on){
+mode='auto';run=on;btn.textContent=on?'暂停':'播放';
+if(on){stepIdx=-1;dots.forEach(function(d){d.classList.remove('on');});
+stepT.textContent='自动运转模式';
+stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格。';}
+}
+window.goStep=function(i){
+stepIdx=(i+STEPS.length)%STEPS.length;
+mode='step';run=false;
+phase=STEPS[stepIdx].d/PHASE_MAX*PERIOD;
+btn.textContent='继续自动运转';
+dots.forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+stepX.textContent=STEPS[stepIdx].x;
+};
+btn.textContent=run?'暂停':'播放';
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+// ---- 运动学：令牌沿五工位插值；条目 staging→slot 插值；预算分段线性；曲线由高斯公式逐点采样 ----
+var WP=[[0,114,255],[30,114,255],[80,350,116],[150,350,116],[190,350,186],[260,350,186],[300,350,256],[400,350,256],[440,350,326],[560,350,326],[600,350,396],[710,350,396],[760,578,307],[720,578,307]];
+function tokPos(th){
+var i=0;while(i<WP.length-2&&th>WP[i+1][0])i++;
+var a=WP[i],b=WP[i+1];var t=smooth((th-a[0])/(b[0]-a[0]));
+return[a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+}
+function budgetAt(th){
+if(th<160)return 20+(55-20)*smooth(th/160);
+if(th<260)return 20+(55-20)*1; // hold 55
+if(th<320)return lerp(55,35,smooth((th-260)/60));
+if(th<640)return 35+(48-35)*smooth((th-320)/320);
+if(th<720)return lerp(48,20,smooth((th-640)/80));
+return 20;
+}
+function stationOn(th){
+if(th<150)return 0;if(th<260)return 1;if(th<400)return 2;if(th<560)return 3;return 4;
+}
+var curSt=-1;
+function tick(now){
+var dt=Math.min(50,now-last);last=now;
+if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+var th=phase/PERIOD*PHASE_MAX;
+// 令牌
+var p=tokPos(th);
+el.tok.setAttribute('cx',p[0].toFixed(1));el.tok.setAttribute('cy',p[1].toFixed(1));
+// 工位高亮
+var st=stationOn(th);
+if(st!==curSt){
+curSt=st;
+for(var q=0;q<5;q++){
+var r=el['st'+q].children[0];
+r.setAttribute('fill',q===st?'#FFF6E8':'#ffffff');
+r.setAttribute('stroke',q===st?'#D97E06':'#3B3A34');
+}
+}
+// 货架高亮（Retrieve 阶段依次扫过）
+for(var s2=0;s2<6;s2++){
+var on=th<150&&th>=s2*22;
+var r=el['sh'+s2].children[0];
+r.setAttribute('fill',on?'#FFF6E8':(s2<3?'#FFF6E8':'#ffffff'));
+r.setAttribute('stroke',on?'#EF9F27':(s2<3?'#EF9F27':'#D3D1C7'));
+}
+// P0-P3 chips
+for(var c=0;c<4;c++){
+var on=th>=90+c*18&&th<200;
+var r=el['pc'+c].children[0];
+r.setAttribute('fill',on?'#FFF1D6':'#F5F4EF');
+r.setAttribute('stroke',on?'#EF9F27':'#D3D1C7');
+}
+// 预算
+var b=budgetAt(th);
+el.budBar.setAttribute('y',(410-160*b/100).toFixed(1));
+el.budBar.setAttribute('height',(160*b/100).toFixed(1));
+el.budBar.setAttribute('fill',b>50?'#FAC775':'#EF9F27');
+el.budTxt.textContent=Math.round(b)+'%';
+// 扫描 spotlight（480-560）
+var spOn=th>=480&&th<560;
+el.spot.setAttribute('opacity',spOn?1:0);
+var sp=smooth(clamp01((th-480)/80));
+var sx=520+430*sp;
+el.spotL.setAttribute('x1',sx.toFixed(1));el.spotL.setAttribute('x2',sx.toFixed(1));
+el.spotT.setAttribute('x',sx.toFixed(1));
+el.spotT.textContent='A='+A(sp).toFixed(2);
+// 交托标记
+el.handT.setAttribute('opacity',th>=560&&th<640?1:0);
+// 条目运动
+var orderT=smooth(Math.max(0,Math.min(1,(th-320)/80)));
+itemEls.forEach(function(it,i){
+var entered=th>=160+i*8;
+var x=lerp(it.sx,it.x,orderT),y=lerp(it.sy,it.y,orderT);
+var base=0.32+0.68*A(it.u);
+var spotB=(spOn&&Math.abs((it.x+it.w/2)-sx)<64)?0.34:0;
+var fade=th>=660?lerp(1,0.12,smooth((th-660)/60)):1;
+var op=Math.min(1,(entered?1:0)*(base+spotB)*fade);
+it.el.setAttribute('opacity',op.toFixed(2));
+it.el.setAttribute('transform','translate('+(x-it.x).toFixed(1)+' '+(y-it.y).toFixed(1)+')');
+});
+requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+document.querySelectorAll('.part').forEach(function(b){
+b.onclick=function(){
+var ids=PARTS[b.getAttribute('data-part')]||[];
+ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+};
+});
+var BASE=(location.pathname.split('/agent-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/agent/lab';
+document.getElementById('lnkArt').href=BASE+'/agent/tutorial/03-context-management';
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+var d=document.createElement('div');d.className='q';
+var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+h+='<div class="exp">'+it.exp+'</div>';
+d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+var b=e.target.closest('.opt');if(!b)return;
+var box2=b.parentElement;if(box2.classList.contains('done'))return;
+box2.classList.add('done');
+var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+box2.querySelectorAll('.opt').forEach(function(x){
+var xi=+x.getAttribute('data-oi');
+if(xi===QUIZ[qi].a)x.classList.add('right');
+else if(x===b)x.classList.add('wrong');
+});
+});
+})();
+</script>
+</body>
+</html>

@@ -120,5 +120,10 @@
   "codeRoots": [],
   "assets": [
     "assets"
-  ]
+  ],
+  "lab": {
+    "title": "互动原理实验室",
+    "subtitle": "七章动态图解：把 Agent 运行的每个关键原理，做成能看、能点、能测的一页课",
+    "route": "/agent/lab"
+  }
 }

@@ -83,6 +83,16 @@ export interface TrackMeta {
   sections: SectionMeta[];
   /** SourceRef 允许解析的源码根目录白名单（相对 tracks/<id>/） */
   codeRoots: string[];
+  /** 互动实验室入口（轨道有图解页时存在）；章节数据在站点侧 lib/agent-lab.ts */
+  lab?: LabMeta | null;
+}
+
+/** 轨道互动实验室的元信息（只描述入口，章节清单在站点侧维护） */
+export interface LabMeta {
+  title: string;
+  subtitle: string;
+  /** 实验室根路由，例如 `/agent/lab` */
+  route: string;
 }
 
 /** 内容索引：站点启动后拉取的第一个文件 */

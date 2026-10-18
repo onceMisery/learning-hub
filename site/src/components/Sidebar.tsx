@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { Icon } from './Icon';
 import { cn, pageOrderBadge } from '@/lib/format';
@@ -63,6 +63,7 @@ interface TrackGroupProps {
 }
 
 function TrackGroup({ track, open, onToggle, activePageId, doneIds, onNavigate }: TrackGroupProps) {
+  const location = useLocation();
   const isActiveTrack = activePageId?.startsWith(`${track.id}/`) ?? false;
   const pageCount = track.sections.reduce((sum, section) => sum + section.pages.length, 0);
   const doneCount = track.sections.reduce(
@@ -170,6 +171,30 @@ function TrackGroup({ track, open, onToggle, activePageId, doneIds, onNavigate }
                   })}
                 </div>
               ))}
+
+              {/* 互动实验室入口：与章节平级，指向 AgentLabPage */}
+              {track.lab ? (
+                <div className="mb-2">
+                  <p className="px-2 py-1 text-[11px] font-medium uppercase tracking-wider text-[var(--text-3)]">
+                    互动
+                  </p>
+                  <NavLink
+                    to={track.lab.route}
+                    onClick={onNavigate}
+                    className={cn(
+                      'flex items-center gap-1.5 rounded-[var(--radius-sm)] px-2 py-[5px] text-[13px] leading-snug transition-colors duration-100',
+                      location.pathname.startsWith(track.lab.route)
+                        ? 'bg-[var(--accent-soft)] font-medium text-[var(--text)]'
+                        : 'text-[var(--text-2)] hover:bg-[var(--surface-2)] hover:text-[var(--text)]',
+                    )}
+                  >
+                    <span className="text-[var(--accent)]" aria-hidden="true">
+                      <Icon name="sparkles" size={12} />
+                    </span>
+                    <span className="min-w-0 flex-1">{track.lab.title}</span>
+                  </NavLink>
+                </div>
+              ) : null}
             </div>
           </motion.div>
         ) : null}

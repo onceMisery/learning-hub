@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>分路召回 · Agent 运行原理实验室 第 4 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:920px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:680px}
+.method-chain{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:18px}
+.method-chain .mnode{background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 14px;font-size:13px;font-weight:500}
+.method-chain .marr{color:#C46A0A;font-weight:600}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:500;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:11.5px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:500;fill:#1F1E1A}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:78px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:11px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:9px 10px;text-align:center}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：检索与 RAG</a>
+  <span class="idx">第 4 / 7 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · 动静结合认知法</div>
+<h1>分路召回：让该在场的必须到场</h1>
+<p>「评审会上定死的禁止 ORM，特意写进了向量库，六周后 Agent 照样导入」——它没删你的规则，它只是<b>没看见</b>。相似度这把尺子，量不了「该不该在场」。这页课把检索做成四路并发的管线，并用一次完整的事故-修复对照演示分路架构，动画支持<b>自动运转</b>和<b>分步点击</b>两种模式。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span><span class="marr">→</span>
+<span class="mnode">② 静态分解</span><span class="marr">→</span>
+<span class="mnode">③ 动态分析</span><span class="marr">→</span>
+<span class="mnode">④ 动静融合</span><span class="marr">→</span>
+<span class="mnode">⑤ 环境场景</span><span class="marr">→</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 560" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>分路召回四阶段管线动画</title>
+<defs>
+<marker id="flw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/>
+</marker>
+</defs>
+<text class="th" x="500" y="24" text-anchor="middle">分路召回 · 剖面运转示意</text>
+<text class="ts" x="500" y="44" text-anchor="middle">Query Planning → 四路并发 → 优先级合并 → 证据入窗：约束先抢窗口，剩下的才轮到偏好与细节</text>
+<text class="ts" x="985" y="24" text-anchor="end">红框 = 约束（必须在场）</text>
+<text class="ts" x="985" y="40" text-anchor="end">琥珀 = 概率域（相关即可）</text>
+<g id="scene"></g>
+</svg>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 次检索 / 6.4 秒</span>
+</div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav">
+<button class="btn" onclick="goStep(stepIdx-1)">‹ 上一步</button>
+<button class="btn warn" onclick="goStep(stepIdx+1)">下一步 ›</button>
+</span>
+</div>
+</div>
+</div>
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：先把它当黑盒</h2></div>
+<p class="sec-sub">第一步不拆机器，只看它对外表现出什么行为。</p>
+<div class="quote">「对事物的观察包括了静态结构 + 动态生命周期 + 环境场景三个方面的内容。」<i>—— 人月聊IT · 思维系列</i></div>
+<p>从外部看，检索系统做的事只有一件：<b>一个问题进来，一组排好序、带着来源的证据出去</b>。它不生成答案，它决定模型「凭什么下判断」。好的检索和坏的检索，在调用方看来都是一次普通查询——差别只在答案的因果链能不能追到「哪一版索引里的哪个 chunk」。</p>
+<div class="flow">
+<span class="node">Query（含缺口）</span><span class="arr">→</span>
+<span class="node">分路召回（黑盒）</span><span class="arr">→</span>
+<span class="node">证据卡（主产物）</span>
+<span class="node">空结果 / 迭代轮次（副产物）</span>
+</div>
+<p>黑盒观察的结论：这是一台<b>知识供应链的读取段</b>——写入侧管「候选从哪来、是什么版本」，读取侧管「谁先进窗口」。带着这个结论，现在打开黑盒。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：它由什么组成</h2></div>
+<p class="sec-sub">打开黑盒，沿空间维度拆解。点部件卡片，动画中对应部分会亮成琥珀色。</p>
+<div class="quote">「它由什么构成？核心方法是分解、分类、结构化——分解需符合 MECE 法则，同层必须粒度一致。」<i>—— 人月聊IT · 思维系列</i></div>
+<p>分路召回管线可按功能分成<b>五组</b>：</p>
+<div class="partgroup">
+<div class="gname">Query 组 —— 负责「先知道缺什么」</div>
+<div class="parts">
+<button class="part" data-part="qbox"><b>Query Planning</b><span>从「复述问题」转向「描述信息缺口」；保留硬约束、消除歧义、统一术语、补过滤条件。</span></button>
+<button class="part" data-part="qbox"><b>改写与 Query Set</b><span>改写只做补齐已确认信息，不做美化到看起来完整；原始 Query 与改写 Query 并存，不替换。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">四路组 —— 负责「不同域用不同尺子」</div>
+<div class="parts">
+<button class="part" data-part="ln1"><b>S1 规则硬召回</b><span>约束必须在场：触发条件匹配就无条件进上下文，全程不算余弦——整条架构的灵魂。</span></button>
+<button class="part" data-part="ln2"><b>S2 精确召回</b><span>API 名、表名、错误码必须逐字命中，差一个字符就不是同一个东西。</span></button>
+<button class="part" data-part="ln3"><b>S3 向量语义 + 重排</b><span>偏好、情节这类「大概相关就够了」的软信息，归概率域。</span></button>
+<button class="part" data-part="ln4"><b>S4 实体图谱</b><span>状态类返回最新值；关系与多跳链条，向量和关键字都走不动。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">融合组 —— 负责「谁先进窗口」</div>
+<div class="parts">
+<button class="part" data-part="mg"><b>RRF 名次融合</b><span>Σ 1/(k+rank)：向量 0.82、BM25 13.6、图谱只有名次——名次才是跨系统通用的硬通货。</span></button>
+<button class="part" data-part="mg"><b>硬过滤在前</b><span>权限、租户、时间、用户明示约束管「能不能留」——该清场就删，不是分数置 0。</span></button>
+<button class="part" data-part="mg"><b>约束帽 40%</b><span>无条件进入不等于无脑全塞：几十条同域约束真能把预算占满，Agent 只剩规矩没有事实。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">出口组 —— 负责「证据变成决策素材」</div>
+<div class="parts">
+<button class="part" data-part="win"><b>证据卡</b><span>统一格式：来源、类型、时间、版本、定位符。多模态对齐是模型的活，接口归一是工程的活。</span></button>
+<button class="part" data-part="win"><b>预算优先级</b><span>合并串行逐段填：约束先抢窗口，剩下的才轮到偏好与细节。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">经济组 —— 负责「花多少钱办多少事」</div>
+<div class="parts">
+<button class="part" data-part="eco"><b>最小充分检索</b><span>找出当前最小的、可独立完成的目标，只检索解决它所需的信息——最快的查询是没发生的查询。</span></button>
+<button class="part" data-part="eco"><b>退出与迭代</b><span>效果 / 边际 / 资源 / 澄清四类退出条件同时设；进度条是新增证据数，不是轮数。</span></button>
+</div>
+</div>
+<p class="hint">静态分解只回答了「有什么」。一次「写数据库访问层」的检索，四路怎么并发、红线怎么进窗、什么时候停？必须切换到时间维度——下一节。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：它如何运转</h2></div>
+<p class="sec-sub">盯住那些移动的卡片。用动画下方的 9 个步骤点逐帧走完一次完整检索。</p>
+<div class="quote">「它如何演变与运作？关注时间轴上的发展规律、行为模式和内部流程。核心方法是流程分析、行为追溯。」<i>—— 人月聊IT · 思维系列</i></div>
+<p><b>操作：</b>点击动画下方步骤条上的圆点（或「下一步」按钮），画面会定格在对应时刻。建议完整走两遍：第一遍只看红框卡片走哪条路，第二遍同时看合并带的预算段怎么按优先级填。</p>
+<table class="grid">
+<tr><th>阶段</th><th>时刻</th><th>S1 规则</th><th>S3 向量</th><th>合并带</th><th>这一步在干什么</th></tr>
+<tr><td>① Query Planning</td><td>0°–80°</td><td>—</td><td>—</td><td>—</td><td>把「复述问题」改成「描述信息缺口」：缺的是数据库操作规范</td></tr>
+<tr><td>② 四路并发</td><td>80°–160°</td><td class="act">发起</td><td class="act">发起</td><td>—</td><td>四个通道同时查；各路 Top-K 不必一致，别为配置表好看设同一个 K</td></tr>
+<tr><td>③ S1 命中</td><td>160°–240°</td><td class="hot">红线强制进</td><td>—</td><td>—</td><td>「禁止 ORM」相似度只有 0.38——但它不算余弦，触发条件命中即进</td></tr>
+<tr><td>④ S3 返回</td><td>240°–300°</td><td>—</td><td class="act">画像 0.71 / 结构 0.63</td><td>—</td><td>概率域归概率：过阈值 0.45 的进候选池</td></tr>
+<tr><td>⑤ 优先级合并</td><td>300°–360°</td><td colspan="2" class="act">候选汇入</td><td class="hot">约束先抢 40%</td><td>S1 先填预算，S2/S3/S4 按名次依次；分数不进公式</td></tr>
+<tr><td>⑥ 证据入窗</td><td>360°–420°</td><td class="hot">置顶</td><td class="act">随后</td><td class="act">汇出</td><td>统一证据卡（来源 / 类型 / 版本 / 定位符）进上下文</td></tr>
+<tr><td>⑦ 充分性判断</td><td>420°–480°</td><td colspan="3" class="act">六问过一遍</td><td>各部分有证据吗 / 能支撑结论吗 / 冲突吗 / 缺限定吗 / 还有有效信息吗</td></tr>
+<tr><td>⑧ 最小充分</td><td>480°–560°</td><td colspan="3" class="hot">第一个目标即停</td><td>「判断适不适合」查完就收；价格、优惠券、库存一次都没查</td></tr>
+<tr><td>⑨ 生成与闭环</td><td>560°–720°</td><td colspan="3" class="act">红线可见下生成</td><td>模型写原生 SQL；bad case 回流测试集——同一个坑只踩一次</td></tr>
+</table>
+<p>两个容易错过、但值得在分步模式里细看的点：① 第 ⑤ 阶段红框卡片是<b>穿过合并带直接置顶</b>的——越是保命的内容，越不该跟偏好抢名次；② 第 ⑧ 阶段<b>「没发生的查询」被显式画了出来</b>（灰色虚线框）——它们不是被优化掉了，是根本不该发生，这就是最小充分检索和省着查的区别。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件如何协同出「该在场的在场」</h2></div>
+<p class="sec-sub">把第 2 节的「结构」和第 3 节的「流程」叠在一起——这才是理解的完成态。</p>
+<div class="quote">「动静融合的关键是建立映射：将组成部件与操作步骤一一对应，理解各部件如何协同产生外在行为。系统 = 元素 + 连接 + 目标。」<i>—— 人月聊IT · 思维系列</i></div>
+<p>映射表：<b>每个部件在每个阶段里承担什么角色</b>。竖着看是一个阶段的全体协同，横着看是一个部件的完整职责。</p>
+<table class="grid">
+<tr><th>部件 ＼ 阶段</th><th>① 规划</th><th>② 并发</th><th>③④ 各路返回</th><th>⑤ 合并</th><th>⑥ 入窗</th><th>⑦⑧ 判断</th></tr>
+<tr><td>Query Planning</td><td class="hot">描述缺口</td><td>产出 Query Set</td><td>—</td><td>—</td><td>—</td><td>决定查不查</td></tr>
+<tr><td>S1 规则路</td><td>读触发条件</td><td class="act">发起</td><td class="hot">红线命中</td><td class="hot">先抢 40% 帽</td><td class="hot">置顶进窗</td><td>被看见 ≠ 被遵守</td></tr>
+<tr><td>S2 精确路</td><td>—</td><td class="act">发起</td><td class="act">逐字命中</td><td>按名次填</td><td>证据卡</td><td>—</td></tr>
+<tr><td>S3 向量路</td><td>改写 Query</td><td class="act">发起</td><td class="act">0.71 / 0.63</td><td>RRF 融合</td><td>证据卡</td><td>充分性输入</td></tr>
+<tr><td>S4 图谱路</td><td>—</td><td class="act">发起</td><td class="act">状态最新值</td><td>按名次填</td><td>证据卡</td><td>—</td></tr>
+<tr><td>合并带预算</td><td>—</td><td>—</td><td>候选汇入</td><td class="hot">优先级填充</td><td class="act">容量核算</td><td>决定是否迭代</td></tr>
+<tr><td>充分性判断</td><td>—</td><td>—</td><td>—</td><td>—</td><td>证据齐备</td><td class="hot">够则停 / 缺则查</td></tr>
+</table>
+<p>点题一句：<b>「保命红线六周后仍在场」这个外在行为，不是任何一个检索器的属性，而是「写入分类 + 读取分路 + 优先级合并」整体协同涌现的</b>。把同一条规则倒进向量池，它的生死由余弦相似度决定——那是把确定域扔进了概率筛子，像拿尺子量温度。反过来，分路架构也有它的价格：规则路依赖 domain 抽取，抽错了全线跳过——所以兜底要按「抽错也不至于全废」来设计：多值宽口径注入、按动作类型触发、约束漏注入计入审计。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：它依赖什么才能工作</h2></div>
+<p class="sec-sub">主体之外，还有一圈支撑系统。</p>
+<div class="quote">「对事物的认识 = 空间属性 + 时间属性 + 环境属性（外在关系和依赖）。」<i>—— 人月聊IT · 思维系列</i></div>
+<div class="envcards">
+<div class="env"><b>写入侧供应链</b><span>采集、解析、分片、补元数据、入库校验。没有 IndexManifest 和 golden_set 回归，索引连「能不能切线上」都答不了。</span></div>
+<div class="env"><b>检索基础设施</b><span>规则引擎 / 倒排索引 / 向量库 / 图谱。先一百万缩到一万，再谈向量查询——高频过滤条件提前建索引。</span></div>
+<div class="env"><b>Embedding 与 Rerank</b><span>概率域的两件重型装备。但 Codex 全仓零向量也活得很好——语料短而可控时才敢零向量，可抄的是决策顺序。</span></div>
+<div class="env"><b>知识源治理</b><span>owner、生效期、权限域、下线预案。废止规则还躺在索引里答题，是「新文档没生效」类事故的经典根子。</span></div>
+<div class="env"><b>评估黄金集</b><span>Recall@K、证据覆盖率、重复率、检索结果编辑距离。Recall 涨而答案降，最常见是重复率上升——进来的更多，但更脏。</span></div>
+<div class="env"><b>缓存三层</b><span>结果缓存 → 答案缓存 → 入库期派生复用。优先缓存检索结果，谨慎缓存最终答案——依赖实时数据时它就是过期答案发射器。</span></div>
+</div>
+<p>动画里的管线能转起来，前提是这六个系统在「环境」里就位。拆掉任何一个，外在行为立即消失——尤其是<b>写入侧供应链</b>：拆掉它，「候选从哪来、是什么版本」立刻变成一笔糊涂账。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测：学习-实践-复盘的闭环</h2></div>
+<p class="sec-sub">用自己的话能讲清楚，才算真的懂。先答题，再对照解析。</p>
+<div id="quiz"></div>
+</section>
+
+<div class="summary">
+<h2>一页带走</h2>
+<p class="chant">确定域走规则，概率域走向量；名次是硬通货，最快的查询是没发生的查询。</p>
+<p>· 方法：表象（知识供应链读取段）→ 结构（五组部件）→ 流程（九阶段）→ 融合（红线在场是涌现属性）。</p>
+<p>· 结构：Query Planning + 四路召回 + RRF 融合 + 优先级预算 + 证据卡 + 最小充分。</p>
+<p>· 行为：约束走触发条件强制进，偏好细节走向量按名次填；充分性够就停，缺什么才查什么。</p>
+<p>· 协同：写入分类 × 读取分路 × 优先级合并，三件事齐了，「该在场的必须到场」才成立。</p>
+</div>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+
+<script>
+(function(){
+// ============ 主题专属数据 ============
+var PERIOD=4600,PHASE_MAX=720;
+var STEPS=[
+{d:0,t:'Query Planning',x:'从「复述问题」转向「描述信息缺口」：用户要的是数据库操作规范。保留硬约束、消除歧义、统一术语、补过滤条件——不擅自补事实'},
+{d:80,t:'四路并发',x:'S1 规则路 / S2 精确路 / S3 向量路 / S4 图谱路同时发起。各路 Top-K 不必一致：向量噪声多多召回，关键字命中集中少给点'},
+{d:160,t:'S1 规则硬召回',x:'「禁止使用 ORM」的相似度只有 0.38——被向量路判了死刑。但约束路不算余弦：domain=database 触发条件一命中，无条件进上下文'},
+{d:240,t:'S3 向量返回',x:'概率域归概率：用户画像 0.71、库表结构 0.63，过阈值 0.45 进候选池。偏好、情节这类软信息，本来就不该逐字命中'},
+{d:300,t:'优先级合并',x:'合并串行逐段填预算：约束先抢窗口（帽 40%），精确与图谱按名次填，向量偏好随后。Σ1/(k+rank) 只吃名次，分数不进公式'},
+{d:360,t:'证据入窗',x:'统一格式证据卡（来源 / 类型 / 时间 / 版本 / 定位符）进上下文；红框约束卡置顶——越是保命的内容，越不该跟偏好抢名次'},
+{d:420,t:'充分性判断',x:'六问过一遍：各部分有证据吗 / 能直接支撑结论吗 / 证据冲突吗 / 缺时间版本对象限定吗 / 继续查还能拿到有效信息吗'},
+{d:480,t:'最小充分',x:'第一个目标「判断适不适合」查完即停。价格、优惠券、库存一次都没查（灰色虚线框）——它们不是被优化掉了，是根本不该发生'},
+{d:560,t:'生成与闭环',x:'模型在红线可见的窗口里写原生 SQL。bad case 回流测试集：这条 0.38 的禁令从此每次回归都跑——同一个坑只踩一次'}
+];
+var PARTS={
+qbox:['qBox','qp0','qp1','qp2','qp3','qp4','qp5'],ln1:['ln1','redCard'],
+ln2:['ln2','s2Card'],
+ln3:['ln3','profCard','structCard'],
+ln4:['ln4','s4Card'],
+mg:['mgBox','seg0','seg1','seg2','seg3'],
+win:['winBox','win0','win1','win2','winBar'],
+eco:['eco0','eco1','eco2']
+};
+var QUIZ=[
+{q:'认识检索系统这类模块，正确的认知顺序是？',opts:['先记住混合检索的配置表，再跑评测','表象观察 → 静态分解 → 动态分析 → 动静融合','从向量数据库原理倒推到查询语句'],a:1,exp:'先看外在行为（黑盒：问题进、证据出），再拆静态结构，再追动态流程，最后把结构和流程映射起来——整体不等于零件之和。'},
+{q:'为什么安全红线不能只靠向量召回？',opts:['向量召回速度太慢','约束类内容的召回是「在场性」问题不是「相似度」问题——余弦量不了该不该在场；红线必须走规则路，触发条件命中即进','向量库不够大'],a:1,exp:'禁令的核心信号「禁止」不带主题信息、「ORM」是专名间接共现，余弦自然停在 0.38。调阈值救不了：调高连偏好一起挡，调低连接池配置一起涌进来。'},
+{q:'RRF 融合为什么「只吃名次，分数不进公式」？',opts:['分数算起来太复杂','向量 0.82、BM25 13.6、图谱只有名次——不同量纲没有汇率；名次才是跨系统通用的硬通货','分数精度不够'],a:1,exp:'强行归一到 [0,1] 只是把汇率问题藏起来。k 是口味旋钮：越大头腰差距压得越平，越小越把头几名当回事——所以 k 也不能拍脑袋。'},
+{q:'硬过滤应该排在融合排序的哪一边？',opts:['排后面，先排完再过滤','排前面：权限、租户、时间、用户明示约束管「能不能留」，排序管「留下来的谁在前」；用分数置 0 冒充沉底是反范式','不用排序也行'],a:1,exp:'越界的结果该被清场，不该占着候选池的名额。业务规则调整（官方>论坛、当前版本>历史）才是偏好层的事，排在最后。'},
+{q:'「最小充分检索」和省着查的区别是？',opts:['一回事，都是少查几路','它做的是缩小当前要解决问题的范围——第一个可独立交付的目标查完即停；少查会漏证据，靠多轮补更慢更贵','最小充分就是只查一路'],a:1,exp:'「查上个月订单然后算退款率」拆不出能独立交付的第一段，就该一次规划到位——不要把过程步骤误认为用户目标。'},
+{q:'约束硬召回之后，还需要别的防线吗？',opts:['不需要，进窗了就万事大吉','需要——硬召回只保证规则被看见，不保证模型一定遵守；预算、起送量这类业务边界还要工具层补确定性校验，高副作用动作强制人审','全部改成代码判断'],a:1,exp:'记忆负责让规则进入决策上下文，工具校验与人审负责阻止不可接受的动作真正发生。两道防线防的不是同一类事故。'}
+];
+// ============ 场景构建 ============
+var H='';
+// Query 区
+H+='<g id="qBox"><rect x="28" y="240" width="228" height="92" rx="10" fill="#FBFAF6" stroke="#3B3A34" stroke-width="1.4"/>'
++'<text class="tn" x="42" y="262">用户 Query</text>'
++'<text class="tb" x="42" y="284">「给报表模块写一个</text>'
++'<text class="tb" x="42" y="300">数据库访问层」</text>'
++'<text class="ts" x="42" y="322" fill="#854F0B">缺什么查什么：缺的是规范</text></g>';
+// Query Planning chips
+var qps=['保留硬约束','消解歧义','统一术语','补过滤条件','描述信息缺口','不擅自补事实'];
+for(var c=0;c<6;c++){
+H+='<g id="qp'+c+'"><rect x="'+(30+(c%2)*116)+'" y="'+(350+Math.floor(c/2)*30)+'" width="108" height="22" rx="6" fill="#F5F4EF" stroke="#D3D1C7" stroke-width="1"/>'
++'<text class="ts" x="'+(84+(c%2)*116)+'" y="'+(365+Math.floor(c/2)*30)+'" text-anchor="middle">'+qps[c]+'</text></g>';
+}
+// 四条管道
+function lane(id,y,name,sub){
+return '<g id="'+id+'"><rect x="276" y="'+(y-28)+'" width="326" height="56" rx="9" fill="#ffffff" stroke="#3B3A34" stroke-width="1.3"/>'
++'<rect x="284" y="'+(y-20)+'" width="146" height="40" rx="6" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1"/>'
++'<text class="tb" x="292" y="'+(y-2)+'">'+name+'</text>'
++'<text class="ts" x="292" y="'+(y+14)+'">'+sub+'</text></g>';
+}
+H+=lane('ln1',100,'S1 规则硬召回','触发条件命中即进');
+H+=lane('ln2',200,'S2 精确召回','逐字命中');
+H+=lane('ln3',300,'S3 向量语义 + 重排','大概相关就够了');
+H+=lane('ln4',400,'S4 实体图谱','状态返回最新值');
+// 扇形调度箭头
+var fanY=[100,200,300,400];
+for(var f=0;f<4;f++){
+H+='<path id="fan'+f+'" d="M256 286 C266 286 268 '+(fanY[f]+ (f<2?6:-6))+' 276 '+(fanY[f]+(f<2?4:-4))+'" stroke="#C46A0A" stroke-width="1.4" fill="none" marker-end="url(#flw)" opacity="0"/>';
+}
+// 各路结果卡
+H+='<g id="s2Card" opacity="0"><rect x="440" y="180" width="156" height="40" rx="7" fill="#ffffff" stroke="#B4B2A9" stroke-width="1.2"/>'
++'<text class="ts" x="448" y="198">orders 表 / refund_api</text><text class="ts" x="448" y="214">逐字命中 ✓</text></g>';
+H+='<g id="profCard"><rect x="440" y="272" width="156" height="24" rx="6" fill="#ffffff" stroke="#EF9F27" stroke-width="1.2"/>'
++'<text class="ts" x="448" y="288">用户画像 · 0.71</text></g>';
+H+='<g id="structCard"><rect x="440" y="298" width="156" height="24" rx="6" fill="#ffffff" stroke="#EF9F27" stroke-width="1.2"/>'
++'<text class="ts" x="448" y="314">库表结构 · 0.63</text></g>';
+H+='<g id="s4Card" opacity="0"><rect x="440" y="380" width="156" height="40" rx="7" fill="#ffffff" stroke="#B4B2A9" stroke-width="1.2"/>'
++'<text class="ts" x="448" y="398">批次状态 · 最新值</text><text class="ts" x="448" y="414">图谱一跳 ✓</text></g>';
+// 红线卡（三段旅程：S1 → 合并带 → 窗口置顶）
+H+='<g id="redCard"><rect x="440" y="76" width="156" height="48" rx="7" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.8"/>'
++'<text class="tb" x="448" y="94" fill="#8A2A2A">禁止使用 ORM</text>'
++'<text class="ts" x="448" y="108" fill="#8A2A2A">force_recall · domain=database</text>'
++'<text class="ts" x="448" y="122" fill="#8A877C">相似度 0.38 · 不算余弦</text></g>';
+// 合并带
+H+='<g id="mgBox"><rect x="618" y="72" width="178" height="368" rx="10" fill="#FBFAF6" stroke="#3B3A34" stroke-width="1.4"/>'
++'<text class="tn" x="630" y="94">合并带</text><text class="ts" x="630" y="110">按优先级填预算</text>';
+var segNames=['S1 约束 ≤40%','S2 精确','S3 向量','S4 图谱'];
+for(var s=0;s<4;s++){
+H+='<g id="seg'+s+'"><text class="ts" x="630" y="'+(176+s*30)+'">'+segNames[s]+'</text>'
++'<rect x="630" y="'+(182+s*30)+'" width="156" height="12" rx="4" fill="#F5F4EF" stroke="#D3D1C7" stroke-width="0.8"/>'
++'<rect id="segf'+s+'" x="630" y="'+(182+s*30)+'" width="0" height="12" rx="4" fill="'+(s===0?'#E24B4A':'#EF9F27')+'"/></g>';
+}
+H+='<text class="ts" x="630" y="366">Σ1/(k+rank)：名次融合</text>'
++'<text class="ts" x="630" y="382">硬过滤在前：该删就删</text>'
++'<text class="ts" x="630" y="398">业务规则：官方&gt;论坛</text>'
++'<text class="ts" x="630" y="414">约束帽 40%：规矩不挤光事实</text></g>';
+// 窗口
+H+='<g id="winBox"><rect x="822" y="72" width="164" height="368" rx="10" fill="#ffffff" stroke="#3B3A34" stroke-width="1.5"/>'
++'<text class="tn" x="834" y="94">可见窗口</text><text class="ts" x="834" y="110">证据卡 · 红框置顶</text>'
++'<rect id="win0" x="832" y="122" width="144" height="52" rx="7" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.8"/>'
++'<text class="tb" x="840" y="140" fill="#8A2A2A">禁止使用 ORM</text><text class="ts" x="840" y="158" fill="#8A2A2A">规则路 · 强制在场</text>'
++'<rect id="win1" x="832" y="184" width="144" height="40" rx="7" fill="#ffffff" stroke="#EF9F27" stroke-width="1.2"/>'
++'<text class="ts" x="840" y="202">画像 · 0.71</text><text class="ts" x="840" y="218">向量路</text>'
++'<rect id="win2" x="832" y="234" width="144" height="40" rx="7" fill="#ffffff" stroke="#EF9F27" stroke-width="1.2"/>'
++'<text class="ts" x="840" y="252">结构 · 0.63</text><text class="ts" x="840" y="268">向量路</text>'
++'<rect id="winBar" x="832" y="296" width="144" height="12" rx="4" fill="#F5F4EF" stroke="#D3D1C7" stroke-width="0.8"/>'
++'<text id="winTxt" class="ts" x="834" y="326">预算占用 —</text>'
++'<text id="genTxt" class="tb" x="834" y="352" fill="#854F0B" opacity="0">→ 生成：写原生 SQL</text>'
++'<text class="ts" x="834" y="392">约束被看见 ≠ 被遵守：</text>'
++'<text class="ts" x="834" y="408">工具层校验 + 人审</text>'
++'<text class="ts" x="834" y="424">才是最后一道</text></g>';
+H+='<path id="mgWin" d="M796 256 L818 256" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)" fill="none" opacity="0"/>';
+// 底部三格
+H+='<g id="eco0"><rect x="28" y="460" width="300" height="86" rx="8" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.2"/>'
++'<text class="tb" x="40" y="480">最小充分检索</text>'
++'<text class="ts" x="40" y="500">第一个目标「判断适不适合」查完即停</text>'
++'<rect x="40" y="510" width="120" height="18" rx="4" fill="none" stroke="#B4B2A9" stroke-width="1" stroke-dasharray="4 3"/>'
++'<text class="ts" x="46" y="523" fill="#8A877C">价格·优惠券·库存（未查）</text>'
++'<text class="ts" x="40" y="540">最快的查询 = 没发生的查询</text></g>';
+H+='<g id="eco1"><rect x="345" y="460" width="300" height="86" rx="8" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.2"/>'
++'<text class="tb" x="357" y="480">迭代退出四类</text>'
++'<text class="ts" x="357" y="500">效果：证据足以回答 · 边际：连续两轮</text>'
++'<text class="ts" x="357" y="516">无新增 · 资源：预算见底 · 澄清：只能问人</text>'
++'<text class="ts" x="357" y="534">进度条是新增证据数，不是轮数</text></g>';
+H+='<g id="eco2"><rect x="662" y="460" width="310" height="86" rx="8" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/>'
++'<text class="tb" x="674" y="480" fill="#854F0B">bad case 回流</text>'
++'<text class="ts" x="674" y="500">这条 0.38 的禁令进测试集，此后每次</text>'
++'<text class="ts" x="674" y="516">改 Prompt / Chunk / 模型都重跑回归——</text>'
++'<text class="ts" x="674" y="534">同一个坑，只踩一次</text></g>';
+document.getElementById('scene').innerHTML=H;
+// ============ 通用脚手架 ============
+var el={};
+['qBox','ln1','ln2','ln3','ln4','mgBox','winBox','redCard','s2Card','s4Card','profCard','structCard','mgWin','genTxt'].forEach(function(id){el[id]=document.getElementById(id);});
+for(var i=0;i<4;i++){el['segf'+i]=document.getElementById('segf'+i);el['fan'+i]=document.getElementById('fan'+i);}
+for(var q=0;q<6;q++){el['qp'+q]=document.getElementById('qp'+q);}
+el.winBar=document.getElementById('winBar');el.winTxt=document.getElementById('winTxt');
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var dots=[];
+for(var s=0;s<STEPS.length;s++){
+(function(n){
+var b=document.createElement('button');
+b.className='stepnode';
+b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+b.onclick=function(){goStep(n);};
+stepBar.appendChild(b);dots.push(b);
+})(s);
+}
+var stepIdx=-1;
+function setAuto(on){
+mode='auto';run=on;btn.textContent=on?'暂停':'播放';
+if(on){stepIdx=-1;dots.forEach(function(d){d.classList.remove('on');});
+stepT.textContent='自动运转模式';
+stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格。';}
+}
+window.goStep=function(i){
+stepIdx=(i+STEPS.length)%STEPS.length;
+mode='step';run=false;
+phase=STEPS[stepIdx].d/PHASE_MAX*PERIOD;
+btn.textContent='继续自动运转';
+dots.forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+stepX.textContent=STEPS[stepIdx].x;
+};
+btn.textContent=run?'暂停':'播放';
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+// ---- 运动学：卡片沿三段关键帧插值（place），合并段宽度按预算分段线性，闸机箭头按时序点亮 ----
+function smooth(t){return t*t*(3-2*t);}
+function lerp(a,b,t){return a+(b-a)*t;}
+function clamp01(v){return Math.max(0,Math.min(1,v));}
+// place：el 在 home 坐标系绘制，stops=[{t,x,y}] 指定绝对落点
+function place(el,home,stops,th){
+var i=0;while(i<stops.length-2&&th>stops[i+1].t)i++;
+var a=stops[i],b=stops[i+1];
+var t=smooth(clamp01((th-a.t)/(b.t-a.t)));
+var x=lerp(a.x,b.x,t)-home.x,y=lerp(a.y,b.y,t)-home.y;
+el.setAttribute('transform','translate('+x.toFixed(1)+' '+y.toFixed(1)+')');
+}
+var HOME_RED={x:440,y:76},HOME_PROF={x:440,y:272},HOME_STRUCT={x:440,y:298};
+function tick(now){
+var dt=Math.min(50,now-last);last=now;
+if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+var th=phase/PERIOD*PHASE_MAX;
+// Query planning chips 依次亮
+for(var q=0;q<6;q++){
+var on=th>=q*11&&th<90;
+var r=el['qp'+q].children[0];
+r.setAttribute('fill',on?'#FFF1D6':'#F5F4EF');
+r.setAttribute('stroke',on?'#EF9F27':'#D3D1C7');
+}
+// 扇形箭头
+for(var f=0;f<4;f++){
+var on=th>=85+f*14&&th<170;
+el['fan'+f].setAttribute('opacity',on?0.95:0);
+}
+// S2 / S4 静态结果卡
+var lane24=clamp01((th-230)/50);
+el.s2Card.setAttribute('opacity',(lane24*(th<300?1:0.5)).toFixed(2));
+el.s4Card.setAttribute('opacity',(lane24*(th<300?1:0.5)).toFixed(2));
+// S3 两张卡
+var s3in=clamp01((th-240)/50);
+el.profCard.setAttribute('opacity',(s3in*(th<360?1:1)).toFixed(2));
+el.structCard.setAttribute('opacity',(s3in*(th<360?1:1)).toFixed(2));
+// 红线卡三段旅程：S1(440,76) → 合并带(626,118) → 窗口置顶(832,122)
+place(el.redCard,HOME_RED,[
+{t:160,x:440,y:76},{t:330,x:626,y:118},{t:400,x:832,y:122},{t:720,x:832,y:122}
+],th);
+el.redCard.setAttribute('opacity',th>=150?1:0);
+// 画像 / 结构卡：S3 → 合并带候选池 → 窗口 win1/win2
+place(el.profCard,HOME_PROF,[
+{t:240,x:440,y:272},{t:360,x:626,y:300},{t:420,x:832,y:184},{t:720,x:832,y:184}
+],th);
+place(el.structCard,HOME_STRUCT,[
+{t:240,x:440,y:298},{t:360,x:626,y:326},{t:420,x:832,y:234},{t:720,x:832,y:234}
+],th);
+// 合并段按优先级填充：S1(300-330) S2(330-350) S3(350-375) S4(375-400)
+var segT=[[300,330],[330,350],[350,375],[375,400]];
+for(var s=0;s<4;s++){
+var w=156*smooth(clamp01((th-segT[s][0])/(segT[s][1]-segT[s][0])));
+if(s===0)w=156*0.4*smooth(clamp01((th-300)/30)); // 约束段只填 40% 帽
+el['segf'+s].setAttribute('width',w.toFixed(1));
+}
+// 合并→窗口箭头
+el.mgWin.setAttribute('opacity',th>=400?0.95:0);
+// 窗口预算条
+var cap=th<360?0:Math.round(42*smooth(clamp01((th-360)/60)));
+el.winBar.setAttribute('width',(144*cap/100).toFixed(1));
+el.winBar.setAttribute('fill',cap>0?'#FAC775':'#F5F4EF');
+el.winTxt.textContent='预算占用 '+cap+'%';
+// 生成标记
+el.genTxt.setAttribute('opacity',th>=560?1:0);
+// 底部三格时序
+setG('eco0',th>=470&&th<570);
+setG('eco1',th>=570&&th<640);
+setG('eco2',th>=640);
+function setG(id,on){
+var g=document.getElementById(id);
+if(!g)return;
+g.setAttribute('opacity',on?1:0.55);
+}
+requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+document.querySelectorAll('.part').forEach(function(b){
+b.onclick=function(){
+var ids=PARTS[b.getAttribute('data-part')]||[];
+ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+};
+});
+var BASE=(location.pathname.split('/agent-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/agent/lab';
+document.getElementById('lnkArt').href=BASE+'/agent/tutorial/04-retrieval-rag';
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+var d=document.createElement('div');d.className='q';
+var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+h+='<div class="exp">'+it.exp+'</div>';
+d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+var b=e.target.closest('.opt');if(!b)return;
+var box2=b.parentElement;if(box2.classList.contains('done'))return;
+box2.classList.add('done');
+var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+box2.querySelectorAll('.opt').forEach(function(x){
+var xi=+x.getAttribute('data-oi');
+if(xi===QUIZ[qi].a)x.classList.add('right');
+else if(x===b)x.classList.add('wrong');
+});
+});
+})();
+</script>
+</body>
+</html>

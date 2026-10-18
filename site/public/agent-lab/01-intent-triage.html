@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>意图分诊台 · Agent 运行原理实验室 第 1 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:920px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:680px}
+.method-chain{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:18px}
+.method-chain .mnode{background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 14px;font-size:13px;font-weight:500}
+.method-chain .marr{color:#C46A0A;font-weight:600}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:500;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:12px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:500;fill:#1F1E1A}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:86px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:11px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:9px 10px;text-align:center}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+.frame2{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：意图识别</a>
+  <span class="idx">第 1 / 7 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · 动静结合认知法</div>
+<h1>意图分诊台：Agent 的第一道控制决策</h1>
+<p>意图识别不是「调一次大模型分类」，而是控制平面的第一个决策：三层级联便宜的先上，置信度闸门决定采纳 / 澄清 / 抬层，最终产出一份驱动下游一切决策的<b>控制契约</b>。这页课按「表象 → 结构 → 流程 → 融合」的认知链组织，动画支持<b>自动运转</b>和<b>分步点击</b>两种模式。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span><span class="marr">→</span>
+<span class="mnode">② 静态分解</span><span class="marr">→</span>
+<span class="mnode">③ 动态分析</span><span class="marr">→</span>
+<span class="mnode">④ 动静融合</span><span class="marr">→</span>
+<span class="mnode">⑤ 环境场景</span><span class="marr">→</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 560" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>意图识别三层级联运转动画</title>
+<defs>
+<pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+<line x1="0" y1="0" x2="0" y2="8" stroke="#B4B2A9" stroke-width="0.7"/>
+</pattern>
+<marker id="flw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/>
+</marker>
+</defs>
+<text class="th" x="500" y="24" text-anchor="middle">意图识别 · 剖面运转示意</text>
+<text class="ts" x="500" y="44" text-anchor="middle">一次输入的分诊之旅：规则层 → 轻量层 → 深度层级联上升，置信度闸门三区间裁决，契约驱动下游</text>
+<text class="ts" x="985" y="24" text-anchor="end">琥珀色 = 流动 / 采纳</text>
+<text class="ts" x="985" y="40" text-anchor="end">灰叉 = 本层不发表意见</text>
+<g id="scene"></g>
+</svg>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 轮 / 5 秒</span>
+</div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav">
+<button class="btn" onclick="goStep(stepIdx-1)">‹ 上一步</button>
+<button class="btn warn" onclick="goStep(stepIdx+1)">下一步 ›</button>
+</span>
+</div>
+</div>
+</div>
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：先把它当黑盒</h2></div>
+<p class="sec-sub">第一步不拆机器，只看它对外表现出什么行为。</p>
+<div class="quote">「对事物的观察包括了静态结构 + 动态生命周期 + 环境场景三个方面的内容。」<i>—— 人月聊IT · 思维系列</i></div>
+<p>从外部看，意图识别做的事只有一件：<b>一句用户话进来，一份控制契约出去</b>。它不回答用户的问题、不调用工具、不生成方案——那都是主循环的事。它只决定「接下来该怎么想、加载什么上下文、调用什么工具、进入哪个业务流程」。</p>
+<div class="flow">
+<span class="node">用户输入（含失真）</span><span class="arr">→</span>
+<span class="node">意图识别（黑盒）</span><span class="arr">→</span>
+<span class="node">IntentResult 契约（主产物）</span>
+<span class="node">追问 / 拒识（副产物）</span>
+</div>
+<p>黑盒观察的结论：这是一台<b>控制信号压缩装置</b>——模糊自然语言进，离散可执行的控制决策出。带着这个结论，现在打开黑盒。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：它由什么组成</h2></div>
+<p class="sec-sub">打开黑盒，沿空间维度拆解。点部件卡片，动画中对应部分会亮成琥珀色。</p>
+<div class="quote">「它由什么构成？核心方法是分解、分类、结构化——分解需符合 MECE 法则，同层必须粒度一致。」<i>—— 人月聊IT · 思维系列</i></div>
+<p>意图分诊台可按功能分成<b>五组</b>，互不遗漏、互不重叠：</p>
+<div class="partgroup">
+<div class="gname">输入组 —— 负责「把话洗干净」</div>
+<div class="parts">
+<button class="part" data-part="inp"><b>用户输入</b><span>原始请求。真实输入有六类失真：指代、缺失、表达、词义、主观判断、外部事实。</span></button>
+<button class="part" data-part="inp"><b>输入规范化</b><span>指代替换、省略补全、病句改写、术语归一——洗完句子才「可判定语义」。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">级联组 —— 负责「便宜的先上」</div>
+<div class="parts">
+<button class="part" data-part="l1"><b>L1 规则层</b><span>if-else、正则、向量匹配。零成本、零延迟、100% 可预测，命中即确定。</span></button>
+<button class="part" data-part="l2"><b>L2 轻量模型</b><span>Flash / Mini 档，快而省，扛下绝大多数明确无误的请求。</span></button>
+<button class="part" data-part="l3"><b>L3 深度推理</b><span>只接表达绕、强依赖上下文、多轮切换的硬骨头，且必须交出 reason。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">闸门组 —— 负责「裁决怎么走」</div>
+<div class="parts">
+<button class="part" data-part="gate"><b>置信度闸门</b><span>三区间：≥0.85 采纳、0.60–0.85 澄清、&lt;0.60 抬层。阈值必须拿测试集调出来。</span></button>
+<button class="part" data-part="gate"><b>两个出口</b><span>unclear 澄清、unsupported 拒识——出口永远保留，模型才不会硬选一个交差。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">契约组 —— 负责「输出可执行、可审计」</div>
+<div class="parts">
+<button class="part" data-part="contract"><b>IntentResult 契约</b><span>reason 打头，intent / slots / missingSlots / constraints / preferences / confidence 一次成型。</span></button>
+<button class="part" data-part="valid"><b>校验层</b><span>枚举校验、槽位白名单、必填重算、数值归一——模型输出是不可信输入。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">出口组 —— 负责「契约落地」</div>
+<div class="parts">
+<button class="part" data-part="down"><b>下游运行时</b><span>命中之后换的不是一句话，是整个运行时：Spec、上下文、工具集、审批门。</span></button>
+</div>
+</div>
+<p class="hint">静态分解只回答了「有什么」。一次输入怎样穿过三级层、怎样被闸门裁决？必须切换到时间维度——下一节。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：它如何运转</h2></div>
+<p class="sec-sub">盯住那个琥珀色令牌。用动画下方的 9 个步骤点逐帧走完一次完整分诊。</p>
+<div class="quote">「它如何演变与运作？关注时间轴上的发展规律、行为模式和内部流程。核心方法是流程分析、行为追溯。」<i>—— 人月聊IT · 思维系列</i></div>
+<p><b>操作：</b>点击动画下方步骤条上的圆点（或「下一步」按钮），画面会定格在对应时刻。建议完整走两遍：第一遍只看令牌走哪条路，第二遍同时看右侧闸门指针和置信度读数。</p>
+<table class="grid">
+<tr><th>阶段</th><th>时刻</th><th>规则层</th><th>轻量层</th><th>深度层</th><th>这一步在干什么</th></tr>
+<tr><td>① 输入进场</td><td>0°–70°</td><td>—</td><td>—</td><td>—</td><td>用户请求进入输入区，准备接受规范化</td></tr>
+<tr><td>② 规范化</td><td>70°–140°</td><td>—</td><td>—</td><td>—</td><td>六类失真处理完，句子才算可判定</td></tr>
+<tr><td>③ L1 判定</td><td>140°–230°</td><td class="act">未命中</td><td>—</td><td>—</td><td>能用 if 解决的意图不用 token；本例是新意图，规则层沉默</td></tr>
+<tr><td>④ L2 判定</td><td>230°–330°</td><td>—</td><td class="act">0.55 低置信</td><td>—</td><td>要跨轮继承槽位，轻量模型啃不动，抬层</td></tr>
+<tr><td>⑤ L3 判定</td><td>330°–390°</td><td>—</td><td>—</td><td class="hot">0.88 + reason</td><td>深度推理交出思考痕迹，置信度过线</td></tr>
+<tr><td>⑥ 闸门裁决</td><td>390°–480°</td><td colspan="3" class="hot">≥0.85 → 采纳</td><td>三区间决定采纳 / 澄清 / 抬层</td></tr>
+<tr><td>⑦ 契约生成</td><td>480°–560°</td><td colspan="3" class="hot">8 字段逐一点亮</td><td>reason 在最前，「想」发生在「拍板」之前</td></tr>
+<tr><td>⑧ 校验四查</td><td>560°–640°</td><td colspan="3" class="hot">枚举 / 白名单 / 重算 / 归一</td><td>能用代码确定性算出的，绝不让模型猜</td></tr>
+<tr><td>⑨ 分发下游</td><td>640°–720°</td><td colspan="3" class="act">换整个运行时</td><td>Spec、上下文、工具、审批门，一张契约驱动全部</td></tr>
+</table>
+<p>两个容易错过、但值得在分步模式里细看的点：① <b>「继续」「好的」这类延续性输入在 L1 就结束了</b>——零成本零延迟，丢给大模型反而偶尔误判；② L3 的 0.88 是模型自评分，<b>它不是校准过的概率</b>，所以闸门阈值 + 仲裁要一起吃规则命中、向量相似度、上轮意图稳定性这些算得出来的信号。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件如何协同出「控制契约」</h2></div>
+<p class="sec-sub">把第 2 节的「结构」和第 3 节的「流程」叠在一起——这才是理解的完成态。</p>
+<div class="quote">「动静融合的关键是建立映射：将组成部件与操作步骤一一对应，理解各部件如何协同产生外在行为。系统 = 元素 + 连接 + 目标。」<i>—— 人月聊IT · 思维系列</i></div>
+<p>第一张映射表：<b>每个部件在每个阶段里承担什么角色</b>。读法：竖着看是一个阶段的全体协同，横着看是一个部件的完整职责。</p>
+<table class="grid">
+<tr><th>部件 ＼ 阶段</th><th>① 输入</th><th>② 规范化</th><th>③ L1</th><th>④ L2</th><th>⑤ L3</th><th>⑥ 闸门</th><th>⑦⑧ 契约校验</th><th>⑨ 分发</th></tr>
+<tr><td>输入区</td><td class="hot">接收</td><td>交付原文</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>规范化</td><td>—</td><td class="hot">六类失真清洗</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>L1 规则层</td><td>—</td><td>—</td><td class="act">未命中 · 沉默</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>L2 轻量层</td><td>—</td><td>—</td><td>—</td><td class="act">0.55 · 发表意见</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>L3 深度层</td><td>—</td><td>—</td><td>—</td><td>—</td><td class="hot">0.88 + reason</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>置信度闸门</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td class="hot">采纳</td><td>—</td><td>—</td></tr>
+<tr><td>契约 + 校验</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td class="hot">生成 + 四查</td><td>交付</td></tr>
+<tr><td>下游运行时</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td class="hot">整个换掉</td></tr>
+</table>
+<p>点题一句：<b>「意图识别要能独立评估、独立灰度、独立回滚」这个外在特性，不是任何一个部件的属性，而是「级联 + 闸门 + 契约 + 校验」整体协同涌现的</b>。拆开看，每一层都只是便宜或贵一点的分类器；合起来，它才成为控制平面上一个可审计、可回滚的决策点。同时两个出口（unclear / unsupported）是这套协同的保险丝——没有它们，模型只能硬选一个最像的意图，然后一本正经地胡说八道。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：它依赖什么才能工作</h2></div>
+<p class="sec-sub">主体之外，还有一圈支撑系统。</p>
+<div class="quote">「对事物的认识 = 空间属性 + 时间属性 + 环境属性（外在关系和依赖）。」<i>—— 人月聊IT · 思维系列</i></div>
+<div class="envcards">
+<div class="env"><b>输入规范化服务</b><span>上游把六类失真洗完，识别层才拿到「可判定语义」；拿用户原话直接匹正则，命中率会惨不忍睹。</span></div>
+<div class="env"><b>意图表配置</b><span>IntentSpec 写成数据而非 Prompt 字符串：能被校验、能被裁剪、能被测试，逐条与测试集对账。</span></div>
+<div class="env"><b>多轮状态存储</b><span>继承、保守切换、槽位合并、约束累加——第二轮准确率断崖下跌，绝大多数是这里稀烂。</span></div>
+<div class="env"><b>测试集与评估</b><span>标准 / 口语 / 缺失 / 拒识 / 易混淆五类样本，Top-K、分意图、误拒漏拒率——没有它，一切优化都是玄学。</span></div>
+<div class="env"><b>埋点与留痕</b><span>每层候选集、置信度、是否下推、最终采纳及原因、Prompt 与意图表版本——三个月后救你命的东西。</span></div>
+<div class="env"><b>降级与自纠错链</b><span>自纠错 ≤ 2 次、结构化错误摘要回喂、核心字段无效则挂起转人工——绝不一抛异常就停摆。</span></div>
+</div>
+<p>动画里的分诊台能转起来，前提是这六个系统在「环境」里就位。拆掉任何一个，外在行为立即消失——这也是分析任何系统时要画出<b>边界和依赖</b>的原因。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测：学习-实践-复盘的闭环</h2></div>
+<p class="sec-sub">用自己的话能讲清楚，才算真的懂。先答题，再对照解析。</p>
+<div id="quiz"></div>
+</section>
+
+<div class="summary">
+<h2>一页带走</h2>
+<p class="chant">便宜的先上，闸门三区控升降；契约驱动下游，输出永不当可信。</p>
+<p>· 方法：表象（控制信号压缩）→ 结构（五组部件）→ 流程（九阶段）→ 融合（控制契约是涌现属性）。</p>
+<p>· 结构：输入规范化 + 三层级联 + 置信度闸门 + IntentResult 契约 + 校验层 + 下游运行时。</p>
+<p>· 行为：规则层兜确定性输入，轻量层扛流量，深度层啃硬骨头并交出 reason；闸门三区间决定采纳 / 澄清 / 抬层。</p>
+<p>· 协同：独立评估、灰度、回滚的能力不属于任何单层，属于整体；unclear / unsupported 两个出口是保险丝。</p>
+</div>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+
+<script>
+(function(){
+// ============ 主题专属数据 ============
+var PERIOD=4600,PHASE_MAX=720;
+var STEPS=[
+{d:0,t:'输入进场',x:'用户那句「预算加到 8000，但别太重」进入输入区——它缺主语、缺品类，意思全挂在上一轮身上，单独根本不是完整意图'},
+{d:70,t:'输入规范化',x:'指代 / 缺失 / 表达 / 词义 / 主观 / 外部事实六类失真先洗完；跨会话指代解不出的，留给循环内深度处理'},
+{d:140,t:'L1 规则层判定',x:'延续性输入、按钮引导、强规则命中即出。本例是新意图，规则层不发表意见——零成本零延迟，也是最后一层 100% 可预测的层'},
+{d:230,t:'L2 轻量模型判定',x:'80% 以上明确请求到这里就能定。本例要跨轮继承槽位，轻量模型只给 0.55：低置信不硬猜，按闸门规则抬层'},
+{d:330,t:'L3 深度推理',x:'啃硬骨头的层：继承上一轮「笔记本」意图、合并预算 8000、挂上「别太重」软偏好，并且必须交出 reason'},
+{d:390,t:'闸门裁决',x:'置信度三区间：≥0.85 直接采纳；0.60–0.85 先问一句比赌一把省；<0.60 继续抬。本例 0.88，采纳'},
+{d:480,t:'契约生成',x:'IntentResult 逐字段点亮：reason 刻意排在最前——让「想」发生在「拍板」之前；constraints / preferences 是一等公民'},
+{d:560,t:'校验层四查',x:'枚举校验、槽位白名单、必填重算、数值归一。能用代码确定性算出来的，绝不让模型猜——接收时严格，执行时保守'},
+{d:640,t:'分发下游',x:'命中之后换掉的不是一句话，是整个运行时：加载哪套 Spec、装什么上下文、暴露哪些工具、要不要插审批门'}
+];
+var PARTS={
+inp:['inpBox','normBox','tok'],
+l1:['ly1','res1'],
+l2:['ly2','res2'],
+l3:['ly3','res3'],
+gate:['gateBox','gn','gScore','exitUnclear','exitUnsup'],
+contract:['conBox','f0','f1','f2','f3','f4','f5','f6','f7'],
+valid:['valBox','chk0','chk1','chk2','chk3'],
+down:['downBox','d0','d1','d2','d3','d4'],
+trace:['traceBox']
+};
+var QUIZ=[
+{q:'认识意图识别这类模块，正确的认知顺序是？',opts:['先背 Prompt 模板，再背字段定义','表象观察 → 静态分解 → 动态分析 → 动静融合','把每层模型逐个拆开研究，最后自然懂整体'],a:1,exp:'先看外在行为（黑盒：话进契约出），再拆静态结构，再追动态流程，最后把结构和流程映射起来——整体不等于零件之和。'},
+{q:'意图识别为什么必须独立成步，而不是塞进主循环让模型顺手做？',opts:['因为多一次调用可以收钱','为了能独立评估、独立灰度、独立回滚','因为模型自己做不了'],a:1,exp:'混在一起做，出了错分不清「没听懂」还是「分错类」——同一个故障两处来源，调试变成猜；独立成步，指标、灰度、回滚才有下手的地方。'},
+{q:'关于模型自报的 confidence，正确的工程姿势是？',opts:['它说 0.9 就真有 90% 把握，可以直接信','它不是校准过的概率；阈值拿测试集调，并结合规则命中、向量相似度等算得出来的信号','confidence 越高答案一定越对'],a:1,exp:'没校准过的置信度更像「自我感觉良好的打分」。0.85 / 0.60 这两个数必须跑测试集调出来，判断时还要吃规则层与向量层的事实信号。'},
+{q:'IntentResult 里 reason 字段为什么排在 intent 前面？',opts:['代码风格问题，怎么排都行','模型从左到右生成：先拍板再编理由会污染审计记录，把 reason 提前让「想」发生在「下结论」之前','为了 JSON 序列化更快'],a:1,exp:'字段顺序是架构问题。事后补出来的 reason 对准确率毫无贡献，还会把审计记录一起污染；仅这一项改动的经验提升就有 10%~15%。'},
+{q:'已经开了 Structured Outputs，校验层可以撤吗？',opts:['可以，格式已经物理正确了','不行——格式物理出格被消灭了，但语义错误（合法但瞎填的值）照样进来，前门换钢门不等于拆后门','看业务规模再定'],a:1,exp:'必填字段就摆在那里，模型为了把表填满，完全可能顺手填一个合法但错误的值——这比 json.loads 当场崩掉危险得多。'},
+{q:'用户说「帮我生成一个奥特曼动画」，候选意图里没有这一项，会发生什么？',opts:['模型会说「我不知道」，然后停下','没有出口时模型会挑一个最像的交差，开始一本正经地胡说八道','系统会自动新建一个意图'],a:2,exp:'模型在没有出口的时候不会说「我不知道」。unsupported（拒识）和 unclear（澄清）两个出口必须提前留好——老实说「这个我做不了」，比胡说八道体面得多。'}
+];
+// ============ 场景构建 ============
+function box(x,y,w,h,rx,fill,stroke,dash){return '<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="'+(rx||10)+'" fill="'+(fill||'#ffffff')+'" stroke="'+(stroke||'#3B3A34')+'" stroke-width="1.4"'+(dash?' stroke-dasharray="'+dash+'"':'')+'/>';}
+var H='';
+// 输入区
+H+='<g id="inpBox">'+box(28,84,128,132)+'<text class="tn" x="92" y="106" text-anchor="middle">用户输入</text>'
++'<text class="tb" x="92" y="132" text-anchor="middle">「预算加到 8000，</text>'
++'<text class="tb" x="92" y="150" text-anchor="middle">但别太重」</text>'
++'<text class="ts" x="92" y="178" text-anchor="middle">缺主语 · 缺品类</text>'
++'<text class="ts" x="92" y="196" text-anchor="middle">必须继承上一轮</text></g>';
+// 规范化
+var chips=['指代','缺失','表达','词义','主观','外部'];
+H+='<g id="normBox">'+box(28,242,128,148)+'<text class="tn" x="92" y="264" text-anchor="middle">输入规范化</text>';
+for(var c=0;c<6;c++){
+var cxp=44+(c%2)*58,cyp=280+Math.floor(c/2)*32;
+H+='<g id="nc'+c+'"><rect x="'+cxp+'" y="'+cyp+'" width="52" height="22" rx="6" fill="#F5F4EF" stroke="#D3D1C7" stroke-width="1"/>'
++'<text class="ts" x="'+(cxp+26)+'" y="'+(cyp+15)+'" text-anchor="middle">'+chips[c]+'</text></g>';
+}
+H+='<text class="ts" x="92" y="378" text-anchor="middle">洗完才「可判定」</text></g>';
+// 级联三层
+function layer(id,y,name,sub,badge){
+return '<g id="'+id+'">'+box(228,y,180,66)+'<text class="tn" x="246" y="'+(y+26)+'">'+name+'</text>'
++'<text class="ts" x="246" y="'+(y+46)+'">'+sub+'</text>'
++'<rect x="336" y="'+(y+12)+'" width="60" height="18" rx="6" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1"/>'
++'<text class="ts" x="366" y="'+(y+25)+'" text-anchor="middle">'+badge+'</text></g>';
+}
+H+=layer('ly1',84,'L1 规则层','if-else · 正则 · 向量匹配','零成本');
+H+=layer('ly2',184,'L2 轻量模型','Flash / Mini · 扛流量','快而省');
+H+=layer('ly3',284,'L3 深度推理','表达绕 · 依赖上下文','含 reason');
+// 层间箭头
+H+='<path id="arr1" d="M318 154 L318 180" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)" fill="none" opacity="0"/>';
+H+='<path id="arr2" d="M318 254 L318 280" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)" fill="none" opacity="0"/>';
+H+='<path id="arr3" d="M318 354 L318 386 L470 386 L470 318" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)" fill="none" opacity="0"/>';
+// 各层结果
+H+='<g id="res1" opacity="0"><text class="tb" x="424" y="112" text-anchor="end" fill="#8A877C">未命中 ✕</text></g>';
+H+='<g id="res2" opacity="0"><text class="tb" x="424" y="212" text-anchor="end" fill="#854F0B">0.55 · 低置信</text></g>';
+H+='<g id="res3" opacity="0"><text class="tb" x="424" y="312" text-anchor="end" fill="#854F0B">0.88 + reason</text></g>';
+// 闸门
+H+='<g id="gateBox">'+box(470,84,120,270,10,'#ffffff','#3B3A34');
+H+='<text class="tn" x="530" y="106" text-anchor="middle">置信度闸门</text>';
+// 三区间：绿(采纳) 琥珀(澄清) 红(抬层)
+H+='<rect id="zG" x="486" y="118" width="88" height="38" rx="6" fill="#EAF3DE" stroke="#639922" stroke-width="1"/>';
+H+='<text class="ts" x="530" y="141" text-anchor="middle" fill="#3B3A34">≥0.85 采纳</text>';
+H+='<rect id="zA" x="486" y="160" width="88" height="52" rx="6" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1"/>';
+H+='<text class="ts" x="530" y="190" text-anchor="middle" fill="#854F0B">0.60–0.85 澄清</text>';
+H+='<rect id="zR" x="486" y="216" width="88" height="92" rx="6" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1"/>';
+H+='<text class="ts" x="530" y="246" text-anchor="middle" fill="#8A2A2A">&lt;0.60 抬层</text>';
+H+='<text class="ts" x="530" y="268" text-anchor="middle" fill="#8A2A2A">三层都低 →</text>';
+H+='<text class="ts" x="530" y="286" text-anchor="middle" fill="#8A2A2A">仲裁 / 澄清</text>';
+H+='<g id="gn"><line x1="530" y1="0" x2="530" y2="340" stroke="#D96C06" stroke-width="2" opacity="0.9"/>'
++'<circle cx="530" cy="340" r="7" fill="#D96C06"/><circle cx="530" cy="340" r="3" fill="#fff"/></g>';
+H+='<g id="gScore"><rect x="556" y="330" width="52" height="20" rx="6" fill="#1F1E1A"/>'
++'<text id="gScoreT" class="ts" x="582" y="344" text-anchor="middle" fill="#F5F4EF">--</text></g></g>';
+// 出口
+H+='<g id="exitUnclear">'+box(470,404,120,40,8,'#FBFAF6','#B4B2A9','5 4')+'<text class="ts" x="530" y="428" text-anchor="middle">出口：unclear 澄清</text></g>';
+H+='<g id="exitUnsup">'+box(470,452,120,40,8,'#FBFAF6','#B4B2A9','5 4')+'<text class="ts" x="530" y="476" text-anchor="middle">出口：unsupported 拒识</text></g>';
+// 契约面板
+H+='<g id="conBox">'+box(636,84,196,214)+'<text class="tn" x="650" y="106">IntentResult 控制契约</text>';
+var fields=['reason（判断依据）','intent（意图枚举）','slots（槽位取值）','missingSlots（缺失项）','constraints（硬约束）','preferences（软偏好）','confidence（置信度）','needClarification（是否追问）'];
+for(var f=0;f<8;f++){
+var fy=126+f*21;
+H+='<g id="f'+f+'" opacity="0.25"><rect x="650" y="'+(fy-12)+'" width="168" height="17" rx="4" fill="#F5F4EF" stroke="#ECEAE2" stroke-width="0.8"/>'
++'<text class="ts" x="656" y="'+fy+'">'+fields[f]+'</text></g>';
+}
+H+='</g>';
+// 校验层
+H+='<g id="valBox">'+box(636,318,196,112)+'<text class="tn" x="650" y="340">校验层 · 不可信输入</text>';
+var checks=['① 枚举校验：意图必须在候选集内','② 槽位白名单：枚举外取值直接丢弃','③ 必填重算：missingSlots 以代码为准','④ 数值归一：confidence 转 0~1'];
+for(var k=0;k<4;k++){
+var ky=362+k*17;
+H+='<g id="chk'+k+'" opacity="0.2"><circle cx="654" cy="'+(ky-4)+'" r="5" fill="none" stroke="#639922" stroke-width="1.4"/>'
++'<text class="ts" x="666" y="'+ky+'">'+checks[k]+'</text></g>';
+}
+H+='</g>';
+// 下游
+H+='<g id="downBox">'+box(862,160,120,190,10,'#ffffff','#3B3A34');
+H+='<text class="tn" x="878" y="184">下游运行时</text><text class="ts" x="878" y="202">命中即整套换掉</text>';
+var downs=['加载哪套 Spec','装什么上下文','暴露哪些工具','要不要审批门','起不起子会话'];
+for(var d=0;d<5;d++){
+H+='<g id="d'+d+'" opacity="0.2"><rect x="874" y="'+(216+d*26)+'" width="96" height="20" rx="6" fill="#F5F4EF" stroke="#D3D1C7" stroke-width="1"/>'
++'<text class="ts" x="922" y="'+(230+d*26)+'" text-anchor="middle">'+downs[d]+'</text></g>';
+}
+H+='</g>';
+H+='<path id="arrD" d="M832 374 L860 374 L860 300 L862 300" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)" fill="none" opacity="0"/>';
+// 留痕条
+H+='<g id="traceBox">'+box(28,504,944,40,10,'#FBFAF6','#ECEAE2');
+H+='<text class="ts" x="44" y="528">留痕 trace：每层候选集 · 置信度 · 是否下推 · 是否触发仲裁 · 最终采纳及原因 · Prompt 版本 · 意图表版本</text>';
+H+='<text id="costT" class="ts" x="956" y="528" text-anchor="end" fill="#854F0B"></text></g>';
+// 令牌
+H+='<circle id="tok" cx="92" cy="150" r="11" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/>';
+H+='<text id="tokT" class="ts" x="92" y="132" text-anchor="middle" fill="#854F0B" opacity="0">输入</text>';
+document.getElementById('scene').innerHTML=H;
+// ============ 通用脚手架 ============
+var el={};
+['nc0','nc1','nc2','nc3','nc4','nc5','res1','res2','res3','arr1','arr2','arr3','arrD','f0','f1','f2','f3','f4','f5','f6','f7','chk0','chk1','chk2','chk3','d0','d1','d2','d3','d4','gn','gScore','gScoreT','tok','tokT','costT','zG'].forEach(function(id){el[id]=document.getElementById(id);});
+var gnLine=el.gn.children[0],gnDot=el.gn.children[1],gnBox=el.gScore.children[0],gnT=el.gScoreT;
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var dots=[];
+for(var s=0;s<STEPS.length;s++){
+(function(n){
+var b=document.createElement('button');
+b.className='stepnode';
+b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+b.onclick=function(){goStep(n);};
+stepBar.appendChild(b);dots.push(b);
+})(s);
+}
+var stepIdx=-1;
+function setAuto(on){
+mode='auto';run=on;btn.textContent=on?'暂停':'播放';
+if(on){stepIdx=-1;dots.forEach(function(d){d.classList.remove('on');});
+stepT.textContent='自动运转模式';
+stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格。';}
+}
+window.goStep=function(i){
+stepIdx=(i+STEPS.length)%STEPS.length;
+mode='step';run=false;
+phase=STEPS[stepIdx].d/PHASE_MAX*PERIOD;
+btn.textContent='继续自动运转';
+dots.forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+stepX.textContent=STEPS[stepIdx].x;
+};
+btn.textContent=run?'暂停':'播放';
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+// ---- 运动学：令牌沿关键帧路径插值（waypoint + smoothstep），y 随置信度指针公式映射 ----
+var WP=[[0,92,150],[70,92,275],[140,318,117],[230,318,217],[330,318,317],[390,530,255],[480,734,180],[560,734,372],[640,922,255],[700,922,255]];
+function smooth(t){return t*t*(3-2*t);}
+function tokPos(th){
+if(th>=660)return[92,150];
+var i=0;while(i<WP.length-2&&th>WP[i+1][0])i++;
+var a=WP[i],b=WP[i+1];var t=smooth((th-a[0])/(b[0]-a[0]));
+return[a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+}
+function gaugeY(score){return 340-250*score;} // 0 → 350，1.0 → 90，指针公式
+function setOpacity(node,v){if(node)node.setAttribute('opacity',v.toFixed(2));}
+function tick(now){
+var dt=Math.min(50,now-last);last=now;
+if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+var th=phase/PERIOD*PHASE_MAX;
+// 令牌位置
+var p=tokPos(th);
+el.tok.setAttribute('cx',p[0].toFixed(1));el.tok.setAttribute('cy',p[1].toFixed(1));
+var vis=(th>=660&&th<706)?0:1;
+setOpacity(el.tok,vis);setOpacity(el.tokT,vis&&th<660?1:0);
+el.tokT.setAttribute('x',p[0].toFixed(1));el.tokT.setAttribute('y',(p[1]-18).toFixed(1));
+// 规范化 chips：进入后逐个亮
+for(var c=0;c<6;c++){
+var on=(th>=10+c*20&&th<140)?1:0.15;
+var g=el['nc'+c];var r=g.children[0],t=g.children[1];
+r.setAttribute('fill',on?'#FFF6E8':'#F5F4EF');r.setAttribute('stroke',on?'#EF9F27':'#D3D1C7');
+}
+setOpacity(el.normBox,th>=70?1:0.55);
+// 层结果
+setOpacity(el.res1,th>=200&&th<240?1:0);
+setOpacity(el.res2,th>=300&&th<345?1:0);
+setOpacity(el.res3,th>=368?1:0);
+setOpacity(el.arr1,th>=140&&th<240?0.95:0);
+setOpacity(el.arr2,th>=230&&th<340?0.95:0);
+setOpacity(el.arr3,th>=330&&th<395?0.95:0);
+setOpacity(el.arrD,th>=630?0.95:0);
+// 闸门指针：随阶段显示当前置信度
+var sc=0;
+if(th>=368)sc=0.88;else if(th>=300)sc=0.55;else if(th>=140)sc=0.1;
+if(th<140)sc=0;
+var gy=gaugeY(sc);
+gnLine.setAttribute('y2',(gy-8).toFixed(1));
+gnDot.setAttribute('cy',gy.toFixed(1));
+gnT.setAttribute('y',(gy+4).toFixed(1));
+gnBox.setAttribute('y',(gy-10).toFixed(1));
+gnT.textContent=th>=368?'0.88':(th>=300?'0.55':(th>=140?'未命中':'--'));
+setOpacity(el.zG,th>=390?1:0.55);
+// 契约字段：依次点亮（480 起）
+for(var f=0;f<8;f++){
+var lit=th>=480+f*10;
+setOpacity(el['f'+f],lit?1:0.25);
+var fr=el['f'+f].children[0],ft=el['f'+f].children[1];
+fr.setAttribute('fill',lit?'#FFF1D6':'#F5F4EF');fr.setAttribute('stroke',lit?'#EF9F27':'#ECEAE2');
+}
+// 校验勾选（560 起）
+for(var k=0;k<4;k++){
+var lit=th>=570+k*16;
+setOpacity(el['chk'+k],lit?1:0.2);
+el['chk'+k].children[0].setAttribute('fill',lit?'#EAF3DE':'none');
+}
+// 下游 chips（640 起）
+for(var d=0;d<5;d++){
+var lit=th>=650+d*12;
+setOpacity(el['d'+d],lit?1:0.2);
+var dr=el['d'+d].children[0];
+dr.setAttribute('fill',lit?'#FFF6E8':'#F5F4EF');dr.setAttribute('stroke',lit?'#EF9F27':'#D3D1C7');
+}
+// 成本读数
+el.costT.textContent=th<140?'本轮已花费：0 次调用':(th<230?'已花费：规则库查询（≈0）':(th<330?'+1 次轻量调用':'+1 次轻量 + 1 次深度（含 reason）'));
+requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+document.querySelectorAll('.part').forEach(function(b){
+b.onclick=function(){
+var ids=PARTS[b.getAttribute('data-part')]||[];
+ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+};
+});
+var BASE=(location.pathname.split('/agent-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/agent/lab';
+document.getElementById('lnkArt').href=BASE+'/agent/tutorial/01-intent-recognition';
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+var d=document.createElement('div');d.className='q';
+var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+h+='<div class="exp">'+it.exp+'</div>';
+d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+var b=e.target.closest('.opt');if(!b)return;
+var box2=b.parentElement;if(box2.classList.contains('done'))return;
+box2.classList.add('done');
+var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+box2.querySelectorAll('.opt').forEach(function(x){
+var xi=+x.getAttribute('data-oi');
+if(xi===QUIZ[qi].a)x.classList.add('right');
+else if(x===b)x.classList.add('wrong');
+});
+});
+})();
+</script>
+</body>
+</html>

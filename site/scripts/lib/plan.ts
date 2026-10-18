@@ -38,6 +38,8 @@ export interface TrackConfig {
   sections: SectionConfig[];
   codeRoots?: string[];
   assets?: string[];
+  /** 互动实验室入口；存在时轨道页显示实验室卡片（章节数据在站点侧维护） */
+  lab?: { title: string; subtitle: string; route?: string } | null;
 }
 
 export interface LoadedTrack {
@@ -130,6 +132,7 @@ export function validateTracks(tracks: LoadedTrack[], issues: PlanIssue[]): void
     config.sections ??= [];
     config.codeRoots ??= [];
     config.assets ??= [];
+    config.lab ??= null;
 
     // 规划中的轨道允许没有章节
     if (config.status !== 'planned' && config.sections.length === 0) {

@@ -201,6 +201,21 @@ async function main(): Promise<void> {
       ],
     },
     { name: '进度页', route: '/progress', expect: ['我的进度', '各轨道进度'] },
+    {
+      name: 'Agent 轨道页（实验室入口）',
+      route: '/agent',
+      expect: ['互动原理实验室', '进入实验室', '意图识别'],
+    },
+    {
+      name: '实验室首页（第 1 章）',
+      route: '/agent/lab',
+      expect: ['互动原理实验室', '第 1 / 7 章', '意图分诊台', 'agent-lab/01-intent-triage.html', '阅读文章'],
+    },
+    {
+      name: '实验室章节页（第 7 章）',
+      route: '/agent/lab/07-axis-framework',
+      expect: ['第 7 / 7 章', '双轴坐标系', 'agent-lab/07-axis-framework.html', '上一章'],
+    },
     // 单段未知路径会被当作「轨道不存在」，给出可操作的提示而不是裸 404
     { name: '未知轨道', route: '/not-exist-track', expect: ['没有找到这条轨道'] },
     // 多级未知路径才落到真正的 404
