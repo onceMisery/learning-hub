@@ -111,6 +111,8 @@ table.grid td.act{background:#FAEEDA}
 .chip b{font-weight:600;color:#1F1E1A}
 .chip.on{background:#EAF3DE;border-color:#639922}
 .chip.off{background:#F5F4EF}
+.subview{margin:8px 0 4px;background:#ffffff;border:1px dashed #D3D1C7;border-radius:10px;padding:8px 10px}
+.subview .viewtitle{font-size:12px;font-weight:600;color:#854F0B;margin-bottom:4px}
 </style>
 </head>
 <body>
@@ -159,6 +161,15 @@ table.grid td.act{background:#FAEEDA}
 <text class="ts" x="985" y="40" text-anchor="end">灰 = 待命 / 拒绝</text>
 <g id="scene"></g>
 </svg>
+
+<div class="subview">
+<div class="viewtitle">第二视图 · 四种订阅的分发对比（与主图同步）</div>
+<svg id="eng2" viewBox="0 0 1000 230" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>四种订阅模式的分发对比</title>
+<g id="scene2"></g>
+</svg>
+</div>
+
 <div class="ctrl">
 <button class="btn" id="engBtn">暂停</button>
 <span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
@@ -390,8 +401,29 @@ H+='<text id="stageTag" class="ts" x="985" y="544" text-anchor="end" fill="#854F
 H+='<circle id="tok" cx="104" cy="210" r="10" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/>';
 H+='<text id="tokT" class="ts" x="104" y="192" text-anchor="middle" fill="#854F0B">A</text>';
 document.getElementById('scene').innerHTML=H;
+var scene2El=document.getElementById('scene2');
+if(scene2El){var H2='';
+var v3modes=[['Exclusive','一个吃全部'],['Failover','主备'],['Shared','轮询'],['Key_Shared','key 绑定']];
+var v3xs=[20,255,490,725];
+for(var v3m=0;v3m<4;v3m++){
+var x=v3xs[v3m];
+H2+='<rect id="v3_bg'+v3m+'" x="'+x+'" y="34" width="225" height="140" rx="10" fill="'+(v3m===0?'#FFF6E8':'#fff')+'" stroke="'+(v3m===0?'#EF9F27':'#ECEAE2')+'" stroke-width="1.3"/>';
+H2+=tx(x+14,56,v3modes[v3m][0],'tn')+tx(x+14,76,v3modes[v3m][1],'ts');
+for(var v3c=0;v3c<3;v3c++){H2+=tx(x+14,100+v3c*22,'C'+(v3c+1),'ts');}
+if(v3m===1){H2+=tx(x+80,122,'待命','ts')+tx(x+80,144,'待命','ts');}
+if(v3m===3){H2+=tx(x+80,144,'待命','ts');}
+}
+var v3assign=[[0,0,0],[0,0,0],[0,1,2],[0,0,1]];
+for(var v3m=0;v3m<4;v3m++){for(var v3k=0;v3k<3;v3k++){var v3c=v3assign[v3m][v3k];var v3x=v3xs[v3m]+160+v3k*16;var v3y=96+v3c*22;H2+='<circle id="v3_m'+v3m+'_'+v3k+'" cx="'+v3x+'" cy="'+v3y+'" r="5" fill="#EF9F27" stroke="#D97E06" opacity="0"/>';}}
+H2+='<line x1="20" y1="196" x2="970" y2="196" stroke="#3B3A34"/>';
+var v3ticks=[[20,'0°'],[257.5,'180°'],[495,'360°'],[732.5,'540°'],[970,'720°']];
+for(var v3i=0;v3i<v3ticks.length;v3i++){H2+='<line x1="'+v3ticks[v3i][0]+'" y1="191" x2="'+v3ticks[v3i][0]+'" y2="201" stroke="#3B3A34"/>'+tx(v3ticks[v3i][0],216,v3ticks[v3i][1],'ts','middle');}
+H2+='<line id="v3_play" x1="20" y1="186" x2="20" y2="206" stroke="#C46A0A" stroke-width="2"/>';
+H2+='<circle id="v3_dot" cx="20" cy="196" r="4" fill="#C46A0A"/>';
+H2+='<text id="v3_now" class="ts" x="970" y="24" text-anchor="end" fill="#854F0B">相位 0° · Exclusive</text>';
+scene2El.innerHTML=H2;}
 var el={};
-document.querySelectorAll('#scene [id]').forEach(function(n){el[n.id]=n;});
+document.querySelectorAll('#scene [id], #scene2 [id]').forEach(function(n){el[n.id]=n;});
 var MODE='exclusive';
 var MODE_NAME={exclusive:'Exclusive',failover:'Failover',shared:'Shared',key:'Key_Shared'};
 var MODE_NOTE={exclusive:'一个消费者吃全部；第二个连上来会被拒绝',failover:'主消费者收，其余待命；按 priority + name 排序',shared:'轮询分发，吞吐最好，顺序不保证',key:'同一 key 固定消费者，key 内有序'};
@@ -508,6 +540,16 @@ setChip('mode',MODE_NAME[MODE]);
 setChip('permits', th>=240?'已发放':'待命');
 setChip('flow', th>=480&&th<560?'归还中':'待命');
 setChip('retry', th>=680?'retry/DLQ':'待命');
+
+var v3mi={exclusive:0,failover:1,shared:2,key:3}[MODE]||0;
+for(var v3m=0;v3m<4;v3m++){setAttr('v3_bg'+v3m,'fill',v3m===v3mi?'#FFF6E8':'#fff');setAttr('v3_bg'+v3m,'stroke',v3m===v3mi?'#EF9F27':'#ECEAE2');}
+var v3p=[th>=400,th>=480,th>=560];
+for(var v3m=0;v3m<4;v3m++){for(var v3k=0;v3k<3;v3k++){setOp('v3_m'+v3m+'_'+v3k,v3p[v3k]?1:0);}}
+var t2=((th%720)+720)%720;
+var x2=(20+t2/720*950).toFixed(1);
+setAttr('v3_play','x1',x2);setAttr('v3_play','x2',x2);setAttr('v3_dot','cx',x2);
+setText('v3_now','相位 '+(Math.floor(t2)%720)+'° · '+MODE_NAME[MODE]);
+
 }
 function tick(now){
 var dt=Math.min(50,now-last);last=now;

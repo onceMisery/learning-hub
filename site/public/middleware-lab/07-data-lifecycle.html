@@ -111,6 +111,8 @@ table.grid td.act{background:#FAEEDA}
 .chip b{font-weight:600;color:#1F1E1A}
 .chip.on{background:#EAF3DE;border-color:#639922}
 .chip.off{background:#F5F4EF}
+.subview{margin:8px 0 4px;background:#ffffff;border:1px dashed #D3D1C7;border-radius:10px;padding:8px 10px}
+.subview .viewtitle{font-size:12px;font-weight:600;color:#854F0B;margin-bottom:4px}
 </style>
 </head>
 <body>
@@ -159,6 +161,15 @@ table.grid td.act{background:#FAEEDA}
 <text class="ts" x="985" y="40" text-anchor="end">蓝 = 对象存储 / 灰 = 已删</text>
 <g id="scene"></g>
 </svg>
+
+<div class="subview">
+<div class="viewtitle">第二视图 · 数据生命周期时间轴（与主图同步）</div>
+<svg id="eng2" viewBox="0 0 1000 210" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>数据生命周期时间轴</title>
+<g id="scene2"></g>
+</svg>
+</div>
+
 <div class="ctrl">
 <button class="btn" id="engBtn">暂停</button>
 <span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
@@ -369,8 +380,27 @@ H+='<text id="stageTag" class="ts" x="985" y="544" text-anchor="end" fill="#854F
 // token
 H+='<circle id="tok" cx="96" cy="119" r="9" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/>';
 document.getElementById('scene').innerHTML=H;
+var scene2El=document.getElementById('scene2');
+if(scene2El){var H2='';
+H2+='<rect x="80" y="30" width="840" height="150" rx="10" fill="#FBFAF6" stroke="#ECEAE2"/>';
+H2+='<rect id="v2_s0" x="80" y="60" width="186.7" height="30" rx="5" fill="#FAC775" stroke="#D97E06"/>';
+H2+='<rect id="v2_s1" x="266.7" y="60" width="186.7" height="30" rx="5" fill="#FAEEDA" stroke="#EF9F27"/>';
+H2+='<rect id="v2_s2" x="453.3" y="60" width="93.3" height="30" rx="5" fill="#F5F4EF" stroke="#B4B2A9"/>';
+H2+='<rect id="v2_s3" x="546.7" y="60" width="93.3" height="30" rx="5" fill="#FCEBEB" stroke="#E24B4A"/>';
+H2+='<rect id="v2_s4" x="640" y="60" width="93.3" height="30" rx="5" fill="#F5F4EF" stroke="#B4B2A9"/>';
+H2+='<rect id="v2_s5" x="733.3" y="60" width="93.3" height="30" rx="5" fill="#DCEBFA" stroke="#2563EB"/>';
+H2+='<rect id="v2_s6" x="826.7" y="60" width="93.3" height="30" rx="5" fill="#DCEBFA" stroke="#2563EB"/>';
+H2+=tx(173.3,80,'追加','ts','middle')+tx(360,80,'保留','ts','middle')+tx(500,80,'裁剪','ts','middle')+tx(593.3,80,'TTL','ts','middle')+tx(686.7,80,'积压','ts','middle')+tx(780,80,'压缩','ts','middle')+tx(873.3,80,'卸载','ts','middle');
+H2+=tx(546.7,108,'TTL 推进位点','ts','start','#8A2A2A')+tx(733.3,108,'compacted ledger','ts','start','#1E3A8A')+tx(826.7,130,'对象存储 · 冷读','ts','start','#1E3A8A');
+H2+='<line x1="80" y1="164" x2="920" y2="164" stroke="#3B3A34"/>';
+var v2ticks=[[80,'0°'],[290,'180°'],[500,'360°'],[710,'540°'],[920,'720°']];
+for(var v2i=0;v2i<v2ticks.length;v2i++){H2+='<line x1="'+v2ticks[v2i][0]+'" y1="159" x2="'+v2ticks[v2i][0]+'" y2="169" stroke="#3B3A34"/>'+tx(v2ticks[v2i][0],182,v2ticks[v2i][1],'ts','middle');}
+H2+='<line id="v2_play" x1="80" y1="24" x2="80" y2="164" stroke="#C46A0A" stroke-width="2"/>';
+H2+='<circle id="v2_dot" cx="80" cy="164" r="4" fill="#C46A0A"/>';
+H2+='<text id="v2_now" class="ts" x="920" y="24" text-anchor="end" fill="#854F0B">当前：追加 · 0°</text>';
+scene2El.innerHTML=H2;}
 var el={};
-document.querySelectorAll('#scene [id]').forEach(function(n){el[n.id]=n;});
+document.querySelectorAll('#scene [id], #scene2 [id]').forEach(function(n){el[n.id]=n;});
 var WP=[[0,96,119],[80,208,119],[160,320,119],[240,432,119],[320,544,119],[400,656,119],[480,768,119],[560,880,119],[640,880,342],[720,96,119]];
 function tokPos(th){if(th>=700)return null;var i=0;while(i<WP.length-2&&th>WP[i+1][0])i++;var a=WP[i],b=WP[i+1];var t=(th-a[0])/(b[0]-a[0]);return[a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];}
 var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
@@ -471,6 +501,15 @@ setChip('append', th>=80?'已落副本':'追加中');
 setChip('retention', th>=240?'策略生效':'待命');
 setChip('compact', th>=560?'compacted':'—');
 setChip('offload', th>=640?'对象存储':'—');
+
+var t2=((th%720)+720)%720;
+var x2=(80+t2/720*840).toFixed(1);
+setAttr('v2_play','x1',x2);setAttr('v2_play','x2',x2);setAttr('v2_dot','cx',x2);
+var v2names=['追加','保留','裁剪','TTL','积压','压缩','卸载'];
+var v2idx=t2<160?0:t2<320?1:t2<400?2:t2<480?3:t2<560?4:t2<640?5:6;
+setText('v2_now','当前：'+v2names[v2idx]+' · '+(Math.floor(t2)%720)+'°');
+for(var v2i=0;v2i<7;v2i++){setOp('v2_s'+v2i,v2i===v2idx?1:0.55);}
+
 }
 function tick(now){
 var dt=Math.min(50,now-last);last=now;

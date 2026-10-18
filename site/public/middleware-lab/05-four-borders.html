@@ -111,6 +111,8 @@ table.grid td.act{background:#FAEEDA}
 .chip b{font-weight:600;color:#1F1E1A}
 .chip.on{background:#EAF3DE;border-color:#639922}
 .chip.off{background:#F5F4EF}
+.subview{margin:8px 0 4px;background:#ffffff;border:1px dashed #D3D1C7;border-radius:10px;padding:8px 10px}
+.subview .viewtitle{font-size:12px;font-weight:600;color:#854F0B;margin-bottom:4px}
 </style>
 </head>
 <body>
@@ -159,6 +161,15 @@ table.grid td.act{background:#FAEEDA}
 <text class="ts" x="985" y="40" text-anchor="end">红 = 条件未满足 / 等待</text>
 <g id="scene"></g>
 </svg>
+
+<div class="subview">
+<div class="viewtitle">第二视图 · 四道闸门状态板（并列，与主图同步）</div>
+<svg id="eng2" viewBox="0 0 1000 210" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>四道闸门状态板</title>
+<g id="scene2"></g>
+</svg>
+</div>
+
 <div class="ctrl">
 <button class="btn" id="engBtn">暂停</button>
 <span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
@@ -383,8 +394,27 @@ H+='<text id="stageTag" class="ts" x="985" y="544" text-anchor="end" fill="#854F
 // token
 H+='<circle id="tok" cx="80" cy="323" r="10" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/>';
 document.getElementById('scene').innerHTML=H;
+var scene2El=document.getElementById('scene2');
+if(scene2El){var H2='';
+H2+='<rect x="80" y="30" width="840" height="150" rx="10" fill="#FBFAF6" stroke="#ECEAE2"/>';
+H2+=tx(72,58,'事务','ts','end')+tx(72,90,'卸载','ts','end')+tx(72,122,'归属','ts','end')+tx(72,154,'背压','ts','end');
+H2+='<rect id="v2_tx" x="80" y="50" width="280" height="18" rx="5" fill="#FAC775" stroke="#D97E06" opacity="1"/>';
+H2+='<text id="v2_txT" class="ts" x="920" y="42" text-anchor="end" fill="#854F0B">挂起</text>';
+H2+='<rect id="v2_off" x="360" y="82" width="210" height="18" rx="5" fill="#DCEBFA" stroke="#2563EB" opacity="0.35"/>';
+H2+='<text id="v2_offT" class="ts" x="920" y="74" text-anchor="end" fill="#1E3A8A">待命</text>';
+H2+='<rect id="v2_own" x="570" y="114" width="140" height="18" rx="5" fill="#FAEEDA" stroke="#EF9F27" opacity="0.35"/>';
+H2+='<text id="v2_ownT" class="ts" x="920" y="106" text-anchor="end" fill="#854F0B">待命</text>';
+H2+='<rect id="v2_bp" x="710" y="146" width="210" height="18" rx="5" fill="#EAF3DE" stroke="#639922" opacity="0.35"/>';
+H2+='<text id="v2_bpT" class="ts" x="920" y="138" text-anchor="end" fill="#4C7A1A">待命</text>';
+H2+='<line x1="80" y1="184" x2="920" y2="184" stroke="#3B3A34"/>';
+var v2ticks=[[80,'0°'],[290,'180°'],[500,'360°'],[710,'540°'],[920,'720°']];
+for(var v2i=0;v2i<v2ticks.length;v2i++){H2+='<line x1="'+v2ticks[v2i][0]+'" y1="179" x2="'+v2ticks[v2i][0]+'" y2="189" stroke="#3B3A34"/>'+tx(v2ticks[v2i][0],202,v2ticks[v2i][1],'ts','middle');}
+H2+='<line id="v2_play" x1="80" y1="24" x2="80" y2="184" stroke="#C46A0A" stroke-width="2"/>';
+H2+='<circle id="v2_dot" cx="80" cy="184" r="4" fill="#C46A0A"/>';
+H2+='<text id="v2_now" class="ts" x="920" y="24" text-anchor="end" fill="#854F0B">相位 0°</text>';
+scene2El.innerHTML=H2;}
 var el={};
-document.querySelectorAll('#scene [id]').forEach(function(n){el[n.id]=n;});
+document.querySelectorAll('#scene [id], #scene2 [id]').forEach(function(n){el[n.id]=n;});
 var WP=[[0,80,323],[60,200,323],[120,200,323],[180,200,323],[240,200,323],[300,420,323],[360,420,323],[420,640,323],[480,640,323],[540,860,323],[600,860,323],[660,860,323],[720,930,323]];
 function tokPos(th){var i=0;while(i<WP.length-2&&th>WP[i+1][0])i++;var a=WP[i],b=WP[i+1];var t=(th-a[0])/(b[0]-a[0]);return[a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];}
 var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
@@ -484,6 +514,21 @@ setChip('tx', th<240?(th>=120?(th<180?'commit marker':'abort 分支'):'挂起'):
 setChip('offload', th>=240&&th<420?'冷读中':th>=420?'已处理':'待命');
 setChip('owner', th>=420&&th<540?(th>=480?'lookup 重定向':'bundle 归属'):th>=540?'owner 锁定':'待命');
 setChip('backpressure', th>=540?(th>=660?'permits 放行':'闸门检查'):'待命');
+
+var t2=((th%720)+720)%720;
+var x2=(80+t2/720*840).toFixed(1);
+setAttr('v2_play','x1',x2);setAttr('v2_play','x2',x2);setAttr('v2_dot','cx',x2);
+setText('v2_now','相位 '+(Math.floor(t2)%720)+'°');
+var v2tx=th<120?'挂起':th<180?'commit marker':th<240?'abort 分支':'已放行';
+var v2off=th<240?'待命':th<420?'冷读/卸载':'已处理';
+var v2own=th<420?'待命':th<480?'bundle 归属':th<540?'lookup 重定向':'owner 锁定';
+var v2bp=th<540?'待命':th<660?'闸门检查':'permits 放行';
+setText('v2_txT',v2tx);setText('v2_offT',v2off);setText('v2_ownT',v2own);setText('v2_bpT',v2bp);
+setOp('v2_tx',th<240?1:0.35);
+setOp('v2_off',th>=240&&th<420?1:0.35);
+setOp('v2_own',th>=420&&th<540?1:0.35);
+setOp('v2_bp',th>=540?1:0.35);
+
 }
 function tick(now){
 var dt=Math.min(50,now-last);last=now;
