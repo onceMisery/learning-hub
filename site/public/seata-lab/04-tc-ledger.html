@@ -119,7 +119,7 @@ table.grid td.act{background:#FAEEDA}
 <body>
 <div class="labbar">
   <a href="#" id="lnkBack">← 返回实验室</a>
-  <a href="#" id="lnkArt">阅读文章：TC 的账本：状态机、超时重试与一台服务器倒下之后</a>
+  <a href="#" id="lnkArt">阅读文章：Raft 集群与高可用：一台 TC 倒下之后</a>
   <span class="idx">第 4 / 6 章</span>
 </div>
 <div class="page">
@@ -410,7 +410,7 @@ qz.addEventListener('click',function(e){
 });
 var BASE=(location.pathname.split('/seata-lab/')[0])||'';
 document.getElementById('lnkBack').href=BASE+'/seata/lab';
-document.getElementById('lnkArt').href=BASE+'/seata/tutorial/04-tc-ledger';
+document.getElementById('lnkArt').href=BASE+'/seata/server/03-raft-ha';
 
 window.__store='file';
 window.setStore=function(m,btn){

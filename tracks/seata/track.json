@@ -1,7 +1,7 @@
 {
   "id": "seata",
   "title": "分布式事务 · 读 Seata 源码",
-  "subtitle": "沿着一条 XID 的旅程，把 AT 的镜像与锁、TC 的会话账本、TCC/Saga/XA 的补偿路径读成一套能复述的系统",
+  "subtitle": "按架构、角色、事务模式、服务端机制、集成扩展、SQL 解析与事务传播七组，把 Seata 读成一套能复述的系统",
   "order": 65,
   "status": "active",
   "accent": "amber",
@@ -11,95 +11,265 @@
     "AT",
     "TCC",
     "Saga",
-    "XA"
+    "XA",
+    "Raft"
   ],
   "toolchain": "Apache Seata 2.8.0-SNAPSHOT",
   "verifiedAt": "2026-10-18",
   "outline": [
-    "全局事务：一条 XID 从 begin 走到 commit",
-    "AT 一阶段：一条 UPDATE 怎么变成 undo log 和一把全局锁",
-    "AT 二阶段：提交为什么先返回，回滚怎么把数据倒放",
-    "TC 的账本：状态机、超时重试与一台服务器倒下之后",
-    "TCC、Saga、XA：三种把回滚交给别人的方式",
-    "XID 的边界：传播、代理与那些看起来在事务里的调用"
+    "架构概述",
+    "核心角色：TC / TM / RM",
+    "事务模式：AT / TCC / Saga / XA",
+    "服务端内部机制：会话、锁、UndoLog、Raft",
+    "集成与可扩展性：Spring Boot、配置中心、服务发现",
+    "SQL 解析与重写",
+    "事务传播"
   ],
   "sections": [
     {
-      "id": "tutorial",
-      "title": "教程",
-      "path": "tutorial",
+      "id": "architecture",
+      "title": "架构概述",
+      "path": "tutorial/architecture",
       "order": 10,
       "pages": [
         {
-          "file": "01-全局事务.md",
-          "slug": "01-global-transaction",
-          "title": "全局事务：一条 XID 从 begin 走到 commit",
+          "file": "01-架构概述.md",
+          "slug": "01-architecture",
+          "title": "从一条 XID 看 Seata 的分层",
           "tags": [
+            "架构",
+            "XID",
+            "两阶段",
             "TM",
             "TC",
-            "RM",
-            "XID",
-            "两阶段"
+            "RM"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "roles",
+      "title": "核心角色",
+      "path": "tutorial/roles",
+      "order": 20,
+      "pages": [
+        {
+          "file": "01-TC.md",
+          "slug": "01-tc",
+          "title": "事务协调者 TC：状态机、会话和那把锁",
+          "tags": [
+            "TC",
+            "DefaultCoordinator",
+            "DefaultCore",
+            "状态机",
+            "全局锁"
           ]
         },
         {
-          "file": "02-AT第一阶段.md",
-          "slug": "02-at-phase-one",
-          "title": "AT 一阶段：一条 UPDATE 怎么变成 undo log 和一把全局锁",
+          "file": "02-TM.md",
+          "slug": "02-tm",
+          "title": "事务管理器 TM：只做决定，不做数据",
+          "tags": [
+            "TM",
+            "TransactionalTemplate",
+            "传播",
+            "超时",
+            "REQUIRES_NEW"
+          ]
+        },
+        {
+          "file": "03-RM.md",
+          "slug": "03-rm",
+          "title": "资源管理器 RM：一个门面，四种资源",
+          "tags": [
+            "RM",
+            "ResourceManager",
+            "分支注册",
+            "AsyncWorker",
+            "BranchType"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "modes",
+      "title": "事务模式",
+      "path": "tutorial/modes",
+      "order": 30,
+      "pages": [
+        {
+          "file": "01-AT模式.md",
+          "slug": "01-at",
+          "title": "AT 模式：自动补偿",
           "tags": [
             "AT",
             "undo log",
             "前后镜像",
             "全局锁",
-            "DataSourceProxy"
+            "脏写"
           ]
         },
         {
-          "file": "03-AT第二阶段.md",
-          "slug": "03-at-phase-two",
-          "title": "AT 二阶段：提交为什么先返回，回滚怎么把数据倒放",
-          "tags": [
-            "异步提交",
-            "回滚",
-            "脏写",
-            "锁冲突",
-            "undo log"
-          ]
-        },
-        {
-          "file": "04-TC账本.md",
-          "slug": "04-tc-ledger",
-          "title": "TC 的账本：状态机、超时重试与一台服务器倒下之后",
-          "tags": [
-            "Session",
-            "Raft",
-            "超时",
-            "重试",
-            "高可用"
-          ]
-        },
-        {
-          "file": "05-补偿模式.md",
-          "slug": "05-tcc-saga-xa",
-          "title": "TCC、Saga、XA：三种把回滚交给别人的方式",
+          "file": "02-TCC模式.md",
+          "slug": "02-tcc",
+          "title": "TCC 模式：尝试-确认-取消",
           "tags": [
             "TCC",
-            "Saga",
-            "XA",
-            "fence",
-            "补偿"
+            "try",
+            "confirm",
+            "cancel",
+            "fence"
           ]
         },
         {
-          "file": "06-XID边界.md",
-          "slug": "06-xid-boundary",
-          "title": "XID 的边界：传播、代理与那些看起来在事务里的调用",
+          "file": "03-Saga模式.md",
+          "slug": "03-saga",
+          "title": "Saga 模式：长事务",
+          "tags": [
+            "Saga",
+            "状态机",
+            "补偿",
+            "forward",
+            "compensate"
+          ]
+        },
+        {
+          "file": "04-XA模式.md",
+          "slug": "04-xa",
+          "title": "XA 模式：两阶段提交",
+          "tags": [
+            "XA",
+            "prepare",
+            "XAER_NOTA",
+            "可见性",
+            "行锁"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "server",
+      "title": "服务端内部机制",
+      "path": "tutorial/server",
+      "order": 40,
+      "pages": [
+        {
+          "file": "01-会话与锁.md",
+          "slug": "01-session-lock",
+          "title": "会话与锁管理",
+          "tags": [
+            "SessionHolder",
+            "GlobalSession",
+            "BranchSession",
+            "LockManager",
+            "锁释放"
+          ]
+        },
+        {
+          "file": "02-UndoLog与回滚.md",
+          "slug": "02-undo-rollback",
+          "title": "UndoLog 与回滚机制",
+          "tags": [
+            "UndoLog",
+            "回放",
+            "脏写校验",
+            "GlobalFinished",
+            "反向 SQL"
+          ]
+        },
+        {
+          "file": "03-Raft与高可用.md",
+          "slug": "03-raft-ha",
+          "title": "Raft 集群与高可用",
+          "tags": [
+            "Raft",
+            "选主",
+            "快照",
+            "会话恢复",
+            "高可用"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "integration",
+      "title": "集成与可扩展性",
+      "path": "tutorial/integration",
+      "order": 50,
+      "pages": [
+        {
+          "file": "01-SpringBoot集成.md",
+          "slug": "01-spring-boot",
+          "title": "Spring Boot 集成",
+          "tags": [
+            "Spring Boot",
+            "自动配置",
+            "DataSourceProxy",
+            "GlobalTransactionScanner"
+          ]
+        },
+        {
+          "file": "02-配置中心.md",
+          "slug": "02-config-center",
+          "title": "配置中心支持",
+          "tags": [
+            "ConfigurationFactory",
+            "Nacos",
+            "ZooKeeper",
+            "Apollo",
+            "动态刷新"
+          ]
+        },
+        {
+          "file": "03-服务发现.md",
+          "slug": "03-service-discovery",
+          "title": "服务发现可插拔化",
+          "tags": [
+            "RegistryFactory",
+            "namingserver",
+            "vgroup",
+            "lookup",
+            "重连"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sql",
+      "title": "SQL 解析与重写",
+      "path": "tutorial/sql",
+      "order": 60,
+      "pages": [
+        {
+          "file": "01-SQL解析与重写.md",
+          "slug": "01-sql-parsing",
+          "title": "从 SQL 到镜像与 undo 改写",
+          "tags": [
+            "Druid",
+            "SQLRecognizer",
+            "镜像",
+            "TableMeta",
+            "undo SQL"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "propagation",
+      "title": "事务传播",
+      "path": "tutorial/propagation",
+      "order": 70,
+      "pages": [
+        {
+          "file": "01-事务传播.md",
+          "slug": "01-transaction-propagation",
+          "title": "XID 怎么过线程、RPC 和模式边界",
           "tags": [
             "RootContext",
-            "XID 传播",
-            "线程池",
+            "XID",
             "RPC",
-            "代理"
+            "线程池",
+            "REQUIRES_NEW"
           ]
         }
       ]
@@ -111,7 +281,7 @@
   ],
   "lab": {
     "title": "互动原理实验室",
-    "subtitle": "六章动态图解：从一条 XID 的旅程、AT 的镜像与锁，到 TC 状态机、三种补偿模式与 XID 的边界",
+    "subtitle": "六章动态图解：从一条 XID 的旅程、AT 的镜像与锁，到 TC 状态机、三种补偿模式与事务传播边界",
     "route": "/seata/lab"
   }
 }

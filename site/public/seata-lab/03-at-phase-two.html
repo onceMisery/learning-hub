@@ -119,7 +119,7 @@ table.grid td.act{background:#FAEEDA}
 <body>
 <div class="labbar">
   <a href="#" id="lnkBack">← 返回实验室</a>
-  <a href="#" id="lnkArt">阅读文章：AT 二阶段：提交为什么先返回，回滚怎么把数据倒放</a>
+  <a href="#" id="lnkArt">阅读文章：AT 模式：自动补偿</a>
   <span class="idx">第 3 / 6 章</span>
 </div>
 <div class="page">
@@ -394,7 +394,7 @@ qz.addEventListener('click',function(e){
 });
 var BASE=(location.pathname.split('/seata-lab/')[0])||'';
 document.getElementById('lnkBack').href=BASE+'/seata/lab';
-document.getElementById('lnkArt').href=BASE+'/seata/tutorial/03-at-phase-two';
+document.getElementById('lnkArt').href=BASE+'/seata/modes/01-at';
 
 requestAnimationFrame(tick);
 })();

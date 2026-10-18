@@ -119,7 +119,7 @@ table.grid td.act{background:#FAEEDA}
 <body>
 <div class="labbar">
   <a href="#" id="lnkBack">← 返回实验室</a>
-  <a href="#" id="lnkArt">阅读文章：AT 一阶段：一条 UPDATE 怎么变成 undo log 和一把全局锁</a>
+  <a href="#" id="lnkArt">阅读文章：AT 模式：自动补偿</a>
   <span class="idx">第 2 / 6 章</span>
 </div>
 <div class="page">
@@ -395,7 +395,7 @@ qz.addEventListener('click',function(e){
 });
 var BASE=(location.pathname.split('/seata-lab/')[0])||'';
 document.getElementById('lnkBack').href=BASE+'/seata/lab';
-document.getElementById('lnkArt').href=BASE+'/seata/tutorial/02-at-phase-one';
+document.getElementById('lnkArt').href=BASE+'/seata/modes/01-at';
 
 requestAnimationFrame(tick);
 })();

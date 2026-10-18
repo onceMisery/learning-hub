@@ -1,4 +1,4 @@
-# AT 二阶段：提交为什么先返回，回滚怎么把数据倒放
+# UndoLog 与回滚机制：一条录像怎么存、怎么放
 
 先看两个查账的场景。
 
@@ -10,7 +10,51 @@
 
 ---
 
-## 一、提交：TC 先改状态，RM 后删日志
+## 一、UndoLog 不是 SQL 日志
+
+很多人以为 undo_log 里存的是「反向 SQL」。不是。
+
+它存的是镜像：哪个库、哪张表、什么操作、改前的行、改后的行。反向 SQL 是在回滚时根据镜像现生成的。这样做的好处是：数据库方言、列类型、JSON/LOB 处理都可以在回滚时按当前表结构适配；坏处是回滚执行器要为每种数据库单独实现。
+
+一份 undo_log 的结构：
+
+```text
+BranchUndoLog
+  ├─ xid
+  ├─ branchId
+  └─ List<SQLUndoLog>
+       ├─ sqlType（INSERT / UPDATE / DELETE）
+       ├─ tableName
+       ├─ beforeImage（TableRecords）
+       └─ afterImage（TableRecords）
+```
+
+`TableRecords` 里是 `TableMeta` 加一组 `Row`，每个 `Field` 带列名、JDBC 类型、值、是否主键。`beforeImage` / `afterImage` 的列集合由 `getNeedColumns()` 决定：默认是「更新列 + 主键 + ON UPDATE 列」，不是整行。
+
+序列化默认用 Jackson（`client.undo.logSerialization=jackson`），也支持 Fastjson/Fastjson2/Kryo/Fory/Protostuff 等解析器。`flushUndoLogs()` 把 `BranchUndoLog` 编码成字节数组，超过阈值时压缩，再把 `context`（序列化器、压缩器、max_allowed_packet）和 `rollback_info` 一起写进 `undo_log`。
+
+MySQL 的 `undo_log` 表长这样：
+
+```sql
+CREATE TABLE undo_log (
+  branch_id BIGINT NOT NULL,
+  xid VARCHAR(128) NOT NULL,
+  context VARCHAR(128) NOT NULL,
+  rollback_info LONGBLOB NOT NULL,
+  log_status INT NOT NULL,
+  log_created DATETIME(6) NOT NULL,
+  log_modified DATETIME(6) NOT NULL,
+  UNIQUE KEY ux_undo_log (xid, branch_id)
+);
+```
+
+`log_status` 只有两个值：`Normal(0)` 和 `GlobalFinished(1)`。前者可以回放，后者是墓碑，用来挡住一阶段后到的本地提交。
+
+这张表写在业务库里，和业务 SQL 在同一个本地事务。不是 TC 的库，也不是 Seata 的库。
+
+---
+
+## 二、提交：TC 先改状态，RM 后删日志
 
 TM 发来 `GlobalCommitRequest` 之后，`DefaultCore.commit()` 做的第一件事不是给各分支发提交请求，而是看这个全局会话能不能异步提交。
 
@@ -39,11 +83,11 @@ TC 收到 `PhaseTwo_Committed`，就把这个分支从会话里删掉。全局�
 
 删除失败怎么办？重新入队，一直删。因为提交路径上删 undo log 是幂等的，删不掉也不会改变数据。代价是 `undo_log` 表会涨，涨到影响查询性能，这是运维问题，不是一致性问题。
 
-![图 1：提交与回滚的两条时间线](../assets/03-提交与回滚的两条时间线.svg)
+![图 1：提交与回滚的两条时间线](../../assets/03-提交与回滚的两条时间线.svg)
 
 ---
 
-## 二、回滚：TC 倒着走，RM 逆序重放
+## 三、回滚：TC 倒着走，RM 逆序重放
 
 回滚的路径完全相反。TC 不能先返回，因为回滚要改数据，改不干净就是不一致。
 
@@ -80,7 +124,7 @@ TC 收到 `PhaseTwo_Committed`，就把这个分支从会话里删掉。全局�
 
 ---
 
-## 三、回滚比一阶段先到：一条墓碑记录
+## 四、回滚比一阶段先到：一条墓碑记录
 
 这是 AT 里设计得最巧的一处，也是最容易被忽略的。
 
@@ -110,7 +154,7 @@ Seata 的处理是：查不到 undo log 时，插入一条 `log_status = GlobalF
 
 ---
 
-## 四、脏写校验：before、after、current 三方对账
+## 五、脏写校验：before、after、current 三方对账
 
 回滚不是闭着眼睛执行反向 SQL。`AbstractUndoExecutor.executeOn()` 在生成反向 SQL 之前，会先做一次三方对账：
 
@@ -135,7 +179,7 @@ Seata 的处理是：查不到 undo log 时，插入一条 `log_status = GlobalF
 
 ---
 
-## 五、失败之后：提交可以慢慢来，回滚不能
+## 六、失败之后：提交可以慢慢来，回滚不能
 
 提交和回滚的失败处理也不对称。
 
@@ -152,7 +196,7 @@ Seata 的处理是：查不到 undo log 时，插入一条 `log_status = GlobalF
 
 ---
 
-## 六、两个容易忽略的边界
+## 七、两个容易忽略的边界
 
 **回滚的幂等靠 undo log 状态，不靠业务方法。** TC 重发回滚时，第二次 `SELECT ... FOR UPDATE` 可能查到墓碑记录，`canUndo()` 返回 false，直接返回成功。如果查到的是正常记录，说明上一次回滚没删成功，会再执行一遍反向 SQL。反向 SQL 本身不一定幂等，比如 DELETE 的补偿是 INSERT，重复执行会撞主键。Seata 用唯一键冲突把这种情况标成不可重试，而不是假装成功。接入方要保证补偿 SQL 能承受重复执行，或者在业务层做幂等。
 
@@ -160,7 +204,7 @@ Seata 的处理是：查不到 undo log 时，插入一条 `log_status = GlobalF
 
 ---
 
-## 七、踩坑清单
+## 八、踩坑清单
 
 - 看到 TC 返回 `Committed` 就以为所有分支的 undo log 已删：AT 的提交是异步的。
 - 在提交后手动清 `undo_log`：正常的异步删除会做，手动清只会让审计和排障少一份证据。
@@ -208,6 +252,8 @@ DefaultCore.rollback()                                :401
 
 | 本文结论 | 源码证据 | 照搬之前先确认 |
 | --- | --- | --- |
+| undo_log 存镜像，不存反向 SQL | `SQLUndoLog.java:27`、`AbstractUndoLogManager.flushUndoLogs():266`、`MySQLUndoLogManager.java:54` | 你是否以为改表结构后旧日志还能直接执行 |
+| 日志写在同一本地事务，提交失败一起回滚 | `ConnectionProxy.processGlobalTransactionCommit():254` | 你的 undo_log 和业务表是否同库同事务 |
 | AT 提交对 TM 先返回，分支提交和删 undo 异步 | `DefaultCore.commit():255`、`AsyncWorker.branchCommit():78` | 你的监控是否把 `Committed` 当成「所有分支二阶段完成」 |
 | 回滚按分支逆序、分支内 SQL 也逆序 | `GlobalSession.getReverseSortedBranches():423`、`AbstractUndoLogManager.undo():368` | 你的补偿是否依赖执行顺序；逆序是 Seata 的默认，不是业务语义 |
 | 回滚前做三方对账，脏写不可重试 | `AbstractUndoExecutor.dataValidationAndGoOn():234` | 你是否关了 `client.undo.dataValidation`；关了就没有这层保护 |
@@ -220,7 +266,11 @@ DefaultCore.rollback()                                :401
 - `server/src/main/java/org/apache/seata/server/coordinator/DefaultCoordinator.java`：`handleRetryRollbacking()`（`:451`）、`handleRetryCommitting()`（`:487`）、`handleAsyncCommitting()`（`:524`）
 - `server/src/main/java/org/apache/seata/server/coordinator/AbstractCore.java`：`branchCommit()`（`:196`）、`branchRollback()`（`:226`）
 - `rm-datasource/src/main/java/org/apache/seata/rm/datasource/AsyncWorker.java`：定时任务（`:75`）、`branchCommit()`（`:78`）、`doBranchCommit()`（`:110`）、`deleteUndoLog()`（`:169`）
-- `rm-datasource/src/main/java/org/apache/seata/rm/datasource/undo/AbstractUndoLogManager.java`：`SELECT ... FOR UPDATE`（`:89`）、`undo()`（`:315`）、逆序（`:368`）、墓碑记录（`:409`）、脏写映射（`:432`）
+- `rm-datasource/src/main/java/org/apache/seata/rm/datasource/undo/AbstractUndoLogManager.java`：`flushUndoLogs()`（`:266`）、`SELECT ... FOR UPDATE`（`:89`）、`undo()`（`:315`）、逆序（`:368`）、墓碑记录（`:409`）、脏写映射（`:432`）
+- `rm-datasource/src/main/java/org/apache/seata/rm/datasource/undo/SQLUndoLog.java`：镜像结构（`:27`）
+- `rm-datasource/src/main/java/org/apache/seata/rm/datasource/undo/UndoLogParser.java`：序列化接口
+- `rm-datasource/src/main/java/org/apache/seata/rm/datasource/undo/mysql/MySQLUndoLogManager.java`：INSERT 列（`:54`）
+- `script/client/at/db/mysql.sql`：`undo_log` DDL（`:19`）
 - `rm-datasource/src/main/java/org/apache/seata/rm/datasource/undo/AbstractUndoExecutor.java`：`executeOn()`（`:114`）、`dataValidationAndGoOn()`（`:234`）
 - `rm-datasource/src/main/java/org/apache/seata/rm/datasource/undo/mysql/MySQLUndoUpdateExecutor.java`：`buildUndoSQL()`（`:50`）
 - `rm-datasource/src/main/java/org/apache/seata/rm/datasource/undo/mysql/MySQLUndoDeleteExecutor.java`：`buildUndoSQL()`（`:62`）
