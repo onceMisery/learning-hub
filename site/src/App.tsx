@@ -7,6 +7,7 @@ import { DocPage } from '@/pages/DocPage';
 import { ComparePage } from '@/pages/ComparePage';
 import { ProgressPage } from '@/pages/ProgressPage';
 import { AgentLabPage } from '@/pages/AgentLabPage';
+import { MiddlewareLabPage } from '@/pages/MiddlewareLabPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 
 /**
@@ -15,9 +16,9 @@ import { NotFoundPage } from '@/pages/NotFoundPage';
  * 静态路由放在前面，避免被 `/:trackId` 这类动态段提前吞掉。
  * 所有页面都挂在 Layout 下，以便共享顶栏、侧边栏与搜索面板。
  *
- * `/agent/lab/:chapterId?` 是互动原理实验室：iframe 承载 public/agent-lab/ 下的
- * 自包含图解页。它有两段也有三段，必须写在 `/:trackId/:sectionId/:slug` 之前，
- * 否则 `/agent/lab/01-xxx` 会被误抢成文档页。
+ * `/agent/lab/:chapterId?` 与 `/middleware/lab/:chapterId?` 是互动原理实验室：
+ * iframe 承载 public/*-lab/ 下的自包含图解页。它们有两段也有三段，必须写在
+ * `/:trackId/:sectionId/:slug` 之前，否则 `/middleware/lab/01-xxx` 会被误抢成文档页。
  */
 export function App() {
   return (
@@ -30,6 +31,7 @@ export function App() {
           <Route path="/compare" element={<ComparePage />} />
           <Route path="/progress" element={<ProgressPage />} />
           <Route path="/agent/lab/:chapterId?" element={<AgentLabPage />} />
+          <Route path="/middleware/lab/:chapterId?" element={<MiddlewareLabPage />} />
           <Route path="/:trackId" element={<TrackPage />} />
           <Route path="/:trackId/:sectionId/:slug" element={<DocPage />} />
           <Route path="*" element={<NotFoundPage />} />

@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="640" viewBox="0 0 880 640" role="img" aria-label="Broker 内部对象与线程归属"><title>Broker 内部对象与线程归属</title><defs><marker id="arw-94A3B8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#94A3B8"/></marker><marker id="arw-94A3B8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#94A3B8"/></marker><marker id="arw-94A3B8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#94A3B8"/></marker><marker id="arw-94A3B8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#94A3B8"/></marker><marker id="arw-94A3B8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#94A3B8"/></marker><marker id="arw-94A3B8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#94A3B8"/></marker><marker id="arw-94A3B8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#94A3B8"/></marker><marker id="arw-94A3B8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#94A3B8"/></marker></defs><rect x="0" y="0" width="880" height="640" fill="#FFFFFF"/><text x="40" y="38" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="20" font-weight="700" fill="#0F172A" text-anchor="start">Broker 内部：一层套一层，线程却是分开的</text>
+<text x="40" y="60" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="12" font-weight="400" fill="#64748B" text-anchor="start">连接、主题、订阅、账本各有自己的执行边界</text>
+<rect x="30" y="82" width="820" height="96" rx="12" fill="#F8FAFC" stroke="#94A3B8" stroke-width="1.3" stroke-dasharray="6 5"/>
+<text x="46" y="104" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="12" font-weight="600" fill="#64748B" text-anchor="start">接入层（Netty IO 线程）</text>
+<rect x="50" y="114" width="190" height="50" rx="10" fill="#EFF6FF" stroke="#2563EB" stroke-width="1.5"/>
+<text x="62" y="136" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="14" font-weight="600" fill="#1E3A8A" text-anchor="start">EventLoop</text>
+<text x="62" y="152.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11" font-weight="400" fill="#1D4ED8" text-anchor="start">读写 ByteBuf、拆协议包</text>
+<rect x="262" y="114" width="210" height="50" rx="10" fill="#EFF6FF" stroke="#2563EB" stroke-width="1.5"/>
+<text x="274" y="136" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="14" font-weight="600" fill="#1E3A8A" text-anchor="start">ServerCnx</text>
+<text x="274" y="152.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11" font-weight="400" fill="#1D4ED8" text-anchor="start">每条连接一个，状态机</text>
+<rect x="494" y="114" width="200" height="50" rx="10" fill="#EFF6FF" stroke="#2563EB" stroke-width="1.5"/>
+<text x="506" y="136" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="14" font-weight="600" fill="#1E3A8A" text-anchor="start">命令分发</text>
+<text x="506" y="152.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11" font-weight="400" fill="#1D4ED8" text-anchor="start">handleProducer / Subscribe</text>
+<rect x="716" y="114" width="118" height="50" rx="10" fill="#F1F5F9" stroke="#94A3B8" stroke-width="1.5"/>
+<text x="728" y="136" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="14" font-weight="600" fill="#0F172A" text-anchor="start">命令队列</text>
+<text x="728" y="152.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11" font-weight="400" fill="#475569" text-anchor="start">投给 topic 线程</text>
+<path d="M240,139 L258,139" fill="none" stroke="#94A3B8" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arw-94A3B8)"/>
+<path d="M472,139 L490,139" fill="none" stroke="#94A3B8" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arw-94A3B8)"/>
+<path d="M694,139 L712,139" fill="none" stroke="#94A3B8" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arw-94A3B8)"/>
+<rect x="30" y="198" width="820" height="112" rx="12" fill="#F8FAFC" stroke="#94A3B8" stroke-width="1.3" stroke-dasharray="6 5"/>
+<text x="46" y="220" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="12" font-weight="600" fill="#64748B" text-anchor="start">路由层（全局单例 + 并发缓存）</text>
+<rect x="50" y="230" width="240" height="64" rx="10" fill="#CFFAFE" stroke="#0891B2" stroke-width="1.5"/>
+<text x="62" y="252" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="14" font-weight="600" fill="#164E63" text-anchor="start">BrokerService</text>
+<text x="62" y="268.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11" font-weight="400" fill="#0E7490" text-anchor="start">topics: topic → Future&lt;Topic&gt;</text>
+<text x="62" y="285.0" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11" font-weight="400" fill="#0E7490" text-anchor="start">同一个 topic 只加载一次</text>
+<rect x="312" y="230" width="220" height="64" rx="10" fill="#CFFAFE" stroke="#0891B2" stroke-width="1.5"/>
+<text x="324" y="252" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="14" font-weight="600" fill="#164E63" text-anchor="start">NamespaceService</text>
+<text x="324" y="268.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11" font-weight="400" fill="#0E7490" text-anchor="start">bundle 归属查询</text>
+<text x="324" y="285.0" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11" font-weight="400" fill="#0E7490" text-anchor="start">不归我就返回 Redirect</text>
+<rect x="554" y="230" width="276" height="64" rx="10" fill="#CFFAFE" stroke="#0891B2" stroke-width="1.5"/>
+<text x="566" y="252" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="14" font-weight="600" fill="#164E63" text-anchor="start">LoadManager</text>
+<text x="566" y="268.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11" font-weight="400" fill="#0E7490" text-anchor="start">broker 注册 / 负载上报</text>
+<text x="566" y="285.0" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11" font-weight="400" fill="#0E7490" text-anchor="start">bundle 选主与卸载</text>
+<path d="M290,262 L308,262" fill="none" stroke="#94A3B8" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arw-94A3B8)"/>
+<rect x="30" y="330" width="820" height="150" rx="12" fill="#F8FAFC" stroke="#94A3B8" stroke-width="1.3" stroke-dasharray="6 5"/>
+<text x="46" y="352" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="12" font-weight="600" fill="#64748B" text-anchor="start">主题层（topic ordered executor，按 topic 名固定线程）</text>
+<rect x="50" y="362" width="170" height="96" rx="10" fill="#DCFCE7" stroke="#059669" stroke-width="1.5"/>
+<text x="62" y="384" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="14" font-weight="600" fill="#064E3B" text-anchor="start">PersistentTopic</text>
+<text x="62" y="400.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11" font-weight="400" fill="#047857" text-anchor="start">publishMessage</text>
+<text x="62" y="417.0" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11" font-weight="400" fill="#047857" text-anchor="start">addComplete</text>
+<text x="62" y="433.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11" font-weight="400" fill="#047857" text-anchor="start">fencing / 去重</text>
+<rect x="242" y="362" width="180" height="96" rx="10" fill="#DCFCE7" stroke="#059669" stroke-width="1.5"/>
+<text x="254" y="384" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="14" font-weight="600" fill="#064E3B" text-anchor="start">PersistentSubscription</text>
+<text x="254" y="400.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11" font-weight="400" fill="#047857" text-anchor="start">cursor / dispatcher</text>
+<text x="254" y="417.0" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11" font-weight="400" fill="#047857" text-anchor="start">ack 与重投</text>
+<rect x="444" y="362" width="160" height="96" rx="10" fill="#DCFCE7" stroke="#059669" stroke-width="1.5"/>
+<text x="456" y="384" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="14" font-weight="600" fill="#064E3B" text-anchor="start">Dispatcher</text>
+<text x="456" y="400.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11" font-weight="400" fill="#047857" text-anchor="start">按订阅类型选</text>
+<text x="456" y="417.0" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11" font-weight="400" fill="#047857" text-anchor="start">读多少由 permits 决定</text>
+<rect x="626" y="362" width="204" height="96" rx="10" fill="#DCFCE7" stroke="#059669" stroke-width="1.5"/>
+<text x="638" y="384" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="14" font-weight="600" fill="#064E3B" text-anchor="start">Consumer</text>
+<text x="638" y="400.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11" font-weight="400" fill="#047857" text-anchor="start">每连接一个发送窗口</text>
+<text x="638" y="417.0" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11" font-weight="400" fill="#047857" text-anchor="start">channel writable 也参与</text>
+<path d="M220,410 L240,410" fill="none" stroke="#94A3B8" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arw-94A3B8)"/>
+<path d="M422,410 L442,410" fill="none" stroke="#94A3B8" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arw-94A3B8)"/>
+<path d="M604,410 L624,410" fill="none" stroke="#94A3B8" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arw-94A3B8)"/>
+<rect x="30" y="500" width="520" height="96" rx="12" fill="#F8FAFC" stroke="#94A3B8" stroke-width="1.3" stroke-dasharray="6 5"/>
+<text x="46" y="522" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="12" font-weight="600" fill="#64748B" text-anchor="start">存储层（managed-ledger executor，按 ledger 名固定线程）</text>
+<rect x="50" y="532" width="220" height="50" rx="10" fill="#FEF3C7" stroke="#D97706" stroke-width="1.5"/>
+<text x="62" y="554" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="14" font-weight="600" fill="#78350F" text-anchor="start">ManagedLedgerImpl</text>
+<text x="62" y="570.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11" font-weight="400" fill="#92400E" text-anchor="start">pendingAddEntries 队列</text>
+<rect x="292" y="532" width="238" height="50" rx="10" fill="#FEF3C7" stroke="#D97706" stroke-width="1.5"/>
+<text x="304" y="554" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="14" font-weight="600" fill="#78350F" text-anchor="start">BookKeeper 客户端</text>
+<text x="304" y="570.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11" font-weight="400" fill="#92400E" text-anchor="start">quorum 写，ack 回调解锁</text>
+<path d="M270,557 L288,557" fill="none" stroke="#94A3B8" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arw-94A3B8)"/>
+<rect x="574" y="500" width="276" height="96" rx="10" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.5"/>
+<text x="586" y="522" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="14" font-weight="600" fill="#0F172A" text-anchor="start">为什么这么分</text>
+<text x="586" y="538.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11" font-weight="400" fill="#475569" text-anchor="start">同一 topic 的操作串行，避免锁</text>
+<text x="586" y="555.0" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11" font-weight="400" fill="#475569" text-anchor="start">跨 topic 并行，吃满多核</text>
+<text x="586" y="571.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11" font-weight="400" fill="#475569" text-anchor="start">BK 回调不在 IO 线程里做重活</text></svg>

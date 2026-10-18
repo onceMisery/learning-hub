@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>四道边界 · Pulsar 互动原理实验室 第 5 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:920px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:680px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:500;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:12px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:500;fill:#1F1E1A}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:68px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+.modebar{display:flex;align-items:center;gap:8px;margin:6px 4px 0;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.modebar .mlabel{font-weight:600;color:#3B3A34}
+.modebtn{padding:5px 12px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:12.5px;cursor:pointer;font-family:inherit}
+.modebtn:hover{border-color:#888780}
+.modebtn.on{background:#FFF6E8;border-color:#EF9F27;color:#854F0B;font-weight:600}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .outbranch{display:inline-flex;flex-direction:column;align-items:flex-start;gap:6px}
+.flow .outline{display:inline-flex;align-items:center;gap:8px}
+.flow .flownote{font-size:12px;color:#6B695F;font-weight:600;margin-right:4px}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:9px 10px;text-align:center}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+#scene [opacity]{transition:opacity .28s ease}
+#tok,#tokT,#pulse{transition:none}
+@media (prefers-reduced-motion: reduce){#scene [opacity]{transition:none}}
+.frame2{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figure{margin:14px 0 16px;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:12px 14px}
+.figure .figtitle{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:6px}
+.figure svg{width:100%;height:auto;display:block}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：事务与治理</a>
+  <span class="idx">第 5 / 7 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · 把意外收进边界</div>
+<h1>四道边界：一条消息要穿过四种「不确定」</h1>
+<p>正常路径讲完了，剩下的是边界：写了一半怎么办、数据太老怎么办、机器不均怎么办、流量太猛怎么办。这页课把事务、卸载、归属、背压做成四道闸门，让一枚令牌依次穿过，看每一道门在什么条件下才放行。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span>
+<span class="mnode">② 静态分解</span>
+<span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span>
+<span class="mnode">⑤ 环境场景</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 560" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>四道边界 · 消息流上的四个闸门</title>
+<defs>
+<pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+<line x1="0" y1="0" x2="0" y2="8" stroke="#B4B2A9" stroke-width="0.7"/>
+</pattern>
+<marker id="flw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/>
+</marker>
+<marker id="flwG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/>
+</marker>
+<marker id="flwR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/>
+</marker>
+</defs>
+<text class="th" x="500" y="24" text-anchor="middle">四道边界 · 消息流上的四个闸门</text>
+<text class="ts" x="500" y="44" text-anchor="middle">令牌从生产端走到消费端，每道闸门都有各自的放行条件；条件不满足，消息就停在那里</text>
+<text class="ts" x="985" y="24" text-anchor="end">绿 = 条件满足 / 放行</text>
+<text class="ts" x="985" y="40" text-anchor="end">红 = 条件未满足 / 等待</text>
+<g id="scene"></g>
+</svg>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 轮 / 7 秒</span>
+</div>
+
+<div class="readout">
+<span class="ro">进度 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">关键量 <b id="roKey">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav">
+<button class="btn" onclick="prevStep()">‹ 上一步</button>
+<button class="btn warn" onclick="nextStep()">下一步 ›</button>
+</span>
+</div>
+<p class="figcap">进度 0° = 事务写入，720° = 背压闸门检查；四道边界是并列关系，不是先后顺序。<br>口径：阈值与触发顺序以配置为准；事务 abort、卸载冷读、归属重定向只画主路径。</p>
+</div>
+</div>
+
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：正常路径之外，还有四种「停」</h2></div>
+<p class="sec-sub">先不看实现，只看一条消息可能停在哪。</p>
+<div class="quote">「对事物的观察包括了静态结构 + 动态生命周期 + 环境场景三个方面的内容。」</div>
+<p>一条消息从生产到消费，除了「写进去、读出来」，还会遇到四种边界：<b>事务没提交</b>、<b>账本被卸载</b>、<b>bundle 没归属</b>、<b>消费端没许可</b>。每一种都让消息停住，但停的原因完全不同。</p>
+<div class="flow">
+<span class="flownote">四类不确定（并列，不是先后顺序）</span>
+<span class="node">写了一半</span>
+<span class="node">数据太老</span>
+<span class="node">机器不均</span>
+<span class="node">流量太猛</span>
+</div>
+<p>这页课把四种边界做成四道闸门，看它们各自的放行条件。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：四道闸门，四种保护</h2></div>
+<p class="sec-sub">点部件卡片，动画中对应部分会亮成琥珀色。</p>
+<div class="quote">「它由什么构成？核心方法是分解、分类、结构化——分解需符合 MECE 法则，同层必须粒度一致。」</div>
+<div class="partgroup">
+<div class="gname">正确性边界</div>
+<div class="parts">
+<button class="part" data-part="txn"><b>① 事务可见性</b><span>maxReadPosition 控制可见范围；commit marker 是 topic 内的提交点。</span></button>
+<button class="part" data-part="ownership"><b>③ bundle 归属</b><span>topic 算 hash 落到 bundle；归属锁保证只有一个 owner。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">成本与容量边界</div>
+<div class="parts">
+<button class="part" data-part="offload"><b>② 分层存储</b><span>冷 ledger 卸载到对象存储；offloadContext.complete 决定读路径。</span></button>
+<button class="part" data-part="backpressure"><b>④ 背压</b><span>permits 是信用；没有许可就停读，队列满就不再发 Flow。</span></button>
+</div>
+</div>
+<p class="hint">四道门不是按顺序永远存在：事务可以不开，卸载可以不开；归属和背压则是常驻的。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：令牌穿过四道门</h2></div>
+<p class="sec-sub">用 12 个步骤点看每一道门什么时候放行（含事务消费与回滚）。</p>
+<div class="quote">「它如何演变与运作？关注时间轴上的发展规律、行为模式和内部流程。核心方法是流程分析、行为追溯。」</div>
+<table class="grid">
+<tr><th>阶段</th><th>相位</th><th>门</th><th>放行条件</th></tr>
+<tr><td>① 事务写入</td><td>0°–60°</td><td>事务</td><td>消息已写，但不可见</td></tr>
+<tr><td>② 消费侧 ack 挂起</td><td>60°–120°</td><td>事务</td><td>ack 先落 pending ack store，不推进 markDelete</td></tr>
+<tr><td>③ commit marker</td><td>120°–180°</td><td>事务</td><td>marker 写进 ledger</td></tr>
+<tr><td>④ abort 分支</td><td>180°–240°</td><td>事务</td><td>写 abort marker；pending ack 撤销，消息重新可见</td></tr>
+<tr><td>⑤ 变得可见</td><td>240°–300°</td><td>事务</td><td>maxReadPosition 推过 marker</td></tr>
+<tr><td>⑥ 账本卸载</td><td>300°–360°</td><td>卸载</td><td>offloadContext.complete=true</td></tr>
+<tr><td>⑦ 冷读</td><td>360°–420°</td><td>卸载</td><td>读路径切到对象存储</td></tr>
+<tr><td>⑧ bundle 归属</td><td>420°–480°</td><td>归属</td><td>锁被某个 Broker 拿到</td></tr>
+<tr><td>⑨ lookup 重定向</td><td>480°–540°</td><td>归属</td><td>客户端拿到 owner 地址</td></tr>
+<tr><td>⑩ 闸门① 客户端</td><td>540°–600°</td><td>背压</td><td>maxPendingMessages 与内存还有余量</td></tr>
+<tr><td>⑪ 闸门② Broker</td><td>600°–660°</td><td>背压</td><td>令牌桶有余量，交接批次不超限</td></tr>
+<tr><td>⑫ 闸门③④ 许可</td><td>660°–720°</td><td>背压</td><td>permits &gt; 0，批次不超 maxReadBatch</td></tr>
+</table>
+<p>注意第 ⑥ 步：卸载不是「删数据」，而是「多一个读路径」。Bookie 上的副本还在，直到 deletionLag 到期才删；这期间读 Bookie 或读对象存储都可以。</p>
+<div class="frame2">
+<p style="margin:0 0 8px"><b>事务的两条腿：生产侧管可见性，消费侧管 ack。</b></p>
+<p style="margin:0 0 6px">生产侧：消息带 txnid 写进 ledger，但 <code>maxReadPosition</code> 不前进，所以消费者读不到。提交时写一个 commit marker，位置推过去，消息才可见。</p>
+<p style="margin:0 0 6px">消费侧：<code>consumer.ack(txnId, msgId)</code> 走 <code>PendingAckHandle.individualAcknowledgeMessage()</code>，把位置写进 <code>&lt;topic&gt;-&lt;sub&gt;__transaction_pending_ack</code>；提交时 <code>commitTxn()</code> 追加 commit mark，把 pending 的 ack 真正应用到 cursor。</p>
+<p style="margin:0 0 6px">回滚不是「什么都不做」：<code>TopicTransactionBuffer</code> 会往 ledger 追加一个 <b>abort marker</b>（<code>:550</code> <code>Markers.newTxnAbortMarker</code>），读路径在 <code>:219</code> 认出它，就知道这批消息要跳过。所以 abort 同样要写一次账本。</p>
+<p style="margin:0">事务的边界要记住：读已提交而不是可串行化；有超时（太长会一直占着 maxReadPosition，堵住后面的消息）；不跨集群；靠 <code>lowWaterMark</code> 清理 abort 索引与快照。</p>
+</div>
+<div class="frame2">
+<p style="margin:0 0 8px"><b>背压不是一句「限流」，是四道串联但不共享队列的闸门。</b></p>
+<p style="margin:0 0 6px">① <b>客户端队列</b>：<code>maxPendingMessages</code> + 内存上限，满了阻塞或失败，压力留在应用线程。</p>
+<p style="margin:0 0 6px">② <b>Broker 发布限速</b>：<code>publishRateLimiter</code> 令牌桶，超限就 throttle 这条连接；不丢消息，只让发送方慢下来。</p>
+<p style="margin:0 0 6px">③ <b>账本交接批次</b>：<code>addEntryHandoverMaxBatchItems=1024</code>、<code>addEntryHandoverMaxBatchBytesSize=5MB</code>，超过就分批，防止一次吃太多 direct memory。</p>
+<p style="margin:0">④ <b>分发许可</b>：<code>totalAvailablePermits</code> + <code>maxReadBatch</code>，没有许可就停止从 Bookie 读。四道门各有各的超时（sendTimeout / topicLoadTimeoutSeconds / metadataOperationsTimeoutSeconds / ackTimeout / 事务超时），只调一个，通常只是把问题挪到下一层。</p>
+</div>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：四种边界在保护什么</h2></div>
+<p class="sec-sub">每道门都在用一种代价，换一种确定性。</p>
+<div class="quote">「动静融合的关键是建立映射：将组成部件与操作步骤一一对应，理解各部件如何协同产生外在行为。」</div>
+<table class="grid">
+<tr><th>边界</th><th>保护什么</th><th>代价</th></tr>
+<tr><td>事务</td><td class="hot">多条消息原子可见</td><td>超时、lowWaterMark、额外 marker</td></tr>
+<tr><td>分层存储</td><td class="hot">Bookie 容量不被历史数据占满</td><td>冷读延迟、对象存储流量费</td></tr>
+<tr><td>bundle 归属</td><td class="hot">同一时刻只有一个 owner</td><td>lookup redirect、锁竞争</td></tr>
+<tr><td>背压</td><td class="hot">下游不被上游打爆</td><td>吞吐下降、队列等待</td></tr>
+</table>
+<p>点题一句：<b>这四道门没有一道是「免费的正确性」。</b>事务用延迟换原子性，卸载用读延迟换容量，归属用 redirect 换一致性，背压用吞吐换稳定。工程上真正要做的，是知道自己在为哪一项付钱。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：四道门各自的支撑</h2></div>
+<p class="sec-sub">每道门能关上，背后都有一个系统在配合。</p>
+<div class="quote">「对事物的认识 = 空间属性 + 时间属性 + 环境属性（外在关系和依赖）。」</div>
+<div class="envcards">
+<div class="env"><b>事务协调者</b><span>分配 TxnID、记录状态、驱动 commit / abort；TC 日志本身也要能重放。</span></div>
+<div class="env"><b>对象存储</b><span>承载卸载后的 ledger；首字节延迟和流量费是主要成本。</span></div>
+<div class="env"><b>元数据存储</b><span>bundle 归属锁、ledger 列表、游标位点；它慢了，归属和加载都疼。</span></div>
+<div class="env"><b>负载均衡 leader</b><span>决定 bundle 归谁；leader 挂了要重新选。</span></div>
+<div class="env"><b>限速与许可</b><span>publishRateLimiter、dispatchRateLimiter、receiverQueue，三层一起工作。</span></div>
+<div class="env"><b>监控</b><span>事务超时数、卸载延迟、redirect 次数、permits 余量。</span></div>
+</div>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">知道每道门在保护什么，才算真的懂。</p>
+<div id="quiz"></div>
+</section>
+
+
+<div class="summary">
+<h2>一页带走</h2>
+<p class="chant">事务保原子（生产靠 marker，消费靠 pending ack），卸载保容量，归属保唯一，背压保稳定；每道门都有代价。</p>
+<p>· 事务生产：maxReadPosition + commit marker；提交前已落盘，但消费者读不到。</p>
+<p>· 事务消费：ack 先挂到 pending ack store，提交才应用到 cursor；回滚写 abort marker，消息重新可见。</p>
+<p>· 卸载：offloadContext.complete 决定读路径，deletionLag 决定何时删 Bookie 副本。</p>
+<p>· 归属：bundle 锁 + ledger fencing，lookup 负责把 owner 告诉客户端。</p>
+<p>· 背压：四道闸门（客户端队列 / 发布限速 / 交接批次 / 分发许可）串联但各自独立，每层都有超时。</p>
+<p>· 边界与简化：本页为原理示意；默认值/阈值/时序以 Pulsar 5.1.0-SNAPSHOT 的配置与源码为准；异常、重试与批处理细节未展开。</p>
+
+</div>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+
+<script>
+(function(){
+var PERIOD=7600,PHASE_MAX=720;
+var STEPS=[{d:0,t:'事务写入',x:'消息带 txnid 写进 ledger，但 maxReadPosition 不前进；消费者看不到。'},
+{d:60,t:'消费侧 ack 挂起',x:'消费者在事务里 ack，ack 先写进 pending ack store（<topic>-<sub>__transaction_pending_ack），不立刻推进 markDelete。'},
+{d:120,t:'commit marker',x:'提交时往 ledger 追加 commit marker；marker 是 topic 内的提交点。'},
+{d:180,t:'abort 分支',x:'回滚也要写 marker：abort marker 告诉读路径「这批消息跳过」；pending ack 一并清掉，消息重新可见。'},
+{d:240,t:'变得可见',x:'maxReadPosition 推过 marker，消息进入可读范围；第一道门放行。'},
+{d:300,t:'账本卸载',x:'旧 ledger 按容量 / 时间阈值卸载到对象存储，offloadContext.complete=true。'},
+{d:360,t:'冷读',x:'读路径发现 complete=true，从对象存储读；第二道门放行，但延迟升高。'},
+{d:420,t:'bundle 归属',x:'topic 落到某个 bundle；归属锁在 /namespace/...，没有 owner 就选一个。'},
+{d:480,t:'lookup 重定向',x:'客户端问任意 Broker；不是 owner 就 Redirect，拿到地址才建连。第三道门放行。'},
+{d:540,t:'闸门① 客户端',x:'maxPendingMessages 与内存上限：满了阻塞或直接失败，压力留在应用线程，不往下游传。'},
+{d:600,t:'闸门② Broker',x:'publishRateLimiter 令牌桶限速；addEntryHandoverMaxBatchItems / Bytes 控制交接批次，避免一次吃太多 direct memory。'},
+{d:660,t:'闸门③④ 许可',x:'dispatcher 的 totalAvailablePermits + maxReadBatch；没有许可就停止从 Bookie 读，消费端队列满也不再发 Flow。'}];
+var PARTS={txn:['txnCard','bar1','st1','marker','pendBox','abortBox'],
+offload:['offCard','st2','offArrow','objBox'],
+ownership:['ownCard','st3','lockIcon','bundleBox'],
+backpressure:['bpCard','st4','permitBar','gate0','gate1','gate2','gate3'],
+consumer:['consumerBox']};
+var CHIPS=[{k:'tx',l:'事务'},{k:'offload',l:'卸载'},{k:'owner',l:'归属'},{k:'backpressure',l:'背压'}];
+var QUIZ=[{q:'事务消息在提交前已经写进 ledger 了，为什么消费者看不到？',opts:['因为 Bookie 还没落盘','因为 dispatcher 读取上界是 maxReadPosition，未提交时它不前进','因为 consumer 没发许可'],a:1,exp:'事务消息确实已经落盘，但可见性由 maxReadPosition 控制。提交时写 commit marker，再把位置推过去。'},
+{q:'分层存储卸载完成后，读路径怎么知道该去对象存储？',opts:['查 topic 配置','看 LedgerInfo.offloadContext.complete 是否为 true','问 ZooKeeper 的 /brokers'],a:1,exp:'complete=true 是分水岭。没有它就从 Bookie 读，有它就从 offloader 读；OffloadedReadPriority 还能强制先读 Bookie。'},
+{q:'bundle 归属变更时，怎么防止两个 Broker 同时写？',opts:['靠客户端重试','靠归属锁 + BookKeeper 的 ledger fencing','靠 TCP 连接'],a:1,exp:'归属锁保证只有一个 owner；新 owner 打开 ledger 时会 fence 旧 writer，旧 writer 的写入会收到 LedgerFencedException。'},
+{q:'消费端 permits 用完了，Broker 会怎么做？',opts:['继续推，直到客户端 OOM','停止从 Bookie 读，等客户端发 CommandFlow 再继续','把消息转发到别的 topic'],a:1,exp:'permits 是信用，不是速率。没有许可就停读，压力留在 Broker 侧，而不是把客户端打爆。'},
+{q:'事务超时时间设得太长，会有什么副作用？',opts:['没有副作用','未提交消息会一直占着 maxReadPosition，阻塞后面的消息','Bookie 会删 ledger'],a:1,exp:'maxReadPosition 不前进，后面的消息也读不到。超时时间要和业务处理时间匹配，太长会卡住整个 topic 的可见性。'},
+{q:'消费者在事务里 ack，事务还没提交时 ack 生效吗？',opts:['立刻生效，cursor 直接推进','不生效：ack 先写进 pending ack store，提交时才应用到 cursor','取决于订阅类型'],a:1,exp:'这就是事务消费的关键。pending ack store 是 <topic>-<sub>__transaction_pending_ack；回滚时清掉，消息重新可见，避免出现「处理了但没 ack」或反过来。'},
+{q:'事务回滚（abort）时，Broker 什么都不写吗？',opts:['对，回滚就是丢弃','不对：会往 ledger 追加一个 abort marker，读路径认出它就跳过这批消息','不对：会把已写的 entry 物理删除'],a:1,exp:'ledger 只能追加，删不了。abort 靠 marker 告诉读路径「这批跳过」，代价是账本里多一条记录，靠 lowWaterMark 定期清理索引与快照。'},
+{q:'背压的四道闸门共享一个队列吗？',opts:['共享，一个堵了全都堵','不共享：客户端队列、Broker 限速、账本交接批次、分发许可各自独立','只有生产和消费两条'],a:1,exp:'四道门串联但各自有阈值与超时。生产端堵了不会立刻让消费端停，消费端慢了也不会让生产端马上失败——压力是逐层传导的，这也是排障时要一层层看的原因。'}];
+function box(x,y,w,h,rx,fill,stroke,dash){return '<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="'+(rx||10)+'" fill="'+(fill||'#ffffff')+'" stroke="'+(stroke||'#3B3A34')+'" stroke-width="1.4"'+(dash?' stroke-dasharray="'+dash+'"':'')+'/>';}
+function tx(x,y,s,cls,anchor,fill){return '<text class="'+(cls||'ts')+'" x="'+x+'" y="'+y+'"'+(anchor?' text-anchor="'+anchor+'"':'')+(fill?' fill="'+fill+'"':'')+'>'+s+'</text>';}
+var H='';
+// cards
+function card(x,w,title,l1,l2,kind){return '<g id="'+kind+'">'+box(x,84,w,150,10,'#ffffff','#3B3A34')+tx(x+14,108,title,'tn')+tx(x+14,130,l1,'ts')+tx(x+14,150,l2,'ts')+'</g>';}
+H+=card(40,200,'① 事务可见性','未提交：maxReadPosition 不动','提交：marker 推过去','txnCard');
+H+='<text id="st1" class="ts" x="54" y="184" fill="#8A2A2A">未提交 · 不可见</text>';
+H+='<g id="marker" opacity="0"><rect x="54" y="200" width="172" height="18" rx="4" fill="#EAF3DE" stroke="#639922" stroke-width="1"/>'+tx(140,213,'COMMIT(txn) → 可见','ts','middle','#3B4A1A')+'</g>';
+H+='<g id="pendBox" opacity="0"><rect x="54" y="222" width="172" height="18" rx="4" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1"/>'+tx(140,235,'pending ack：ack 先挂起','ts','middle','#854F0B')+'</g>';
+H+='<g id="abortBox" opacity="0"><rect x="54" y="244" width="172" height="18" rx="4" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1"/>'+tx(140,257,'ABORT(txn) → 整批跳过','ts','middle','#8A2A2A')+'</g>';
+H+=card(270,200,'② 分层存储','热数据在 Bookie','冷数据在对象存储','offCard');
+H+='<text id="st2" class="ts" x="284" y="184" fill="#8A2A2A">热数据 · Bookie</text>';
+H+='<path id="offArrow" d="M380 200 L380 232" stroke="#C46A0A" stroke-width="1.5" stroke-dasharray="4 4" marker-end="url(#flw)" fill="none" opacity="0.15"/>';
+H+='<g id="objBox" opacity="0.35">'+box(292,238,176,30,6,'#EFF6FF','#2563EB')+tx(380,258,'对象存储 · ledger 对象','ts','middle','#1E3A8A')+'</g>';
+H+=card(500,200,'③ bundle 归属','topic 算 hash → bundle','归属锁在 /namespace/...','ownCard');
+H+='<text id="st3" class="ts" x="514" y="184" fill="#8A2A2A">归属未知 · lookup</text>';
+H+='<g id="lockIcon" opacity="0.4"><path d="M519 208 L519 201 A8 8 0 0 1 535 201 L535 208" fill="none" stroke="#E24B4A" stroke-width="1.6"/><rect x="514" y="208" width="26" height="18" rx="3" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.4"/><circle cx="527" cy="217" r="2" fill="#8A2A2A"/></g>';
+H+='<g id="bundleBox" opacity="0.35">'+box(548,198,138,30,6,'#FFF6E8','#EF9F27')+tx(617,218,'owner = Broker B','ts','middle','#854F0B')+'</g>';
+H+=card(730,230,'④ 背压','permits 是信用，不是速率','没有许可就停止读取','bpCard');
+H+='<text id="st4" class="ts" x="744" y="184" fill="#8A2A2A">permits=0 · 停读</text>';
+H+='<rect x="744" y="202" width="200" height="10" rx="5" fill="#F5F4EF" stroke="#D3D1C7" stroke-width="1"/>';
+H+='<rect id="permitBar" x="744" y="202" width="0" height="10" rx="5" fill="#639922"/>';
+// 背压的四道闸门（对应第 ⑩⑪⑫ 步）
+H+=tx(744,226,'四道闸门','ts');
+for(var gi=0;gi<4;gi++){H+='<rect id="gate'+gi+'" x="'+(806+gi*36)+'" y="216" width="28" height="12" rx="3" fill="#D3D1C7" stroke="#B4B2A9" stroke-width="1"/>';}
+H+='<text class="ts" x="806" y="234" fill="#6B695F">队列 · 限速 · 批次 · 许可</text>';
+// pipe
+H+='<rect x="30" y="300" width="940" height="46" rx="12" fill="#F5F4EF" stroke="#B4B2A9" stroke-width="1.2"/>';
+H+=tx(44,290,'生产端','ts');
+H+=tx(956,290,'消费端','ts','end');
+// gates
+var gx=[200,420,640,860],gname=['事务','卸载','归属','背压'];
+for(var g=0;g<4;g++){
+  H+='<rect id="bar'+g+'" x="'+(gx[g]-7)+'" y="272" width="14" height="102" rx="4" fill="#D3D1C7"/>';
+  H+=tx(gx[g],394,gname[g],'ts','middle');
+  H+='<circle id="g'+g+'" cx="'+gx[g]+'" cy="323" r="7" fill="#D3D1C7" stroke="#B4B2A9" stroke-width="1"/>';
+}
+H+='<rect x="40" y="440" width="920" height="76" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/>';
+H+=tx(56,464,'放行条件：事务 commit marker → maxReadPosition 前进；卸载 complete=true；归属锁拿到 owner；背压 permits > 0','ts');
+H+=tx(56,488,'四道门都满足，消息才进入 receiverQueue。任何一道不满足，令牌就停在那道门前。','ts');
+H+=tx(56,508,'代价：事务用延迟换原子性，卸载用读延迟换容量，归属用 redirect 换一致性，背压用吞吐换稳定。','ts','start','#854F0B');
+// consumer
+H+='<g id="consumerBox">'+box(900,280,70,86,10,'#ffffff','#3B3A34')+tx(935,306,'Consumer','tn','middle')+tx(935,328,'queue','ts','middle')+tx(935,348,'ack','ts','middle')+'</g>';
+H+='<text id="stageTag" class="ts" x="985" y="544" text-anchor="end" fill="#854F0B"></text>';
+// token
+H+='<circle id="tok" cx="80" cy="323" r="10" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/>';
+document.getElementById('scene').innerHTML=H;
+var el={};
+document.querySelectorAll('#scene [id]').forEach(function(n){el[n.id]=n;});
+var WP=[[0,80,323],[60,200,323],[120,200,323],[180,200,323],[240,200,323],[300,420,323],[360,420,323],[420,640,323],[480,640,323],[540,860,323],[600,860,323],[660,860,323],[720,930,323]];
+function tokPos(th){var i=0;while(i<WP.length-2&&th>WP[i+1][0])i++;var a=WP[i],b=WP[i+1];var t=(th-a[0])/(b[0]-a[0]);return[a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];}
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,STEP_DUR=900;
+var dots=[];
+for(var s=0;s<STEPS.length;s++){
+(function(n){
+var b=document.createElement('button');
+b.className='stepnode';
+b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+b.onclick=function(){goStep(n);};
+stepBar.appendChild(b);dots.push(b);
+})(s);
+}
+var chipBox=document.getElementById('stateChips'),chipEls={};
+CHIPS.forEach(function(c){
+var s=document.createElement('span');s.className='chip';
+s.innerHTML=c.l+' <b>--</b>';chipBox.appendChild(s);chipEls[c.k]=s;
+});
+function setChip(k,v){
+var n=chipEls[k];if(!n)return;var b=n.querySelector('b');
+if(b&&b.textContent!==v)b.textContent=v;
+n.classList.toggle('on',/^(开|是|已|完成|生效|放行|进行|2\/2|owner|markDelete)/.test(v));
+n.classList.toggle('off',/^(关|否|待命|—|未)/.test(v));
+}
+var stepIdx=-1;
+function setAuto(on){
+mode='auto';run=on;stepTo=null;btn.textContent=on?'暂停':'播放';
+if(on){stepIdx=-1;dots.forEach(function(d){d.classList.remove('on');});
+stepT.textContent='自动运转模式';
+stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格。';}
+}
+window.goStep=function(i){
+stepIdx=(i+STEPS.length)%STEPS.length;
+mode='step';run=false;
+var target=STEPS[stepIdx].d/PHASE_MAX*PERIOD,delta=target-phase;
+if(reduced||Math.abs(delta)>PERIOD/4){
+phase=target;stepTo=null;render(target/PERIOD*PHASE_MAX+0.01);
+}else{
+stepFrom=phase;stepTo=phase+delta;stepElapsed=0;render(phase/PERIOD*PHASE_MAX+0.01);
+}
+btn.textContent='继续自动运转';
+dots.forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+stepX.textContent=STEPS[stepIdx].x;
+};
+btn.textContent=run?'暂停':'播放';
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+function setOp(id,v){var n=typeof id==='string'?el[id]:id;if(n)n.setAttribute('opacity',v.toFixed(2));}
+function setText(id,s){var n=el[id]||document.getElementById(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setAttr(id,k,v){var n=el[id];if(n)n.setAttribute(k,v);}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){return t*t*(3-2*t);}
+
+function render(th){
+var pr=Math.round(((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX);
+setText('roPhase',pr+'°');
+var si=0;for(var ri=0;ri<STEPS.length;ri++){if(pr>=STEPS[ri].d)si=ri;}
+if(mode==='step'&&stepIdx>=0)si=stepIdx;
+setText('roStep',STEPS[si]?STEPS[si].t:'—');
+var p=tokPos(th);setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));
+var done1=th>=240,done2=th>=360,done3=th>=540,done4=th>=660;
+// 事务：写入(0) → 消费侧 ack 挂起(60) → commit marker(120) / abort(180) → 可见(240)
+var isAbort=(mode==='step'&&stepIdx===3);
+setText('st1',done1?'已提交 · 可见':(th>=120?(isAbort?'已回滚 · 不可见':'marker 已写'):'未提交 · 不可见'));
+if(el['st1'])el['st1'].setAttribute('fill',done1?'#3B4A1A':'#8A2A2A');
+setOp('marker',th>=120&&!isAbort?1:0);
+setOp('pendBox',th>=60&&th<240?1:0);
+setOp('abortBox',(th>=180&&th<240)||isAbort?1:0);
+setText('st2',done2?'已卸载 · 对象存储':'热数据 · Bookie');
+if(el['st2'])el['st2'].setAttribute('fill',done2?'#1E3A8A':'#8A2A2A');
+setOp('offArrow',th>=300&&th<420?0.95:0.15);setOp('objBox',done2?1:0.35);
+setText('st3',done3?'owner = Broker B':'归属未知 · lookup');
+if(el['st3'])el['st3'].setAttribute('fill',done3?'#854F0B':'#8A2A2A');
+setOp('bundleBox',done3?1:0.35);
+if(el['lockIcon']){el['lockIcon'].setAttribute('opacity',done3?1:0.4);el['lockIcon'].querySelector('rect').setAttribute('fill',done3?'#EAF3DE':'#FCEBEB');el['lockIcon'].querySelector('rect').setAttribute('stroke',done3?'#639922':'#E24B4A');}
+// 背压：四道闸门依次放行（540 / 600 / 660 / 660）
+var g1=th>=540,g2=th>=600,g34=th>=660;
+setText('st4',g34?'permits=64 · 放行':(g2?'批次与限速通过':(g1?'客户端队列放行':'permits=0 · 停读')));
+if(el['st4'])el['st4'].setAttribute('fill',g34?'#3B4A1A':'#8A2A2A');
+if(el['permitBar'])el['permitBar'].setAttribute('width',(g34?200:0).toFixed(1));
+var gstate=[g1,g2,g34,g34];
+for(var gi=0;gi<4;gi++){var gn=el['gate'+gi];if(gn){gn.setAttribute('fill',gstate[gi]?'#639922':'#D3D1C7');gn.setAttribute('stroke',gstate[gi]?'#4C7A1A':'#B4B2A9');}}
+for(var g=0;g<4;g++){var on=g===0?done1:(g===1?done2:(g===2?done3:done4));var c=el['g'+g];if(c){c.setAttribute('fill',on?'#639922':'#D3D1C7');c.setAttribute('stroke',on?'#4C7A1A':'#B4B2A9');}var bb=el['bar'+g];if(bb)bb.setAttribute('fill',on?'#639922':'#D3D1C7');}
+var names=['事务写入','ack 挂起','commit marker','abort','变得可见','账本卸载','冷读','bundle 归属','lookup 重定向','闸门① 客户端','闸门② Broker','闸门③④ 许可'];
+var si=0;for(var n=0;n<STEPS.length;n++){if(th>=STEPS[n].d)si=n;}
+setText('stageTag','当前：'+names[si]);
+var gate=th<240?'事务':th<420?'卸载':th<540?'归属':'背压';
+setText('roKey','当前闸门：'+gate);
+setChip('tx', th<240?(th>=120?(th<180?'commit marker':'abort 分支'):'挂起'):'已放行');
+setChip('offload', th>=240&&th<420?'冷读中':th>=420?'已处理':'待命');
+setChip('owner', th>=420&&th<540?(th>=480?'lookup 重定向':'bundle 归属'):th>=540?'owner 锁定':'待命');
+setChip('backpressure', th>=540?(th>=660?'permits 放行':'闸门检查'):'待命');
+}
+function tick(now){
+var dt=Math.min(50,now-last);last=now;
+if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+if(mode==='step'&&stepTo!==null){
+stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);
+var p=stepElapsed/STEP_DUR;
+var e=p*p*(3-2*p);
+phase=stepFrom+(stepTo-stepFrom)*e;
+if(p>=1){phase=((stepTo%PERIOD)+PERIOD)%PERIOD;stepTo=null;}
+}
+render(phase/PERIOD*PHASE_MAX+0.01);
+requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+document.querySelectorAll('.part').forEach(function(b){
+b.onclick=function(){
+var ids=PARTS[b.getAttribute('data-part')]||[];
+ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+};
+});
+var BASE=(location.pathname.split('/middleware-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/middleware/lab';
+document.getElementById('lnkArt').href=BASE+'/middleware/tutorial/05-transactions-tiered';
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+var d=document.createElement('div');d.className='q';
+var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+h+='<div class="exp">'+it.exp+'</div>';
+d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+var b=e.target.closest('.opt');if(!b)return;
+var box2=b.parentElement;if(box2.classList.contains('done'))return;
+box2.classList.add('done');
+var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+box2.querySelectorAll('.opt').forEach(function(x){
+var xi=+x.getAttribute('data-oi');
+if(xi===QUIZ[qi].a)x.classList.add('right');
+else if(x===b)x.classList.add('wrong');
+});
+});
+})();
+</script>
+</body>
+</html>

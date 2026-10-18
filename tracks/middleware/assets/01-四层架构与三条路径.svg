@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="600" viewBox="0 0 880 600" role="img" aria-label="Pulsar 的四层部署与三条路径"><title>Pulsar 的四层部署与三条路径</title><defs><marker id="arw-2563EB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2563EB"/></marker><marker id="arw-2563EB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2563EB"/></marker><marker id="arw-D97706" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#D97706"/></marker><marker id="arw-059669" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#059669"/></marker><marker id="arw-D97706" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#D97706"/></marker></defs><rect x="0" y="0" width="880" height="600" fill="#FFFFFF"/><text x="40" y="38" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="20" font-weight="700" fill="#0F172A" text-anchor="start">Pulsar 的四层与三条路径</text>
+<text x="40" y="60" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="12" font-weight="400" fill="#64748B" text-anchor="start">客户端问路、Broker 收消息、Bookie 存账本、元数据记归属</text>
+<rect x="30" y="92" width="150" height="92" rx="10" fill="#EFF6FF" stroke="#2563EB" stroke-width="1.5"/>
+<text x="42" y="114" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="14" font-weight="600" fill="#1E3A8A" text-anchor="start">客户端</text>
+<text x="42" y="130.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11.8" font-weight="400" fill="#1D4ED8" text-anchor="start">Java / Go / Python</text>
+<text x="42" y="147.0" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11.8" font-weight="400" fill="#1D4ED8" text-anchor="start">C++ / WebSocket</text>
+<rect x="212" y="92" width="118" height="92" rx="10" fill="#F1F5F9" stroke="#94A3B8" stroke-width="1.5"/>
+<text x="224" y="114" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="14" font-weight="600" fill="#0F172A" text-anchor="start">Proxy</text>
+<text x="224" y="130.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11.8" font-weight="400" fill="#475569" text-anchor="start">可选，负责</text>
+<text x="224" y="147.0" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11.8" font-weight="400" fill="#475569" text-anchor="start">TLS / 鉴权 / 转发</text>
+<rect x="362" y="76" width="320" height="292" rx="14" fill="#F8FAFC" stroke="#94A3B8" stroke-width="1.4" stroke-dasharray="6 5"/>
+<text x="522" y="100" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="13.5" font-weight="600" fill="#475569" text-anchor="middle">Broker 集群（无状态）</text>
+<rect x="384" y="116" width="276" height="62" rx="10" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.5"/>
+<text x="396" y="138" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="14" font-weight="600" fill="#0F172A" text-anchor="start">Broker A</text>
+<text x="396" y="154.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">Topic · Subscription · Dispatcher</text>
+<text x="396" y="171.0" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">只持有缓存 / 索引，不存消息本体</text>
+<rect x="384" y="194" width="276" height="62" rx="10" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.5"/>
+<text x="396" y="216" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="14" font-weight="600" fill="#0F172A" text-anchor="start">Broker B</text>
+<text x="396" y="232.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">Topic · Subscription · Dispatcher</text>
+<text x="396" y="249.0" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">只持有缓存 / 索引，不存消息本体</text>
+<rect x="384" y="272" width="276" height="62" rx="10" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.5"/>
+<text x="396" y="294" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="14" font-weight="600" fill="#0F172A" text-anchor="start">Broker C</text>
+<text x="396" y="310.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">Topic · Subscription · Dispatcher</text>
+<text x="396" y="327.0" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">只持有缓存 / 索引，不存消息本体</text>
+<rect x="362" y="404" width="320" height="120" rx="14" fill="#F8FAFC" stroke="#94A3B8" stroke-width="1.4" stroke-dasharray="6 5"/>
+<text x="522" y="428" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="13.5" font-weight="600" fill="#475569" text-anchor="middle">BookKeeper 集群（存数据）</text>
+<rect x="384" y="444" width="78" height="58" rx="10" fill="#FEF3C7" stroke="#D97706" stroke-width="1.5"/>
+<text x="423.0" y="466" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="14" font-weight="600" fill="#78350F" text-anchor="middle">Bookie 1</text>
+<text x="423.0" y="482.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11" font-weight="400" fill="#92400E" text-anchor="middle">ledger 副本</text>
+<rect x="486" y="444" width="78" height="58" rx="10" fill="#FEF3C7" stroke="#D97706" stroke-width="1.5"/>
+<text x="525.0" y="466" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="14" font-weight="600" fill="#78350F" text-anchor="middle">Bookie 2</text>
+<text x="525.0" y="482.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11" font-weight="400" fill="#92400E" text-anchor="middle">ledger 副本</text>
+<rect x="588" y="444" width="78" height="58" rx="10" fill="#FEF3C7" stroke="#D97706" stroke-width="1.5"/>
+<text x="627.0" y="466" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="14" font-weight="600" fill="#78350F" text-anchor="middle">Bookie 3</text>
+<text x="627.0" y="482.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11" font-weight="400" fill="#92400E" text-anchor="middle">ledger 副本</text>
+<rect x="704" y="92" width="150" height="276" rx="10" fill="#F3E8FF" stroke="#7C3AED" stroke-width="1.5"/>
+<text x="716" y="114" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="14" font-weight="600" fill="#4C1D95" text-anchor="start">元数据存储</text>
+<text x="718" y="124" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="10.2" font-weight="400" fill="#4C1D95" text-anchor="start">ZooKeeper / RocksDB</text>
+<text x="718" y="140" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="10.2" font-weight="400" fill="#4C1D95" text-anchor="start">Oxia（本地或远端）</text>
+<text x="718" y="166" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="10.4" font-weight="400" fill="#475569" text-anchor="start">/managed-ledgers/…</text>
+<text x="718" y="186" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="10.4" font-weight="400" fill="#475569" text-anchor="start">  ledger 列表</text>
+<text x="718" y="206" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="10.4" font-weight="400" fill="#475569" text-anchor="start">…/topic/cursor</text>
+<text x="718" y="226" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="10.4" font-weight="400" fill="#475569" text-anchor="start">  消费位点</text>
+<text x="718" y="246" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="10.4" font-weight="400" fill="#475569" text-anchor="start">/namespace/…</text>
+<text x="718" y="266" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="10.4" font-weight="400" fill="#475569" text-anchor="start">  bundle 归属</text>
+<text x="718" y="286" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="10.4" font-weight="400" fill="#475569" text-anchor="start">/loadbalance/leader</text>
+<text x="718" y="306" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="10.4" font-weight="400" fill="#475569" text-anchor="start">  负载均衡选主</text>
+<circle cx="196" cy="98" r="10" fill="#2563EB"/>
+<text x="196" y="102" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11.5" font-weight="600" fill="#FFFFFF" text-anchor="middle">1</text>
+<path d="M182,120 L210,120" fill="none" stroke="#2563EB" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arw-2563EB)"/>
+<path d="M332,120 L380,120" fill="none" stroke="#2563EB" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arw-2563EB)"/>
+<text x="256" y="82" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11.5" font-weight="600" fill="#2563EB" text-anchor="middle">① 生产</text>
+<path d="M522,368 L522,402" fill="none" stroke="#D97706" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arw-D97706)"/>
+<text x="532" y="390" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="10.8" font-weight="400" fill="#D97706" text-anchor="start">ledger 读写</text>
+<path d="M384,470 L338,470 L338,200 L330,200" fill="none" stroke="#059669" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="5 4" marker-end="url(#arw-059669)"/>
+<text x="344" y="400" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11.5" font-weight="600" fill="#059669" text-anchor="start">② 消费</text>
+<circle cx="668" cy="330" r="10" fill="#D97706"/>
+<text x="668" y="334" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11.5" font-weight="600" fill="#FFFFFF" text-anchor="middle">3</text>
+<path d="M640,330 L700,330" fill="none" stroke="#D97706" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4 4" marker-end="url(#arw-D97706)"/>
+<text x="700" y="350" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="10.4" font-weight="600" fill="#D97706" text-anchor="end">③ 查找 bundle 归属</text>
+<rect x="30" y="552" width="820" height="28" rx="7" fill="#F8FAFC" stroke="#94A3B8" stroke-width="1.2" stroke-dasharray="4 4"/>
+<text x="440" y="570" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="12" font-weight="500" fill="#475569" text-anchor="middle">Broker 负责协议与调度，Bookie 负责持久化，元数据负责「谁归谁、读到哪」</text></svg>

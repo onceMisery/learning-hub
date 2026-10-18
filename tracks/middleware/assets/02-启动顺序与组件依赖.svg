@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="640" viewBox="0 0 880 640" role="img" aria-label="PulsarService 启动顺序与依赖"><title>PulsarService 启动顺序与依赖</title><rect x="0" y="0" width="880" height="640" fill="#FFFFFF"/><text x="40" y="38" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="20" font-weight="700" fill="#0F172A" text-anchor="start">启动顺序就是依赖顺序</text>
+<text x="40" y="60" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="12" font-weight="400" fill="#64748B" text-anchor="start">PulsarService.start() 里，每一步都在给下一步铺路</text>
+<path d="M120,88 L120,590" stroke="#94A3B8" stroke-width="1.6" stroke-dasharray="4 5"/>
+<circle cx="120" cy="118" r="13" fill="#FFFFFF" stroke="#7C3AED" stroke-width="2"/>
+<text x="120" y="123" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="12" font-weight="700" fill="#4C1D95" text-anchor="middle">1</text>
+<rect x="160" y="88" width="470" height="70" rx="10" fill="#F3E8FF" stroke="#7C3AED" stroke-width="1.5"/>
+<text x="172" y="110" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="14" font-weight="600" fill="#4C1D95" text-anchor="start">元数据存储</text>
+<text x="172" y="126.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11.6" font-weight="400" fill="#6D28D9" text-anchor="start">本地元数据 + 配置元数据（可分离）</text>
+<text x="172" y="143.0" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11.6" font-weight="400" fill="#6D28D9" text-anchor="start">registerSessionListener 监听会话</text>
+<text x="646" y="118" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="10.6" font-weight="400" fill="#64748B" text-anchor="start">PulsarService.java:938</text>
+<circle cx="120" cy="202" r="13" fill="#FFFFFF" stroke="#D97706" stroke-width="2"/>
+<text x="120" y="207" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="12" font-weight="700" fill="#78350F" text-anchor="middle">2</text>
+<rect x="160" y="172" width="470" height="70" rx="10" fill="#FEF3C7" stroke="#D97706" stroke-width="1.5"/>
+<text x="172" y="194" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="14" font-weight="600" fill="#78350F" text-anchor="start">BookKeeper 客户端</text>
+<text x="172" y="210.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11.6" font-weight="400" fill="#92400E" text-anchor="start">newBookKeeperClientFactory()</text>
+<text x="172" y="227.0" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11.6" font-weight="400" fill="#92400E" text-anchor="start">ManagedLedgerStorage 就位</text>
+<text x="646" y="202" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="10.6" font-weight="400" fill="#64748B" text-anchor="start">PulsarService.java:964</text>
+<circle cx="120" cy="286" r="13" fill="#FFFFFF" stroke="#2563EB" stroke-width="2"/>
+<text x="120" y="291" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="12" font-weight="700" fill="#1E3A8A" text-anchor="middle">3</text>
+<rect x="160" y="256" width="470" height="70" rx="10" fill="#EFF6FF" stroke="#2563EB" stroke-width="1.5"/>
+<text x="172" y="278" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="14" font-weight="600" fill="#1E3A8A" text-anchor="start">BrokerService</text>
+<text x="172" y="294.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11.6" font-weight="400" fill="#1D4ED8" text-anchor="start">Netty 监听端口，但还没接流量</text>
+<text x="172" y="311.0" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11.6" font-weight="400" fill="#1D4ED8" text-anchor="start">topic 缓存与 ordered executor 建好</text>
+<text x="646" y="286" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="10.6" font-weight="400" fill="#64748B" text-anchor="start">PulsarService.java:968</text>
+<circle cx="120" cy="370" r="13" fill="#FFFFFF" stroke="#0891B2" stroke-width="2"/>
+<text x="120" y="375" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="12" font-weight="700" fill="#164E63" text-anchor="middle">4</text>
+<rect x="160" y="340" width="470" height="70" rx="10" fill="#CFFAFE" stroke="#0891B2" stroke-width="1.5"/>
+<text x="172" y="362" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="14" font-weight="600" fill="#164E63" text-anchor="start">NamespaceService</text>
+<text x="172" y="378.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11.6" font-weight="400" fill="#0E7490" text-anchor="start">加载 bundle，刷新自己的归属信息</text>
+<text x="172" y="395.0" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11.6" font-weight="400" fill="#0E7490" text-anchor="start">没有归属，topic 就不该在这台机器上打开</text>
+<text x="646" y="370" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="10.6" font-weight="400" fill="#64748B" text-anchor="start">PulsarService.java:1034</text>
+<circle cx="120" cy="454" r="13" fill="#FFFFFF" stroke="#059669" stroke-width="2"/>
+<text x="120" y="459" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="12" font-weight="700" fill="#064E3B" text-anchor="middle">5</text>
+<rect x="160" y="424" width="470" height="70" rx="10" fill="#DCFCE7" stroke="#059669" stroke-width="1.5"/>
+<text x="172" y="446" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="14" font-weight="600" fill="#064E3B" text-anchor="start">LoadManager + Leader 选举</text>
+<text x="172" y="462.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11.6" font-weight="400" fill="#047857" text-anchor="start">写 broker 注册节点，集群才看得见你</text>
+<text x="172" y="479.0" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11.6" font-weight="400" fill="#047857" text-anchor="start">只有 leader 才做负载决策</text>
+<text x="646" y="454" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="10.6" font-weight="400" fill="#64748B" text-anchor="start">PulsarService.java:1041</text>
+<circle cx="120" cy="538" r="13" fill="#FFFFFF" stroke="#94A3B8" stroke-width="2"/>
+<text x="120" y="543" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="12" font-weight="700" fill="#0F172A" text-anchor="middle">6</text>
+<rect x="160" y="508" width="470" height="70" rx="10" fill="#F1F5F9" stroke="#94A3B8" stroke-width="1.5"/>
+<text x="172" y="530" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="14" font-weight="600" fill="#0F172A" text-anchor="start">事务 / Schema / Functions</text>
+<text x="172" y="546.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11.6" font-weight="400" fill="#475569" text-anchor="start">事务协调器、事务 buffer 客户端</text>
+<text x="172" y="563.0" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11.6" font-weight="400" fill="#475569" text-anchor="start">最后才启动 Functions Worker</text>
+<text x="646" y="538" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="10.6" font-weight="400" fill="#64748B" text-anchor="start">PulsarService.java:1052</text>
+<rect x="30" y="596" width="820" height="30" rx="7" fill="#FFFBEB" stroke="#D97706" stroke-width="1.2"/>
+<text x="440" y="616" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11.8" font-weight="500" fill="#92400E" text-anchor="middle">顺序反了会怎样：没有账本客户端就开不了 topic；没有归属就接不了流量；没注册就不会被 lookup 选中</text></svg>

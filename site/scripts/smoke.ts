@@ -209,12 +209,52 @@ async function main(): Promise<void> {
     {
       name: '实验室首页（第 1 章）',
       route: '/agent/lab',
-      expect: ['互动原理实验室', '第 1 / 7 章', '意图分诊台', 'agent-lab/01-intent-triage.html', '阅读文章'],
+      expect: [
+        '互动原理实验室',
+        '第 1 / 7 章',
+        '意图分诊台',
+        'agent-lab/01-intent-triage.html',
+        '阅读文章',
+        // 全屏开关（两条轨道的实验室共用同一个外壳，都得带上两种）
+        '网页全屏',
+        '浏览器全屏',
+      ],
     },
     {
       name: '实验室章节页（第 7 章）',
       route: '/agent/lab/07-axis-framework',
       expect: ['第 7 / 7 章', '双轴坐标系', 'agent-lab/07-axis-framework.html', '上一章'],
+    },
+    {
+      name: '中间件轨道页（实验室入口）',
+      route: '/middleware',
+      expect: ['互动原理实验室', '进入实验室', 'Pulsar'],
+    },
+    {
+      name: 'Pulsar 实验室首页（第 1 章）',
+      route: '/middleware/lab',
+      expect: [
+        '第 1 / 7 章',
+        '一条消息的旅程',
+        'middleware-lab/01-message-journey.html',
+        '网页全屏',
+        '浏览器全屏',
+      ],
+    },
+    {
+      name: 'Pulsar 实验室章节页（第 5 章）',
+      route: '/middleware/lab/05-four-borders',
+      expect: ['第 5 / 7 章', '四道边界', 'middleware-lab/05-four-borders.html', '上一章'],
+    },
+    {
+      name: 'Pulsar 实验室章节页（第 6 章 · 连接器）',
+      route: '/middleware/lab/06-io-connector',
+      expect: ['第 6 / 7 章', '连接器', 'middleware-lab/06-io-connector.html', '上一章'],
+    },
+    {
+      name: 'Pulsar 实验室章节页（第 7 章 · 数据的一生）',
+      route: '/middleware/lab/07-data-lifecycle',
+      expect: ['第 7 / 7 章', '数据的一生', 'middleware-lab/07-data-lifecycle.html', '上一章'],
     },
     // 单段未知路径会被当作「轨道不存在」，给出可操作的提示而不是裸 404
     { name: '未知轨道', route: '/not-exist-track', expect: ['没有找到这条轨道'] },
@@ -232,6 +272,82 @@ async function main(): Promise<void> {
       console.log(`✗ ${check.name}（${check.route}）缺少：${missing.join('、')}`);
     } else {
       console.log(`✓ ${check.name}（${check.route}）`);
+    }
+  }
+
+  // 实验室全屏开关：覆盖层经 portal 挂到 body，网页全屏可进可退并锁滚动；
+  // 浏览器全屏走 Fullscreen API（jsdom 没实现，这里验证「拿不到能力时静默降级」不炸）。
+  {
+    const { container } = await renderAt('/middleware/lab');
+    const findButton = (label: string): HTMLButtonElement | undefined =>
+      Array.from(container.querySelectorAll('button')).find(
+        (item) => (item.textContent ?? '').trim() === label,
+      );
+
+    const pageButton = findButton('网页全屏');
+    const browserButton = findButton('浏览器全屏');
+    if (!pageButton || !browserButton) {
+      failed += 1;
+      console.log('✗ 实验室：没有渲染出两种全屏开关（网页全屏 / 浏览器全屏）');
+    } else {
+      const before = consoleErrors.length;
+      const overlays = (): Element[] => Array.from(win.document.querySelectorAll('body > [data-expand]'));
+
+      await act(async () => {
+        pageButton.click();
+      });
+      await flush(80);
+      const entered = overlays().map((el) => el.getAttribute('data-expand'));
+      const locked = win.document.body.style.overflow;
+      // 覆盖层里必须恰好一个 iframe；页面自身的容器（本用例的 container）在展开态不应再渲染 iframe
+      const overlayFrames = overlays().reduce((n, el) => n + el.querySelectorAll('iframe').length, 0);
+      const flowFrames = container.querySelectorAll('iframe').length;
+
+      await act(async () => {
+        pageButton.click();
+      });
+      await flush(80);
+      const left = overlays().length;
+      const unlocked = win.document.body.style.overflow;
+
+      // 浏览器全屏：能力缺失时应当退化为覆盖层（网页全屏样式），不炸也不白屏
+      await act(async () => {
+        browserButton.click();
+      });
+      await flush(80);
+      const degraded = overlays().map((el) => el.getAttribute('data-expand'));
+      await act(async () => {
+        const exit = Array.from(win.document.querySelectorAll('button')).find(
+          (item) => (item.textContent ?? '').trim() === '退出全屏',
+        );
+        exit?.click();
+      });
+      await flush(80);
+      const afterExit = overlays().length;
+
+      if (consoleErrors.length !== before) {
+        failed += 1;
+        console.log(`✗ 实验室：点全屏开关触发了错误（${consoleErrors.slice(before).join(' / ')}）`);
+      } else if (entered.length !== 1 || entered[0] !== 'page' || locked !== 'hidden') {
+        failed += 1;
+        console.log(
+          `✗ 实验室：网页全屏覆盖层异常（${JSON.stringify(entered)}，body.overflow=${locked}）`,
+        );
+      } else if (overlayFrames !== 1 || flowFrames !== 0) {
+        failed += 1;
+        console.log(`✗ 实验室：全屏时应当只有覆盖层里的一个 iframe（覆盖层 ${overlayFrames}，页内 ${flowFrames}）`);
+      } else if (left !== 0 || unlocked !== '') {
+        failed += 1;
+        console.log(`✗ 实验室：退出网页全屏没还原（覆盖层残留 ${left}，body.overflow=${unlocked}）`);
+      } else if (degraded[0] !== 'browser' || afterExit !== 0) {
+        failed += 1;
+        console.log(`✗ 实验室：浏览器全屏降级异常（${JSON.stringify(degraded)}，退出后残留 ${afterExit}）`);
+      } else if (!container.querySelector('iframe')) {
+        failed += 1;
+        console.log('✗ 实验室：全屏切换后图解 iframe 消失了');
+      } else {
+        console.log('✓ 实验室两种全屏：portal 覆盖层唯一、可进可退并锁滚动，浏览器全屏降级无异常');
+      }
     }
   }
 

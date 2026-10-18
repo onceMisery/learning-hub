@@ -1,0 +1,100 @@
+{
+  "id": "middleware",
+  "title": "中间件 · 读 Pulsar 源码",
+  "subtitle": "沿着一条消息的旅程，把 Broker、账本、订阅、事务与背压读成一套能复述的系统",
+  "order": 60,
+  "status": "active",
+  "accent": "teal",
+  "tags": [
+    "Pulsar",
+    "消息队列",
+    "BookKeeper",
+    "事务",
+    "分层存储"
+  ],
+  "toolchain": "Apache Pulsar 5.1.0-SNAPSHOT",
+  "verifiedAt": "2026-10-18",
+  "outline": [
+    "整体架构：四层拆分与三条路径",
+    "Broker、账本与元数据：三本账",
+    "消息模型、生产消费与四种订阅",
+    "Functions 与 IO 连接器",
+    "事务、分层存储、负载均衡与背压"
+  ],
+  "sections": [
+    {
+      "id": "tutorial",
+      "title": "教程",
+      "path": "tutorial",
+      "order": 10,
+      "pages": [
+        {
+          "file": "01-整体架构.md",
+          "slug": "01-architecture",
+          "title": "整体架构：一条消息最后落在谁手里",
+          "tags": [
+            "架构",
+            "Broker",
+            "BookKeeper",
+            "元数据"
+          ]
+        },
+        {
+          "file": "02-Broker与账本.md",
+          "slug": "02-broker-ledger",
+          "title": "Broker 与账本：数据、索引、进度这三本账",
+          "tags": [
+            "ManagedLedger",
+            "BookKeeper",
+            "Cursor",
+            "故障恢复"
+          ]
+        },
+        {
+          "file": "03-消息与订阅.md",
+          "slug": "03-messaging-subscriptions",
+          "title": "消息模型：生产、消费与四种订阅的取舍",
+          "tags": [
+            "MessageId",
+            "批处理",
+            "订阅类型",
+            "Ack",
+            "背压"
+          ]
+        },
+        {
+          "file": "04-Functions与IO.md",
+          "slug": "04-functions-io",
+          "title": "Functions 与 IO：把计算搬进消息系统",
+          "tags": [
+            "Pulsar Functions",
+            "Worker",
+            "StateStore",
+            "Connector"
+          ]
+        },
+        {
+          "file": "05-事务与治理.md",
+          "slug": "05-transactions-tiered",
+          "title": "事务、卸载与负载均衡：把意外收进工程边界",
+          "tags": [
+            "事务",
+            "分层存储",
+            "LoadManager",
+            "Lookup",
+            "背压"
+          ]
+        }
+      ]
+    }
+  ],
+  "codeRoots": [],
+  "assets": [
+    "assets"
+  ],
+  "lab": {
+    "title": "互动原理实验室",
+    "subtitle": "七章动态图解：从消息旅程、三本账、订阅开关，到函数循环、连接器、四道边界与数据的一生",
+    "route": "/middleware/lab"
+  }
+}

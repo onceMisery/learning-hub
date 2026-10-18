@@ -139,8 +139,8 @@ table.grid td.act{background:#FAEEDA}
 <span class="st" id="stepT">自动运转模式</span>
 <span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
 <span class="snav">
-<button class="btn" onclick="goStep(stepIdx-1)">‹ 上一步</button>
-<button class="btn warn" onclick="goStep(stepIdx+1)">下一步 ›</button>
+<button class="btn" onclick="prevStep()">‹ 上一步</button>
+<button class="btn warn" onclick="nextStep()">下一步 ›</button>
 </span>
 </div>
 </div>
@@ -539,6 +539,8 @@ if(xi===QUIZ[qi].a)x.classList.add('right');
 else if(x===b)x.classList.add('wrong');
 });
 });
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
 })();
 </script>
 </body>

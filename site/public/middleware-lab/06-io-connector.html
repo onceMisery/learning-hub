@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>连接器 · Pulsar 互动原理实验室 第 6 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:920px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:680px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:500;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:12px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:500;fill:#1F1E1A}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:68px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+.modebar{display:flex;align-items:center;gap:8px;margin:6px 4px 0;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.modebar .mlabel{font-weight:600;color:#3B3A34}
+.modebtn{padding:5px 12px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:12.5px;cursor:pointer;font-family:inherit}
+.modebtn:hover{border-color:#888780}
+.modebtn.on{background:#FFF6E8;border-color:#EF9F27;color:#854F0B;font-weight:600}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .outbranch{display:inline-flex;flex-direction:column;align-items:flex-start;gap:6px}
+.flow .outline{display:inline-flex;align-items:center;gap:8px}
+.flow .flownote{font-size:12px;color:#6B695F;font-weight:600;margin-right:4px}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:9px 10px;text-align:center}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+#scene [opacity]{transition:opacity .28s ease}
+#tok,#tokT,#pulse{transition:none}
+@media (prefers-reduced-motion: reduce){#scene [opacity]{transition:none}}
+.frame2{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figure{margin:14px 0 16px;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:12px 14px}
+.figure .figtitle{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:6px}
+.figure svg{width:100%;height:auto;display:block}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：Functions 与 IO</a>
+  <span class="idx">第 6 / 7 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · 把 Pulsar 接上外面的世界</div>
+<h1>连接器：Source 拉进来，Sink 推出去</h1>
+<p>Functions 解决的是「消息进来、算一下、消息出去」。可如果数据源压根不是 Pulsar，或者目的地是 MySQL、Elasticsearch，怎么办？这页课把两种连接器摆在同一条链路上：左边 Source 从外部系统读，右边 Sink 写回外部系统，中间还是那个 function 实例循环——连调度、状态、失败处理都共用一套。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span>
+<span class="mnode">② 静态分解</span>
+<span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span>
+<span class="mnode">⑤ 环境场景</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 560" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>连接器 · Source 与 Sink 共用同一个实例循环</title>
+<defs>
+<pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+<line x1="0" y1="0" x2="0" y2="8" stroke="#B4B2A9" stroke-width="0.7"/>
+</pattern>
+<marker id="flw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/>
+</marker>
+<marker id="flwG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/>
+</marker>
+<marker id="flwR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/>
+</marker>
+</defs>
+<text class="th" x="500" y="24" text-anchor="middle">连接器 · Source 与 Sink 共用同一个实例循环</text>
+<text class="ts" x="500" y="44" text-anchor="middle">琥珀色令牌 = 一条 Record；绿色 = 成功落地；红色 = 失败回退</text>
+<text class="ts" x="985" y="24" text-anchor="end">琥珀 = 正在流转</text>
+<text class="ts" x="985" y="40" text-anchor="end">绿 = ack / 红 = fail</text>
+<g id="scene"></g>
+</svg>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 轮 / 7 秒</span>
+</div>
+
+<div class="readout">
+<span class="ro">进度 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">关键量 <b id="roKey">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav">
+<button class="btn" onclick="prevStep()">‹ 上一步</button>
+<button class="btn warn" onclick="nextStep()">下一步 ›</button>
+</span>
+</div>
+<p class="figcap">进度 0° = 提交连接器，720° = ack/失败；Source 与 Sink 是两条独立链路。<br>口径：Source/Sink 接口以 5.1.0 为准；重试、死信与连接器生命周期细节未展开。</p>
+</div>
+</div>
+
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：一个 jar 进去，一条数据出来</h2></div>
+<p class="sec-sub">先不拆类，只看连接器对外是什么。</p>
+<div class="quote">「对事物的观察包括了静态结构 + 动态生命周期 + 环境场景三个方面的内容。」</div>
+<p>从运维视角看，连接器只有一个动作：<b>提交一个包，数据就开始流动</b>。方向有两种——从外面读进来（Source），或者写到外面去（Sink）。至于它跑在哪台 Worker、怎么重试、状态存哪，提交的人一概不知道。</p>
+<div class="flow">
+<span class="flownote">输入侧</span>
+<span class="node">外部系统</span><span class="arr">→</span>
+<span class="node">Source 连接器</span><span class="arr">→</span>
+<span class="node">Pulsar topic</span>
+</div>
+<div class="flow" style="margin-top:8px">
+<span class="flownote">输出侧</span>
+<span class="node">Pulsar topic</span><span class="arr">→</span>
+<span class="node">Sink 连接器</span><span class="arr">→</span>
+<span class="node">外部系统</span>
+</div>
+<p>黑盒视角的结论：连接器是一台<b>协议翻译机</b>。接下来打开它，看翻译这件事是靠哪些部件完成的。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：契约只有两个方法</h2></div>
+<p class="sec-sub">先看静态结构图，再点部件卡片——动画中对应部分会亮成琥珀色。</p>
+<div class="quote">「它由什么构成？核心方法是分解、分类、结构化——分解需符合 MECE 法则，同层必须粒度一致。」</div>
+<figure class="figure">
+<div class="figtitle">连接器静态结构 · 两个方法，两条链路</div>
+<svg viewBox="0 0 920 300" role="img" aria-label="Source 与 Sink 连接器结构">
+<title>Source 与 Sink 连接器结构</title>
+<defs>
+<marker id="m6a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<rect x="30" y="54" width="170" height="64" rx="10" fill="#fff" stroke="#D3D1C7"/>
+<text class="tn" x="115" y="80" text-anchor="middle">外部系统</text>
+<text class="ts" x="115" y="100" text-anchor="middle">数据源</text>
+<rect x="250" y="54" width="210" height="64" rx="10" fill="#FFF6E8" stroke="#EF9F27"/>
+<text class="tn" x="355" y="80" text-anchor="middle">Source 连接器</text>
+<text class="ts" x="355" y="100" text-anchor="middle">open + read()</text>
+<rect x="510" y="54" width="180" height="64" rx="10" fill="#fff" stroke="#D3D1C7"/>
+<text class="tn" x="600" y="80" text-anchor="middle">输入 topic</text>
+<text class="ts" x="600" y="100" text-anchor="middle">Pulsar topic</text>
+<rect x="510" y="182" width="180" height="64" rx="10" fill="#fff" stroke="#D3D1C7"/>
+<text class="tn" x="600" y="208" text-anchor="middle">输出 topic</text>
+<text class="ts" x="600" y="228" text-anchor="middle">Pulsar topic</text>
+<rect x="250" y="182" width="210" height="64" rx="10" fill="#FFF6E8" stroke="#EF9F27"/>
+<text class="tn" x="355" y="208" text-anchor="middle">Sink 连接器</text>
+<text class="ts" x="355" y="228" text-anchor="middle">open + write(record)</text>
+<rect x="30" y="182" width="170" height="64" rx="10" fill="#fff" stroke="#D3D1C7"/>
+<text class="tn" x="115" y="208" text-anchor="middle">外部目标</text>
+<text class="ts" x="115" y="228" text-anchor="middle">ES / JDBC / S3</text>
+<rect x="730" y="118" width="160" height="64" rx="10" fill="#FBFAF6" stroke="#B4B2A9" stroke-dasharray="6 5"/>
+<text class="tn" x="810" y="144" text-anchor="middle">StateStore</text>
+<text class="ts" x="810" y="164" text-anchor="middle">按实例隔离</text>
+<path d="M200 86 L250 86" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#m6a)"/>
+<path d="M460 86 L510 86" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#m6a)"/>
+<path d="M510 214 L460 214" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#m6a)"/>
+<path d="M250 214 L200 214" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#m6a)"/>
+<path d="M600 246 L600 262 L810 262 L810 182" stroke="#C46A0A" stroke-width="1.4" stroke-dasharray="4 3" fill="none" marker-end="url(#m6a)"/>
+</svg>
+<figcaption class="figcap">读法：Source 拉进来（open + read），Sink 推出去（open + write），两条链路各自闭环；虚线表示实例状态存储。口径：接口以 5.1.0 为准，重试/死信细节未展开。</figcaption>
+</figure>
+<div class="partgroup">
+<div class="gname">契约层 —— 只有两个接口</div>
+<div class="parts">
+<button class="part" data-part="source"><b>Source</b><span>open(config, SourceContext) + read()：拉模型，读不到就阻塞。PushSource 是反向的 consume(record)。</span></button>
+<button class="part" data-part="sink"><b>Sink</b><span>open(config, SinkContext) + write(record)：推模型，来一条写一条。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">运行层 —— 还是那个 function 实例</div>
+<div class="parts">
+<button class="part" data-part="instance"><b>JavaInstanceRunnable</b><span>readInput → process → sendOutputMessage；componentType 是 SOURCE/SINK 时切到连接器的 classloader。</span></button>
+<button class="part" data-part="loop"><b>实例循环</b><span>函数、Source、Sink 共用同一段循环，区别只在「谁提供 Record、谁消费 Record」。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">支撑层</div>
+<div class="parts">
+<button class="part" data-part="nar"><b>NAR 与 NarClassLoader</b><span>NAR 里带 bundled-dependencies；每个 NAR 一个类加载器，两个连接器依赖不同版本 Jackson 也不打架。</span></button>
+<button class="part" data-part="state"><b>StateStore</b><span>BK Table 服务或元数据存储；按实例隔离，rebalance 不迁移。</span></button>
+</div>
+</div>
+<p class="hint">契约只有两个方法，剩下全靠运行层复用。这也是 Pulsar IO 连接器好写的原因。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：一条 Record 的九步</h2></div>
+<p class="sec-sub">盯住琥珀色令牌，用下方 9 个步骤点逐帧定格。</p>
+<div class="quote">「它如何演变与运作？关注时间轴上的发展规律、行为模式和内部流程。核心方法是流程分析、行为追溯。」</div>
+<table class="grid">
+<tr><th>阶段</th><th>相位</th><th>关键动作</th><th>这一步在干什么</th></tr>
+<tr><td>① 提交</td><td>0°–80°</td><td>admin 提交配置</td><td>走和函数一样的 Worker 调度</td></tr>
+<tr><td>② 加载</td><td>80°–160°</td><td>NarClassLoader</td><td>一个 NAR 一个类加载器，隔离依赖</td></tr>
+<tr><td>③ open</td><td>160°–240°</td><td>open(config, ctx)</td><td>拿 topic、schema、metrics</td></tr>
+<tr><td>④ read</td><td>240°–320°</td><td>source.read()</td><td>拉模型阻塞；PushSource 由外部推</td></tr>
+<tr><td>⑤ Record</td><td>320°–400°</td><td>key / value / schema / sequence</td><td>后面幂等就靠这两个 id</td></tr>
+<tr><td>⑥ 循环</td><td>400°–480°</td><td>readInput → process → sendOutput</td><td>SOURCE/SINK 时切 classloader</td></tr>
+<tr><td>⑦ process</td><td>480°–560°</td><td>IdentityFunction</td><td>Sink 场景是直通，不算</td></tr>
+<tr><td>⑧ write</td><td>560°–640°</td><td>sink.write(record)</td><td>目的地是 Pulsar 就走 PulsarSink</td></tr>
+<tr><td>⑨ ack / fail</td><td>640°–720°</td><td>record.ack() / srcRecord.fail()</td><td>失败触发重投，超限进 DLQ</td></tr>
+</table>
+<p>最容易看漏的是第 ⑥ 步：<b>连接器不是另一套运行时，它就是 function 实例。</b><code>JavaInstanceRunnable</code> 在 <code>:605</code> 调 <code>source.read()</code>、在 <code>:545</code> 调 <code>sink.write()</code>，中间的 <code>process</code> 对 Sink 来说是 <code>IdentityFunction</code> 直通。调度、并行度、rebalance、DLQ 全都和函数共用。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：三种语义，三种 ack 时机</h2></div>
+<p class="sec-sub">把结构（谁在写）和时间（什么时候 ack）叠起来看。</p>
+<div class="quote">「动静融合的关键是建立映射：将组成部件与操作步骤一一对应，理解各部件如何协同产生外在行为。」</div>
+<table class="grid">
+<tr><th>语义</th><th>ack 时机</th><th>重复</th><th>丢失</th><th>代价</th></tr>
+<tr><td>ATMOST_ONCE</td><td class="hot">读出来就先 ack</td><td>不会</td><td class="hot">可能丢</td><td>最快，适合可丢的指标</td></tr>
+<tr><td>ATLEAST_ONCE</td><td class="hot">处理 + 写成功后才 ack</td><td class="hot">可能重复</td><td>不会</td><td>要幂等</td></tr>
+<tr><td>EFFECTIVELY_ONCE</td><td class="hot">写出成功后 ack，靠 sequenceId 去重</td><td class="act">Broker 侧挡掉</td><td>不会</td><td>必须带 partitionId + recordSequence</td></tr>
+<tr><td>MANUAL</td><td>业务自己决定</td><td>看实现</td><td>看实现</td><td>灵活，也最容易写错</td></tr>
+</table>
+<p>点题一句：<b>语义不是连接器的属性，而是「ack 发生在哪个时间点」的属性。</b>同一个 Sink 连接器，换个语义配置，ack 的时机就变了——这才是四种语义的真正区别。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：连接器依赖什么</h2></div>
+<p class="sec-sub">主体之外，还有一圈支撑系统。</p>
+<div class="quote">「对事物的认识 = 空间属性 + 时间属性 + 环境属性（外在关系和依赖）。」</div>
+<div class="envcards">
+<div class="env"><b>包管理</b><span>NAR 上传后存进 BookKeeper 与元数据，Worker 按 URL 下载；PackageUrlValidator 限制协议，挡住 file:// 这类越权读取。</span></div>
+<div class="env"><b>外部系统的凭证</b><span>数据库账号、云厂商密钥通常走 secrets；凭证过期会让连接器在 open 阶段就失败。</span></div>
+<div class="env"><b>外部系统的反压</b><span>数据库慢，Sink 的 write 就会慢，积压会一路传导到 topic 的 backlog——连接器不隔离压力。</span></div>
+<div class="env"><b>状态后端</b><span>BK Table 服务或元数据存储；状态大或要跨实例共享时，老实上 Redis / 数据库。</span></div>
+<div class="env"><b>重试与 DLQ</b><span>写失败必须有出口；没有 DLQ 的 Sink 会被一条脏数据卡死。</span></div>
+<div class="env"><b>监控</b><span>source 异常数、sink 异常数、处理耗时、backlog、DLQ 条数。</span></div>
+</div>
+<p>拆掉任何一个，连接器都会以不同的方式停住：包下载失败停在 ②，凭证错停在 ③，外部系统慢卡在 ⑧。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">能说清「连接器就是特殊函数」，才算真的懂。</p>
+<div id="quiz"></div>
+</section>
+
+
+<div class="summary">
+<h2>一页带走</h2>
+<p class="chant">契约只有 read 和 write，运行时就是函数实例；ack 在哪一刻发，决定了是哪一种语义。</p>
+<p>· 契约：Source.open + read（拉）/ PushSource.consume（推）；Sink.open + write（推）。</p>
+<p>· 运行时：JavaInstanceRunnable 的同一个循环，componentType 决定切不切 classloader。</p>
+<p>· 打包：NAR + NarClassLoader，一个 NAR 一个类加载器，依赖不打架。</p>
+<p>· 语义：ATMOST / ATLEAST / EFFECTIVELY_ONCE / MANUAL，差别就是 ack 的时机。</p>
+<p>· 状态：按实例隔离，rebalance 不迁移；要跨实例共享就用外部存储。</p>
+<p>· 边界与简化：本页为原理示意；默认值/阈值/时序以 Pulsar 5.1.0-SNAPSHOT 的配置与源码为准；异常、重试与批处理细节未展开。</p>
+
+</div>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+
+<script>
+(function(){
+var PERIOD=7600,PHASE_MAX=720;
+var STEPS=[{d:0,t:'提交连接器',x:'admin 提交 source / sink 的配置与包位置；和提交函数走的是同一套 Worker 调度。'},
+{d:80,t:'加载 NAR',x:'NAR 不是普通 jar：里面带 bundled-dependencies，Worker 用 NarClassLoader 一个 NAR 一个类加载器。'},
+{d:160,t:'open(config, ctx)',x:'Source.open 拿 SourceContext，Sink.open 拿 SinkContext；topic、schema、metrics 都从 ctx 取。'},
+{d:240,t:'read()',x:'Source.read() 是拉模型，读不到就阻塞；PushSource 反过来，由外部系统推给 consume(record)。'},
+{d:320,t:'包成 Record',x:'key / value / schema / topic / partitionId / recordSequence —— 后面 EFFECTIVELY_ONCE 就靠这两个 id。'},
+{d:400,t:'进实例循环',x:'JavaInstanceRunnable 的循环：readInput → process → sendOutputMessage；componentType 决定要不要切 classloader。'},
+{d:480,t:'process',x:'Sink 场景下的「用户函数」是 IdentityFunction——直通，不做计算，真正的活交给 sink.write()。'},
+{d:560,t:'写出',x:'Sink.write(record) 推给外部系统；目的地是 Pulsar 就走 PulsarSink 发消息。'},
+{d:640,t:'ack 与失败',x:'成功才 ack；写失败调 srcRecord.fail()，触发重投，次数超限进 DLQ。状态读写也在这里。'}];
+var PARTS={ext:['extIn'],
+nar:['narBox','srcBox'],
+source:['srcBox','srcOpen','srcRead'],
+instance:['instBox','instL1','instL2'],
+state:['stateBox','stateArrow'],
+sink:['sinkBox','sinkOpen','sinkWrite'],
+output:['extOut'],
+loop:['loopBox','lp0','lp1','lp2','lp3']};
+var CHIPS=[{k:'source',l:'Source'},{k:'process',l:'实例'},{k:'sink',l:'Sink'},{k:'ack',l:'ack'}];
+var QUIZ=[{q:'Source 和 PushSource 的区别是什么？',opts:['一个是 Pulsar 读，一个是外部读','Source 是拉模型，read() 读不到就阻塞；PushSource 由外部系统主动推，连接器调 consume(record)','PushSource 性能更好'],a:1,exp:'Kafka consumer 适合拉模型，所以 Kafka Source 实现 Source；webhook、MQTT 这类推送型数据源用 PushSource 更自然。接口方向不同，后面的实例循环完全一样。'},
+{q:'Sink 连接器里的「用户函数」是什么？',opts:['用户自己写的 Function','IdentityFunction：直通，把 Record 原样交给 sink.write()','没有函数，直接写'],a:1,exp:'SinkConfigUtils 会把 className 设成 IdentityFunction（:109）。函数和 sink 可以组合使用：函数先算，结果再交给 sink 写出去。'},
+{q:'EFFECTIVELY_ONCE 是怎么做到「 effectively 一次」的？',opts:['靠事务','用 partitionId 当 producerName、recordSequence 当 sequenceId，靠 Broker 侧生产者去重实现幂等','靠 ack 顺序'],a:1,exp:'PulsarSinkEffectivelyOnceProcessor（PulsarSink.java:199）要求每条 Record 都带 partitionId 和 recordSequence，把 sequence 作为 sequenceId 发出去；重复发送会被 Broker 去重挡掉。没有这两个字段会直接抛异常。'},
+{q:'函数扩到 4 个实例之后，状态会共享吗？',opts:['会，状态是全局的','不会：state store 按实例隔离（BK Table 服务或元数据存储），rebalance 时也不会跟着迁','取决于订阅类型'],a:1,exp:'按用户累计金额这种需求，同一个用户必须落到同一个实例，否则计数分散。Functions 没有 key-group 机制，要么在函数里 hash，要么用外部存储。'},
+{q:'Sink 写外部系统失败，这条消息会怎样？',opts:['直接丢弃','srcRecord.fail() → 触发重投；超过重试上限进 DLQ。不配 DLQ 会堵住整个订阅','由 Broker 自动补偿'],a:1,exp:'sendOutputMessage 的 catch 里调 srcRecord.fail()（JavaInstanceRunnable:547）再抛异常。失败必须有出口，否则一条毒消息会反复卡住位点。'}];
+function box(x,y,w,h,rx,fill,stroke,dash){return '<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="'+(rx||10)+'" fill="'+(fill||'#ffffff')+'" stroke="'+(stroke||'#3B3A34')+'" stroke-width="1.4"'+(dash?' stroke-dasharray="'+dash+'"':'')+'/>';}
+function tx(x,y,s,cls,anchor,fill){return '<text class="'+(cls||'ts')+'" x="'+x+'" y="'+y+'"'+(anchor?' text-anchor="'+anchor+'"':'')+(fill?' fill="'+fill+'"':'')+'>'+s+'</text>';}
+var H='';
+// 外部数据源
+H+='<g id="extIn">'+box(24,120,150,92,10,'#ffffff','#3B3A34')+tx(99,146,'外部数据源','tn','middle')+tx(99,166,'MySQL / Kafka / 文件','ts','middle')+tx(99,186,'不是 Pulsar','ts','middle')+'</g>';
+// Source 连接器
+H+='<g id="srcBox">'+box(200,96,180,140,10,'#fff','#3B3A34')+tx(214,120,'Source 连接器','tn')+'</g>';
+H+='<g id="narBox">'+box(212,132,156,20,4,'#FFF6E8','#EF9F27')+'</g>';
+H+=tx(220,146,'NAR · 一个 NAR 一个 classloader','ts','start','#854F0B');
+H+='<text id="srcOpen" class="ts" x="214" y="170">open(config, SourceContext)</text>';
+H+='<text id="srcRead" class="ts" x="214" y="190">read() 阻塞式</text>';
+H+=tx(214,210,'PushSource：外部推 → consume()','ts','start','#6B695F');
+H+='<path d="M174 166 L196 166" stroke="#C46A0A" stroke-width="1.5" marker-end="url(#flw)" fill="none"/>';
+// 实例
+H+='<g id="instBox">'+box(420,90,190,158,10,'#FBFAF6','#B4B2A9','6 5')+tx(436,114,'Function 实例','tn')+'</g>';
+H+='<text id="instL1" class="ts" x="436" y="136">componentType =</text>';
+H+='<text id="instL2" class="ts" x="436" y="154">FUNCTION / SOURCE / SINK</text>';
+H+=tx(436,178,'readInput → process','ts');
+H+=tx(436,196,'→ sendOutputMessage','ts');
+H+=tx(436,220,'SOURCE/SINK 时切 classloader','ts','start','#854F0B');
+H+='<text class="ts" x="436" y="238">readInput():605 · write():545</text>';
+H+='<path d="M380 166 L416 166" stroke="#C46A0A" stroke-width="1.5" marker-end="url(#flw)" fill="none"/>';
+// 状态
+H+='<g id="stateBox">'+box(420,262,190,74,10,'#fff','#3B3A34')+tx(436,286,'StateStore','tn')+tx(436,306,'BK Table / 元数据存储','ts')+tx(436,324,'按实例隔离','ts')+'</g>';
+H+='<path id="stateArrow" d="M515 248 L515 258" stroke="#C46A0A" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#flw)" fill="none"/>';
+// Sink
+H+='<g id="sinkBox">'+box(650,96,180,140,10,'#fff','#3B3A34')+tx(664,120,'Sink 连接器','tn')+'</g>';
+H+='<text id="sinkOpen" class="ts" x="664" y="144">open(config, SinkContext)</text>';
+H+='<text id="sinkWrite" class="ts" x="664" y="166">write(record) 推模型</text>';
+H+=tx(664,190,'目的地是 Pulsar → PulsarSink','ts','start','#6B695F');
+H+=tx(664,210,'EFFECTIVELY_ONCE：','ts','start','#6B695F');
+H+=tx(664,228,'sequenceId = recordSequence','ts','start','#854F0B');
+H+='<path d="M610 166 L646 166" stroke="#C46A0A" stroke-width="1.5" marker-end="url(#flw)" fill="none"/>';
+// 外部目标
+H+='<g id="extOut">'+box(860,120,116,92,10,'#fff','#3B3A34')+tx(918,146,'外部目标','tn','middle')+tx(918,166,'ES / JDBC','ts','middle')+tx(918,186,'S3 / …','ts','middle')+'</g>';
+H+='<path d="M830 166 L856 166" stroke="#C46A0A" stroke-width="1.5" marker-end="url(#flw)" fill="none"/>';
+// 底部循环条
+H+='<g id="loopBox">'+box(24,368,946,86,12,'#FBFAF6','#B4B2A9','6 5')+tx(44,392,'JavaInstanceRunnable 的循环（函数 / Source / Sink 共用）','tn')+'</g>';
+var lp=[['① readInput','source.read()'],['② process','IdentityFunction 直通'],['③ sendOutput','sink.write(record)'],['④ ack / fail','成功才 ack']];
+for(var i=0;i<4;i++){var lx=44+i*236;H+='<rect id="lp'+i+'" x="'+lx+'" y="404" width="216" height="34" rx="8" fill="#fff" stroke="#D3D1C7" stroke-width="1.2"/>'+tx(lx+12,420,lp[i][0],'ts','start','#3B3A34')+tx(lx+12,434,lp[i][1],'ts','start','#6B695F');}
+H+='<text id="stageTag" class="ts" x="985" y="544" text-anchor="end" fill="#854F0B"></text>';
+// token
+H+='<circle id="tok" cx="99" cy="166" r="10" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/>';
+H+='<text id="tokT" class="ts" x="99" y="148" text-anchor="middle" fill="#854F0B">Record</text>';
+document.getElementById('scene').innerHTML=H;
+var el={};
+document.querySelectorAll('#scene [id]').forEach(function(n){el[n.id]=n;});
+var WP=[[0,99,166],[80,290,166],[160,290,166],[240,290,166],[320,400,166],[400,515,166],[480,515,166],[560,740,166],[640,152,421],[720,860,421]];
+function tokPos(th){var i=0;while(i<WP.length-2&&th>WP[i+1][0])i++;var a=WP[i],b=WP[i+1];var t=(th-a[0])/(b[0]-a[0]);return[a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];}
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,STEP_DUR=900;
+var dots=[];
+for(var s=0;s<STEPS.length;s++){
+(function(n){
+var b=document.createElement('button');
+b.className='stepnode';
+b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+b.onclick=function(){goStep(n);};
+stepBar.appendChild(b);dots.push(b);
+})(s);
+}
+var chipBox=document.getElementById('stateChips'),chipEls={};
+CHIPS.forEach(function(c){
+var s=document.createElement('span');s.className='chip';
+s.innerHTML=c.l+' <b>--</b>';chipBox.appendChild(s);chipEls[c.k]=s;
+});
+function setChip(k,v){
+var n=chipEls[k];if(!n)return;var b=n.querySelector('b');
+if(b&&b.textContent!==v)b.textContent=v;
+n.classList.toggle('on',/^(开|是|已|完成|生效|放行|进行|2\/2|owner|markDelete)/.test(v));
+n.classList.toggle('off',/^(关|否|待命|—|未)/.test(v));
+}
+var stepIdx=-1;
+function setAuto(on){
+mode='auto';run=on;stepTo=null;btn.textContent=on?'暂停':'播放';
+if(on){stepIdx=-1;dots.forEach(function(d){d.classList.remove('on');});
+stepT.textContent='自动运转模式';
+stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格。';}
+}
+window.goStep=function(i){
+stepIdx=(i+STEPS.length)%STEPS.length;
+mode='step';run=false;
+var target=STEPS[stepIdx].d/PHASE_MAX*PERIOD,delta=target-phase;
+if(reduced||Math.abs(delta)>PERIOD/4){
+phase=target;stepTo=null;render(target/PERIOD*PHASE_MAX+0.01);
+}else{
+stepFrom=phase;stepTo=phase+delta;stepElapsed=0;render(phase/PERIOD*PHASE_MAX+0.01);
+}
+btn.textContent='继续自动运转';
+dots.forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+stepX.textContent=STEPS[stepIdx].x;
+};
+btn.textContent=run?'暂停':'播放';
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+function setOp(id,v){var n=typeof id==='string'?el[id]:id;if(n)n.setAttribute('opacity',v.toFixed(2));}
+function setText(id,s){var n=el[id]||document.getElementById(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setAttr(id,k,v){var n=el[id];if(n)n.setAttribute(k,v);}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){return t*t*(3-2*t);}
+
+function render(th){
+var pr=Math.round(((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX);
+setText('roPhase',pr+'°');
+var si=0;for(var ri=0;ri<STEPS.length;ri++){if(pr>=STEPS[ri].d)si=ri;}
+if(mode==='step'&&stepIdx>=0)si=stepIdx;
+setText('roStep',STEPS[si]?STEPS[si].t:'—');
+var p=tokPos(th);setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));setAttr('tokT','x',p[0].toFixed(1));setAttr('tokT','y',(p[1]-18).toFixed(1));
+// 流程高亮：加载 NAR → open → read → Record → 循环 → process → write → ack
+setOp('narBox',th>=80?1:0.35);
+setOp('srcOpen',th>=160?1:0.4);setOp('srcRead',th>=240?1:0.4);
+setOp('sinkOpen',th>=160?1:0.4);setOp('sinkWrite',th>=560?1:0.4);
+setOp('stateArrow',th>=400&&th<560?0.95:0.2);setOp('stateBox',th>=400&&th<560?1:0.55);
+var lpon=[th>=400,th>=480,th>=560,th>=640];
+var lpcol=['#C46A0A','#C46A0A','#639922','#639922'];
+for(var i=0;i<4;i++){var n=el['lp'+i];if(n){n.setAttribute('stroke',lpon[i]?lpcol[i]:'#D3D1C7');n.setAttribute('fill',lpon[i]?'#FFF6E8':'#fff');}}
+// 令牌文字只在底部循环条里显示：顶部一行标签会压住连接器里的说明文字
+setText('tokT',th>=640?'ack':'Record');
+setOp('tokT',th>=640?1:0);
+var names=['提交连接器','加载 NAR','open(config, ctx)','read()','包成 Record','进实例循环','process','写出','ack 与失败'];
+var si=0;for(var n=0;n<STEPS.length;n++){if(th>=STEPS[n].d)si=n;}
+setText('stageTag','当前：'+names[si]);
+setText('roKey', th<160?'等待 open':th<400?'Source 拉取':th<560?'process':th<640?'Sink 写出':'ack/失败');
+setChip('source', th>=160?'open/read':'待命');
+setChip('process', th>=400?'进行中':'待命');
+setChip('sink', th>=560?'write 输出':'待命');
+setChip('ack', th>=640?'ack 或失败':'待命');
+}
+function tick(now){
+var dt=Math.min(50,now-last);last=now;
+if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+if(mode==='step'&&stepTo!==null){
+stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);
+var p=stepElapsed/STEP_DUR;
+var e=p*p*(3-2*p);
+phase=stepFrom+(stepTo-stepFrom)*e;
+if(p>=1){phase=((stepTo%PERIOD)+PERIOD)%PERIOD;stepTo=null;}
+}
+render(phase/PERIOD*PHASE_MAX+0.01);
+requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+document.querySelectorAll('.part').forEach(function(b){
+b.onclick=function(){
+var ids=PARTS[b.getAttribute('data-part')]||[];
+ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+};
+});
+var BASE=(location.pathname.split('/middleware-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/middleware/lab';
+document.getElementById('lnkArt').href=BASE+'/middleware/tutorial/04-functions-io';
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+var d=document.createElement('div');d.className='q';
+var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+h+='<div class="exp">'+it.exp+'</div>';
+d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+var b=e.target.closest('.opt');if(!b)return;
+var box2=b.parentElement;if(box2.classList.contains('done'))return;
+box2.classList.add('done');
+var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+box2.querySelectorAll('.opt').forEach(function(x){
+var xi=+x.getAttribute('data-oi');
+if(xi===QUIZ[qi].a)x.classList.add('right');
+else if(x===b)x.classList.add('wrong');
+});
+});
+})();
+</script>
+</body>
+</html>

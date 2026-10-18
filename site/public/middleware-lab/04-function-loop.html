@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>函数循环 · Pulsar 互动原理实验室 第 4 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:920px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:680px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:500;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:12px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:500;fill:#1F1E1A}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:68px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+.modebar{display:flex;align-items:center;gap:8px;margin:6px 4px 0;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.modebar .mlabel{font-weight:600;color:#3B3A34}
+.modebtn{padding:5px 12px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:12.5px;cursor:pointer;font-family:inherit}
+.modebtn:hover{border-color:#888780}
+.modebtn.on{background:#FFF6E8;border-color:#EF9F27;color:#854F0B;font-weight:600}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .outbranch{display:inline-flex;flex-direction:column;align-items:flex-start;gap:6px}
+.flow .outline{display:inline-flex;align-items:center;gap:8px}
+.flow .flownote{font-size:12px;color:#6B695F;font-weight:600;margin-right:4px}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:9px 10px;text-align:center}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+#scene [opacity]{transition:opacity .28s ease}
+#tok,#tokT,#pulse{transition:none}
+@media (prefers-reduced-motion: reduce){#scene [opacity]{transition:none}}
+.frame2{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figure{margin:14px 0 16px;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:12px 14px}
+.figure .figtitle{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:6px}
+.figure svg{width:100%;height:auto;display:block}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：Functions 与 IO</a>
+  <span class="idx">第 4 / 7 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · 控制面与数据面</div>
+<h1>函数循环：Worker 管放哪，实例管怎么跑</h1>
+<p>把计算搬进消息系统，听起来像「把 jar 扔给 Pulsar」。真正跑起来是两套东西：控制面负责提交、调度、拉起；数据面负责读消息、处理、写结果、ack。这页课把两条线摆在一起，顺便看清 ack 到底发生在哪一步。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span>
+<span class="mnode">② 静态分解</span>
+<span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span>
+<span class="mnode">⑤ 环境场景</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 560" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>Functions 的控制面与数据面</title>
+<defs>
+<pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+<line x1="0" y1="0" x2="0" y2="8" stroke="#B4B2A9" stroke-width="0.7"/>
+</pattern>
+<marker id="flw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/>
+</marker>
+<marker id="flwG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/>
+</marker>
+<marker id="flwR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/>
+</marker>
+</defs>
+<text class="th" x="500" y="24" text-anchor="middle">Functions 的控制面与数据面</text>
+<text class="ts" x="500" y="44" text-anchor="middle">上半部分：提交、调度、拉起实例；下半部分：一条消息在实例里的处理循环</text>
+<text class="ts" x="985" y="24" text-anchor="end">琥珀 = 控制流 / 消息</text>
+<text class="ts" x="985" y="40" text-anchor="end">绿 = 成功 / ack</text>
+<g id="scene"></g>
+</svg>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 轮 / 7 秒</span>
+</div>
+
+<div class="readout">
+<span class="ro">进度 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">关键量 <b id="roKey">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav">
+<button class="btn" onclick="prevStep()">‹ 上一步</button>
+<button class="btn warn" onclick="nextStep()">下一步 ›</button>
+</span>
+</div>
+<p class="figcap">进度 0° = 提交函数，720° = 失败进入 DLT；控制面与数据面是逻辑划分。<br>口径：Worker 调度、实例扩缩容与重试细节未展开；源码位置见前文。</p>
+</div>
+</div>
+
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：一个 jar 进去，一条结果出来</h2></div>
+<p class="sec-sub">先把它当成「消息进来、结果出去」的黑盒。</p>
+<div class="quote">「对事物的观察包括了静态结构 + 动态生命周期 + 环境场景三个方面的内容。」</div>
+<p>从使用方看，Functions 只要求三件事：<b>给一个包、指定输入 topic、指定输出 topic</b>。剩下的调度、重启、扩缩容由 Pulsar 负责。函数代码本身只有一个方法：<code>process(input, context)</code>。</p>
+<div class="flow">
+<span class="node">函数包（NAR）</span><span class="arr">→</span>
+<span class="node">Worker 调度</span><span class="arr">→</span>
+<span class="node">实例循环</span><span class="arr">→</span>
+<span class="node">输出 topic</span>
+</div>
+<p>黑盒视角的结论：这是一台<b>把「消息处理」变成可调度单元</b>的装置。接下来拆开看控制面和数据面。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：两条线，四种角色</h2></div>
+<p class="sec-sub">先看静态结构图，再点部件卡片——动画中对应部分会亮成琥珀色。</p>
+<div class="quote">「它由什么构成？核心方法是分解、分类、结构化——分解需符合 MECE 法则，同层必须粒度一致。」</div>
+<figure class="figure">
+<div class="figtitle">函数循环静态结构 · 控制面 vs 数据面</div>
+<svg viewBox="0 0 920 300" role="img" aria-label="函数控制面与数据面">
+<title>函数控制面与数据面</title>
+<defs>
+<marker id="m4a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<rect x="40" y="34" width="310" height="78" rx="12" fill="#fff" stroke="#3B3A34" stroke-width="1.4"/>
+<text class="tn" x="195" y="60" text-anchor="middle">FunctionsManager / Worker</text>
+<text class="ts" x="195" y="82" text-anchor="middle">控制面：决定放哪、起几个</text>
+<rect x="410" y="34" width="220" height="78" rx="12" fill="#fff" stroke="#3B3A34" stroke-width="1.4"/>
+<text class="tn" x="520" y="60" text-anchor="middle">实例分配</text>
+<text class="ts" x="520" y="82" text-anchor="middle">Worker 选实例</text>
+<rect x="300" y="156" width="320" height="104" rx="12" fill="#FBFAF6" stroke="#3B3A34" stroke-width="1.4"/>
+<text class="tn" x="460" y="184" text-anchor="middle">Function 实例</text>
+<text class="ts" x="460" y="208" text-anchor="middle">readInput → process</text>
+<text class="ts" x="460" y="228" text-anchor="middle">→ handleResult / write</text>
+<rect x="40" y="172" width="190" height="66" rx="10" fill="#fff" stroke="#D3D1C7"/>
+<text class="tn" x="135" y="198" text-anchor="middle">输入 topic</text>
+<text class="ts" x="135" y="218" text-anchor="middle">consumer 读</text>
+<rect x="700" y="156" width="180" height="60" rx="10" fill="#fff" stroke="#D3D1C7"/>
+<text class="tn" x="790" y="182" text-anchor="middle">输出 topic</text>
+<text class="ts" x="790" y="202" text-anchor="middle">producer 写</text>
+<rect x="700" y="234" width="180" height="48" rx="10" fill="#fff" stroke="#D3D1C7"/>
+<text class="tn" x="790" y="256" text-anchor="middle">StateStore</text>
+<text class="ts" x="790" y="274" text-anchor="middle">按实例隔离</text>
+<path d="M350 73 L410 73" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#m4a)"/>
+<path d="M520 112 L520 132 L460 132 L460 154" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#m4a)"/>
+<path d="M230 205 L300 205" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#m4a)"/>
+<path d="M620 188 L700 188" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#m4a)"/>
+<path d="M620 224 L700 254" stroke="#C46A0A" stroke-width="1.4" stroke-dasharray="4 3" fill="none" marker-end="url(#m4a)"/>
+</svg>
+<figcaption class="figcap">读法：上半控制面只决定「放哪 / 起几个」，下半数据面才处理消息；ack 在数据面闭环。口径：控制面/数据面是逻辑划分，Worker 调度与扩缩容细节未展开。</figcaption>
+</figure>
+<div class="partgroup">
+<div class="gname">控制面 —— 负责「放哪」</div>
+<div class="parts">
+<button class="part" data-part="worker"><b>Worker / Admin</b><span>接收提交、校验配置；元数据写进 metadata topic。</span></button>
+<button class="part" data-part="runtime"><b>Scheduler + RuntimeManager</b><span>leader 算分配，worker 读 assignment，RuntimeSpawner 拉起实例。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">数据面 —— 负责「怎么跑」</div>
+<div class="parts">
+<button class="part" data-part="instance"><b>函数实例</b><span>readInput → process → handleResult 的循环；同步或 Future 都走同一条出口。</span></button>
+<button class="part" data-part="output"><b>输入 / 输出 topic</b><span>consumer 读输入，producer 写输出；日志另走 log topic。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">状态与失败</div>
+<div class="parts">
+<button class="part" data-part="state"><b>StateStore</b><span>BookKeeper Table 或元数据存储；按实例隔离，rebalance 不自动搬。</span></button>
+<button class="part" data-part="dlt"><b>Dead Letter Topic</b><span>超过 maxMessageRetries 的毒消息出口；不配就会堵住订阅。</span></button>
+</div>
+</div>
+<p class="hint">控制面挂了，数据面还在跑；数据面挂了，控制面负责拉起。两条线的边界要分清。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：从提交到 ack 的九步</h2></div>
+<p class="sec-sub">前四步在控制面，后五步在数据面。</p>
+<div class="quote">「它如何演变与运作？关注时间轴上的发展规律、行为模式和内部流程。核心方法是流程分析、行为追溯。」</div>
+<table class="grid">
+<tr><th>阶段</th><th>相位</th><th>在哪</th><th>这一步在干什么</th></tr>
+<tr><td>① 提交函数</td><td>0°–80°</td><td>控制面</td><td>校验名称、并行度、输入输出</td></tr>
+<tr><td>② 写元数据</td><td>80°–160°</td><td>控制面</td><td>函数定义 / 包位置写 metadata topic</td></tr>
+<tr><td>③ leader 调度</td><td>160°–240°</td><td>控制面</td><td>拆实例，按实例数摊到 worker</td></tr>
+<tr><td>④ 拉起实例</td><td>240°–320°</td><td>控制面</td><td>写 assignment，RuntimeSpawner.start()</td></tr>
+<tr><td>⑤ 读消息</td><td>320°–400°</td><td>数据面</td><td>consumer 按 permits 读一条</td></tr>
+<tr><td>⑥ process</td><td>400°–480°</td><td>数据面</td><td>调用户函数，同步或 Future</td></tr>
+<tr><td>⑦ 写输出</td><td>480°–560°</td><td>数据面</td><td>handleResult 发到输出 topic</td></tr>
+<tr><td>⑧ ack</td><td>560°–640°</td><td>数据面</td><td>ATLEAST_ONCE 成功后才 ack</td></tr>
+<tr><td>⑨ 失败 → DLT</td><td>640°–720°</td><td>数据面</td><td>超过重试次数进死信</td></tr>
+</table>
+<p>最容易被忽略的是 ⑧：<b>ack 的时机决定了处理语义。</b>ATMOST_ONCE 读出来先 ack，崩了就丢；ATLEAST_ONCE 成功后才 ack，崩了会重投；EFFECTIVELY_ONCE 把输出和 ack 放进同一个事务，代价最高。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：控制面与数据面的分工</h2></div>
+<p class="sec-sub">两条线各管一段，谁也不能替谁。</p>
+<div class="quote">「动静融合的关键是建立映射：将组成部件与操作步骤一一对应，理解各部件如何协同产生外在行为。」</div>
+<table class="grid">
+<tr><th>能力</th><th>控制面</th><th>数据面</th></tr>
+<tr><td>提交 / 更新函数</td><td class="hot">负责</td><td>—</td></tr>
+<tr><td>决定实例跑在哪</td><td class="hot">SchedulerManager</td><td>—</td></tr>
+<tr><td>读消息 / 处理 / 写输出</td><td>—</td><td class="hot">实例循环</td></tr>
+<tr><td>失败重启</td><td class="act">RuntimeSpawner 拉起</td><td class="act">实例内重试 / DLT</td></tr>
+<tr><td>状态</td><td>—</td><td class="hot">StateStore</td></tr>
+</table>
+<p>点题一句：<b>「函数自动扩容」这个外在特性，不是实例自己的属性，而是「metadata topic + assignment topic + SchedulerManager + RuntimeSpawner」整体协同的结果。</b>实例只会跑循环，它不知道自己在哪个 worker 上。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：Functions 依赖什么</h2></div>
+<p class="sec-sub">一个函数能跑起来，背后是一圈支撑系统。</p>
+<div class="quote">「对事物的认识 = 空间属性 + 时间属性 + 环境属性（外在关系和依赖）。」</div>
+<div class="envcards">
+<div class="env"><b>Package Management</b><span>NAR 包上传、存储、按 URL 下载；URL 协议受 PackageUrlValidator 限制。</span></div>
+<div class="env"><b>metadata / assignment topic</b><span>函数定义与分配状态都在这；assignment 需要 compaction 或清理。</span></div>
+<div class="env"><b>Worker 成员关系</b><span>leader 选举、worker 存活检测；没有成员关系，rebalance 无从谈起。</span></div>
+<div class="env"><b>StateStore 后端</b><span>BookKeeper Table 或元数据存储；状态重要时，最好外置。</span></div>
+<div class="env"><b>日志 / 指标</b><span>函数日志写 log topic；worker stats 暴露实例数、重试数、处理延迟。</span></div>
+<div class="env"><b>DLT / 重试策略</b><span>maxMessageRetries、retainOrdering、dead letter topic，三件套要一起配。</span></div>
+</div>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">先分清控制面和数据面，再谈语义。</p>
+<div id="quiz"></div>
+</section>
+
+
+<div class="summary">
+<h2>一页带走</h2>
+<p class="chant">Worker 管放哪，实例管怎么跑；ack 的时机，就是语义的边界。</p>
+<p>· 控制面：提交 → metadata topic → SchedulerManager → assignment → RuntimeSpawner。</p>
+<p>· 数据面：readInput → process → handleResult → 输出 → ack。</p>
+<p>· 三种语义：ATMOST_ONCE 先 ack，ATLEAST_ONCE 成功后 ack，EFFECTIVELY_ONCE 用事务。</p>
+<p>· 一个出口：失败超过重试次数进 DLT，否则毒消息会堵住订阅。</p>
+<p>· 边界与简化：本页为原理示意；默认值/阈值/时序以 Pulsar 5.1.0-SNAPSHOT 的配置与源码为准；异常、重试与批处理细节未展开。</p>
+
+</div>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+
+<script>
+(function(){
+var PERIOD=7600,PHASE_MAX=720;
+var STEPS=[{d:0,t:'提交函数',x:'Admin 提交函数包和配置；Worker 校验名称、并行度、输入输出 topic。'},
+{d:80,t:'写元数据',x:'函数定义、包位置、实例数写进 metadata topic；这是一份可重放的追加日志。'},
+{d:160,t:'leader 调度',x:'SchedulerManager 计算分配：每个函数拆成 parallelism 个实例，按实例数摊到 worker。'},
+{d:240,t:'拉起实例',x:'assignment 写到 topic；属于本 worker 的实例由 FunctionRuntimeManager 读到，交给 FunctionActioner 启动。'},
+{d:320,t:'读消息',x:'实例的 consumer 从输入 topic 读一条；receiverQueue 和 permits 照常工作。'},
+{d:400,t:'process',x:'调用用户函数的 process(message, context)；同步返回，或返回 CompletableFuture。'},
+{d:480,t:'写输出',x:'handleResult 序列化结果，producer 发到输出 topic；没有输出就跳过。'},
+{d:560,t:'ack',x:'ATLEAST_ONCE：处理成功后才 ack；ATMOST_ONCE：读出来就先 ack。'},
+{d:640,t:'失败 → DLT',x:'超过 maxMessageRetries 进 dead letter topic；不配 DLT，毒消息会堵住整个订阅。'}];
+var PARTS={worker:['workerBox','adminBox','schedBox'],
+runtime:['rtBox','spawnBox','assignBox'],
+instance:['instBox','readChip','procChip','resChip'],
+output:['inputBox','outBox','logBox'],
+state:['stateBox','statePath'],
+dlt:['dltBox','dltPath','dltGlow']};
+var CHIPS=[{k:'control',l:'控制面'},{k:'data',l:'数据面'},{k:'ack',l:'ack'},{k:'dlt',l:'DLT'}];
+var QUIZ=[{q:'Worker 挂了，已经在跑的函数实例会立刻停吗？',opts:['会，Worker 是唯一执行者','不会：控制面和数据面分离，实例还在跑，但没人调度新实例','取决于函数语言'],a:1,exp:'Worker 管「放哪」，实例管「怎么跑」。Worker 挂了数据面还能撑，但 rebalance 和新实例拉起会停。'},
+{q:'ATLEAST_ONCE 的 ack 发生在什么时候？',opts:['读出来立刻 ack','处理成功之后 ack；失败会重投，所以可能重复','写输出之前 ack'],a:1,exp:'ATLEAST_ONCE 是默认语义：处理成功后 ack。要解决重复，函数里必须做幂等，或者用 EFFECTIVELY_ONCE。'},
+{q:'函数里做「按用户累计金额」，状态存哪？',opts:['本地 HashMap','Context.getStateStore()，底层是 BookKeeper Table 或元数据存储','写回输入 topic'],a:1,exp:'StateStore 按实例隔离，rebalance 不会自动搬走；如果状态很重要，要么接受短暂不一致，要么用外部存储。'},
+{q:'assignment topic 为什么需要 compaction 或清理？',opts:['因为它会无限增长','因为它只能存一条消息','因为 BookKeeper 不支持追加'],a:1,exp:'assignment 是追加日志，每条分配/解绑都写一条；长期不清理会越来越长，worker 重启重放也越慢。'},
+{q:'函数处理一条消息要 5 秒，但 ackTimeout 只有 2 秒，会发生什么？',opts:['消息会丢','Broker 认为消费者卡住，重新投递；同一条消息可能被多个实例处理','函数自动扩容'],a:1,exp:'ackTimeout 要和业务处理时间匹配。太短会频繁重投，太长会卡住 backlog；重投还会放大副作用。'}];
+function box(x,y,w,h,rx,fill,stroke,dash){return '<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="'+(rx||10)+'" fill="'+(fill||'#ffffff')+'" stroke="'+(stroke||'#3B3A34')+'" stroke-width="1.4"'+(dash?' stroke-dasharray="'+dash+'"':'')+'/>';}
+function tx(x,y,s,cls,anchor,fill){return '<text class="'+(cls||'ts')+'" x="'+x+'" y="'+y+'"'+(anchor?' text-anchor="'+anchor+'"':'')+(fill?' fill="'+fill+'"':'')+'>'+s+'</text>';}
+var H='';
+// control plane
+H+='<g id="workerBox"><rect x="20" y="64" width="960" height="154" rx="14" fill="#FBFAF6" stroke="#B4B2A9" stroke-width="1.4" stroke-dasharray="6 5"/>'+tx(500,86,'控制面：Worker / 元数据 / 调度','tn','middle')+'</g>';
+H+='<g id="adminBox">'+box(36,104,120,52,8,'#ffffff','#3B3A34')+tx(96,126,'Admin / CLI','tn','middle')+tx(96,144,'submit','ts','middle')+'</g>';
+H+='<g id="schedBox">'+box(190,104,170,52,8,'#ffffff','#3B3A34')+tx(275,126,'SchedulerManager','tn','middle')+tx(275,144,'leader 做分配','ts','middle')+'</g>';
+H+='<g id="assignBox">'+box(394,104,150,52,8,'#ffffff','#3B3A34')+tx(469,126,'metadata topic','tn','middle')+tx(469,144,'函数定义 / 包位置','ts','middle')+'</g>';
+H+='<g id="rtBox">'+box(578,104,160,52,8,'#ffffff','#3B3A34')+tx(658,126,'RuntimeManager','tn','middle')+tx(658,144,'读 assignment','ts','middle')+'</g>';
+H+='<g id="spawnBox">'+box(772,104,150,52,8,'#ffffff','#3B3A34')+tx(847,126,'RuntimeSpawner','tn','middle')+tx(847,144,'start / 重启','ts','middle')+'</g>';
+H+='<path d="M156 130 L186 130" stroke="#C46A0A" stroke-width="1.5" marker-end="url(#flw)" fill="none"/>';
+H+='<path d="M360 130 L390 130" stroke="#C46A0A" stroke-width="1.5" marker-end="url(#flw)" fill="none"/>';
+H+='<path d="M544 130 L574 130" stroke="#C46A0A" stroke-width="1.5" marker-end="url(#flw)" fill="none"/>';
+H+='<path d="M738 130 L768 130" stroke="#C46A0A" stroke-width="1.5" marker-end="url(#flw)" fill="none"/>';
+H+='<path d="M847 156 L847 186 L430 186 L430 244" stroke="#C46A0A" stroke-width="1.4" stroke-dasharray="5 4" fill="none" marker-end="url(#flw)"/>';
+H+='<text class="ts" x="650" y="180">start 实例</text>';
+// data plane
+H+='<rect x="20" y="234" width="960" height="286" rx="14" fill="#FBFAF6" stroke="#B4B2A9" stroke-width="1.4" stroke-dasharray="6 5"/>';
+H+=tx(500,256,'数据面：一个函数实例的处理循环','tn','middle');
+H+='<g id="instBox">'+box(230,272,330,190,12,'#ffffff','#3B3A34')+tx(246,296,'函数实例','tn')+'</g>';
+H+='<g id="readChip">'+box(246,310,138,38,7,'#FFF6E8','#EF9F27')+tx(315,334,'readInput()','tn','middle')+'</g>';
+H+='<g id="procChip">'+box(246,360,138,38,7,'#FFF6E8','#EF9F27')+tx(315,384,'process()','tn','middle')+'</g>';
+H+='<g id="resChip">'+box(246,410,138,38,7,'#FFF6E8','#EF9F27')+tx(315,434,'handleResult()','tn','middle')+'</g>';
+H+='<path d="M384 329 L420 329 L420 379 L388 379" stroke="#C46A0A" stroke-width="1.3" fill="none" marker-end="url(#flw)"/>';
+H+='<path d="M384 379 L420 379 L420 429 L388 429" stroke="#C46A0A" stroke-width="1.3" fill="none" marker-end="url(#flw)"/>';
+H+='<text class="ts" x="426" y="356">返回 / Future</text>';
+H+='<circle id="pulse" cx="315" cy="379" r="34" fill="none" stroke="#EF9F27" stroke-width="2" opacity="0"/>';
+// input/output
+H+='<g id="inputBox">'+box(40,300,140,60,8,'#ffffff','#3B3A34')+tx(110,324,'输入 topic','tn','middle')+tx(110,344,'consumer 读','ts','middle')+'</g>';
+H+='<path d="M180 330 L226 330" stroke="#C46A0A" stroke-width="1.5" marker-end="url(#flw)" fill="none"/>';
+H+='<g id="outBox">'+box(620,300,150,60,8,'#ffffff','#3B3A34')+tx(695,324,'输出 topic','tn','middle')+tx(695,344,'producer.sendAsync','ts','middle')+'</g>';
+H+='<g id="stateBox">'+box(620,390,150,60,8,'#ffffff','#3B3A34')+tx(695,414,'StateStore','tn','middle')+tx(695,434,'BookKeeper Table','ts','middle')+'</g>';
+H+='<g id="logBox">'+box(800,300,150,60,8,'#ffffff','#3B3A34')+tx(875,324,'日志 / 指标','tn','middle')+tx(875,344,'log topic','ts','middle')+'</g>';
+H+='<g id="dltBox">'+box(800,390,150,60,8,'#ffffff','#3B3A34')+tx(875,414,'Dead Letter','tn','middle')+tx(875,434,'毒消息出口','ts','middle')+'</g>';
+H+='<path d="M560 330 L616 330" stroke="#C46A0A" stroke-width="1.5" marker-end="url(#flw)" fill="none"/>';
+H+='<path id="statePath" d="M560 420 L616 420" stroke="#C46A0A" stroke-width="1.3" stroke-dasharray="4 4" fill="none" marker-end="url(#flw)" opacity="0.45"/>';
+H+='<path id="dltPath" d="M560 440 L760 440 L760 420 L796 420" stroke="#E24B4A" stroke-width="1.6" stroke-dasharray="5 4" fill="none" marker-end="url(#flwR)" opacity="0.15"/>';
+H+='<rect id="dltGlow" x="794" y="384" width="162" height="72" rx="10" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.5" opacity="0"/>';
+H+='<text id="stageTag" class="ts" x="985" y="544" text-anchor="end" fill="#854F0B"></text>';
+// tokens
+H+='<circle id="ctl" cx="96" cy="130" r="8" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/>';
+H+='<circle id="msg" cx="180" cy="330" r="9" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5" opacity="0"/>';
+H+='<text id="ackMark" class="ts" x="410" y="470" fill="#4C7A1A" opacity="0">ack ✓</text>';
+document.getElementById('scene').innerHTML=H;
+var el={};
+document.querySelectorAll('#scene [id]').forEach(function(n){el[n.id]=n;});
+var CWP=[[0,96,130],[80,469,130],[160,275,130],[240,658,130],[300,847,130],[320,400,250]];
+var MWP=[[320,180,330],[400,315,379],[480,695,330],[560,480,440],[640,875,420],[720,180,330]];
+function pathAt(WP,th){var i=0;while(i<WP.length-2&&th>WP[i+1][0])i++;var a=WP[i],b=WP[i+1];var t=(th-a[0])/(b[0]-a[0]);return[a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];}
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,STEP_DUR=900;
+var dots=[];
+for(var s=0;s<STEPS.length;s++){
+(function(n){
+var b=document.createElement('button');
+b.className='stepnode';
+b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+b.onclick=function(){goStep(n);};
+stepBar.appendChild(b);dots.push(b);
+})(s);
+}
+var chipBox=document.getElementById('stateChips'),chipEls={};
+CHIPS.forEach(function(c){
+var s=document.createElement('span');s.className='chip';
+s.innerHTML=c.l+' <b>--</b>';chipBox.appendChild(s);chipEls[c.k]=s;
+});
+function setChip(k,v){
+var n=chipEls[k];if(!n)return;var b=n.querySelector('b');
+if(b&&b.textContent!==v)b.textContent=v;
+n.classList.toggle('on',/^(开|是|已|完成|生效|放行|进行|2\/2|owner|markDelete)/.test(v));
+n.classList.toggle('off',/^(关|否|待命|—|未)/.test(v));
+}
+var stepIdx=-1;
+function setAuto(on){
+mode='auto';run=on;stepTo=null;btn.textContent=on?'暂停':'播放';
+if(on){stepIdx=-1;dots.forEach(function(d){d.classList.remove('on');});
+stepT.textContent='自动运转模式';
+stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格。';}
+}
+window.goStep=function(i){
+stepIdx=(i+STEPS.length)%STEPS.length;
+mode='step';run=false;
+var target=STEPS[stepIdx].d/PHASE_MAX*PERIOD,delta=target-phase;
+if(reduced||Math.abs(delta)>PERIOD/4){
+phase=target;stepTo=null;render(target/PERIOD*PHASE_MAX+0.01);
+}else{
+stepFrom=phase;stepTo=phase+delta;stepElapsed=0;render(phase/PERIOD*PHASE_MAX+0.01);
+}
+btn.textContent='继续自动运转';
+dots.forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+stepX.textContent=STEPS[stepIdx].x;
+};
+btn.textContent=run?'暂停':'播放';
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+function setOp(id,v){var n=typeof id==='string'?el[id]:id;if(n)n.setAttribute('opacity',v.toFixed(2));}
+function setText(id,s){var n=el[id]||document.getElementById(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setAttr(id,k,v){var n=el[id];if(n)n.setAttribute(k,v);}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){return t*t*(3-2*t);}
+
+function render(th){
+var pr=Math.round(((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX);
+setText('roPhase',pr+'°');
+var si=0;for(var ri=0;ri<STEPS.length;ri++){if(pr>=STEPS[ri].d)si=ri;}
+if(mode==='step'&&stepIdx>=0)si=stepIdx;
+setText('roStep',STEPS[si]?STEPS[si].t:'—');
+if(th<320){setOp('ctl',1);setOp('msg',0);var pc=pathAt(CWP,th);setAttr('ctl','cx',pc[0].toFixed(1));setAttr('ctl','cy',pc[1].toFixed(1));}
+else{setOp('ctl',0);setOp('msg',1);var pm=pathAt(MWP,th);setAttr('msg','cx',pm[0].toFixed(1));setAttr('msg','cy',pm[1].toFixed(1));if(th>=640){setAttr('msg','fill','#E24B4A');setAttr('msg','stroke','#B91C1C');}else{setAttr('msg','fill','#EF9F27');setAttr('msg','stroke','#D97E06');}}
+setOp('pulse',th>=400&&th<500?0.65+0.25*Math.sin(th/10):0);
+setOp('ackMark',th>=560&&th<640?1:0);
+setOp('dltPath',th>=640?0.95:0.15);setOp('dltGlow',th>=640?1:0);
+var names=['提交函数','写元数据','leader 调度','拉起实例','读消息','process','写输出','ack','失败 → DLT'];
+var si=Math.min(8,Math.floor(th/80));
+setText('stageTag',th>=710?'':'当前：'+names[si]);
+setText('roKey', th<320?'控制面':'数据面');
+setChip('control', th<320?'进行中':'完成');
+setChip('data', th>=320?'进行中':'待命');
+setChip('ack', th>=560&&th<640?'已发送':th>=640?'失败→DLT':'待命');
+setChip('dlt', th>=640?'已进入':'—');
+}
+function tick(now){
+var dt=Math.min(50,now-last);last=now;
+if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+if(mode==='step'&&stepTo!==null){
+stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);
+var p=stepElapsed/STEP_DUR;
+var e=p*p*(3-2*p);
+phase=stepFrom+(stepTo-stepFrom)*e;
+if(p>=1){phase=((stepTo%PERIOD)+PERIOD)%PERIOD;stepTo=null;}
+}
+render(phase/PERIOD*PHASE_MAX+0.01);
+requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+document.querySelectorAll('.part').forEach(function(b){
+b.onclick=function(){
+var ids=PARTS[b.getAttribute('data-part')]||[];
+ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+};
+});
+var BASE=(location.pathname.split('/middleware-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/middleware/lab';
+document.getElementById('lnkArt').href=BASE+'/middleware/tutorial/04-functions-io';
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+var d=document.createElement('div');d.className='q';
+var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+h+='<div class="exp">'+it.exp+'</div>';
+d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+var b=e.target.closest('.opt');if(!b)return;
+var box2=b.parentElement;if(box2.classList.contains('done'))return;
+box2.classList.add('done');
+var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+box2.querySelectorAll('.opt').forEach(function(x){
+var xi=+x.getAttribute('data-oi');
+if(xi===QUIZ[qi].a)x.classList.add('right');
+else if(x===b)x.classList.add('wrong');
+});
+});
+})();
+</script>
+</body>
+</html>

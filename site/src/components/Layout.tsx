@@ -183,7 +183,7 @@ export function Layout() {
           data-collapsed={collapsed}
           inert={collapsed}
           className={cn(
-            'sticky top-[var(--header-h)] hidden h-[calc(100dvh-var(--header-h))] shrink-0 overflow-clip transition-[width,margin-right] duration-[var(--dur-slow)] ease-[var(--ease-out)] lg:block',
+            'sticky top-[var(--header-h)] hidden h-[calc(100dvh-var(--header-h)-1px)] shrink-0 overflow-clip transition-[width,margin-right] duration-[var(--dur-slow)] ease-[var(--ease-out)] lg:block',
             collapsed ? 'w-0' : 'mr-8 w-[var(--sidebar-w)]',
           )}
         >
@@ -271,7 +271,7 @@ export function Layout() {
             进度页在 xl 断点白白损失 232px 宽度 + 32px 间距——对照中心六列的表
             就是被这块空地挤到没法看的。 */}
         {right ? (
-          <aside className="sticky top-[var(--header-h)] ml-8 hidden h-[calc(100dvh-var(--header-h))] w-[var(--toc-w)] shrink-0 overflow-y-auto py-8 pl-1 xl:block">
+          <aside className="sticky top-[var(--header-h)] ml-8 hidden h-[calc(100dvh-var(--header-h)-1px)] w-[var(--toc-w)] shrink-0 overflow-y-auto py-8 pl-1 xl:block">
             {right}
           </aside>
         ) : null}

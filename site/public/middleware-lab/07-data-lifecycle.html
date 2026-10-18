@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>数据的一生 · Pulsar 互动原理实验室 第 7 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:920px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:680px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:500;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:12px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:500;fill:#1F1E1A}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:68px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+.modebar{display:flex;align-items:center;gap:8px;margin:6px 4px 0;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.modebar .mlabel{font-weight:600;color:#3B3A34}
+.modebtn{padding:5px 12px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:12.5px;cursor:pointer;font-family:inherit}
+.modebtn:hover{border-color:#888780}
+.modebtn.on{background:#FFF6E8;border-color:#EF9F27;color:#854F0B;font-weight:600}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .outbranch{display:inline-flex;flex-direction:column;align-items:flex-start;gap:6px}
+.flow .outline{display:inline-flex;align-items:center;gap:8px}
+.flow .flownote{font-size:12px;color:#6B695F;font-weight:600;margin-right:4px}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:9px 10px;text-align:center}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+#scene [opacity]{transition:opacity .28s ease}
+#tok,#tokT,#pulse{transition:none}
+@media (prefers-reduced-motion: reduce){#scene [opacity]{transition:none}}
+.frame2{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figure{margin:14px 0 16px;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:12px 14px}
+.figure .figtitle{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:6px}
+.figure svg{width:100%;height:auto;display:block}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：Broker 与账本</a>
+  <span class="idx">第 7 / 7 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · 写了、留着、压缩、删掉</div>
+<h1>数据的一生：消息什么时候才真的消失</h1>
+<p>前六章都在讲消息怎么进来，这一章讲它怎么走：写了之后能被删吗？ack 了是不是就删了？TTL 和保留策略谁说了算？压缩到底动了什么？这页课把一条 ledger 的生命周期摊开——从 entry 追加，到保留、过期、压缩、卸载，最后才是物理删除。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span>
+<span class="mnode">② 静态分解</span>
+<span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span>
+<span class="mnode">⑤ 环境场景</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 560" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>数据的一生 · 从 entry 到物理删除</title>
+<defs>
+<pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+<line x1="0" y1="0" x2="0" y2="8" stroke="#B4B2A9" stroke-width="0.7"/>
+</pattern>
+<marker id="flw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/>
+</marker>
+<marker id="flwG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/>
+</marker>
+<marker id="flwR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/>
+</marker>
+</defs>
+<text class="th" x="500" y="24" text-anchor="middle">数据的一生 · 从 entry 到物理删除</text>
+<text class="ts" x="500" y="44" text-anchor="middle">琥珀 = 活跃数据；绿 = 已消费待回收；蓝 = 已卸载到对象存储；灰 = 已删除</text>
+<text class="ts" x="985" y="24" text-anchor="end">琥珀 = 活跃 / 绿 = 待回收</text>
+<text class="ts" x="985" y="40" text-anchor="end">蓝 = 对象存储 / 灰 = 已删</text>
+<g id="scene"></g>
+</svg>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 轮 / 7 秒</span>
+</div>
+
+<div class="readout">
+<span class="ro">进度 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">关键量 <b id="roKey">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav">
+<button class="btn" onclick="prevStep()">‹ 上一步</button>
+<button class="btn warn" onclick="nextStep()">下一步 ›</button>
+</span>
+</div>
+<p class="figcap">进度 0° = 追加 entry，720° = 卸载/删除；ack、保留、裁剪是三种不同机制。<br>口径：保留/卸载阈值以配置为准；删除是逻辑删除，物理回收时机未展开。</p>
+</div>
+</div>
+
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：数据不会自己消失</h2></div>
+<p class="sec-sub">先只看现象：消费者都 ack 了，磁盘为什么没降？</p>
+<div class="quote">「对事物的观察包括了静态结构 + 动态生命周期 + 环境场景三个方面的内容。」</div>
+<p>Pulsar 的 ledger 是<b>只追加</b>的：能加、能整本地删，不能改单条、不能删单条。所以「删消息」这件事被拆成了三步：<b>记进度 → 判策略 → 后台删</b>。三步不同步，于是有了那些看起来像 bug 的现象：ack 完了磁盘不降、TTL 配了还在、卸载完了本地数据又多活了几天。</p>
+<div class="flow">
+<span class="node">ack 记进度</span><span class="arr">→</span>
+<span class="node">保留策略放行</span><span class="arr">→</span>
+<span class="node">后台裁剪真删</span>
+</div>
+<p>这一章就沿着这条链，把每一步的源码位置和触发条件摊开。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：五件事，五个负责人</h2></div>
+<p class="sec-sub">点部件卡片，动画中对应部分会亮成琥珀色。</p>
+<div class="quote">「它由什么构成？核心方法是分解、分类、结构化——分解需符合 MECE 法则，同层必须粒度一致。」</div>
+<div class="partgroup">
+<div class="gname">写入侧</div>
+<div class="parts">
+<button class="part" data-part="write"><b>追加 entry</b><span>消息写进当前 ledger；ledger 满 / 到时 / 到条数就滚动，换一本继续写。</span></button>
+<button class="part" data-part="bookie"><b>Bookie 落盘</b><span>journal 顺序写 + fsync 即可回 ack；entry log 与索引异步刷，后台 GC 回收。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">回收侧</div>
+<div class="parts">
+<button class="part" data-part="retain"><b>保留策略</b><span>retentionSizeInMB / retentionTimeInMinutes 写进 ManagedLedgerConfig（BrokerService:2619）。</span></button>
+<button class="part" data-part="cursor"><b>markDelete 位点</b><span>ack 与 TTL 最终都落到这个位点；位点不前进，什么都不会被删。</span></button>
+<button class="part" data-part="expire"><b>TTL 过期</b><span>PersistentTopic.checkMessageExpiry → PersistentMessageExpiryMonitor.expireMessages。</span></button>
+<button class="part" data-part="backlog"><b>积压与订阅过期</b><span>没消费者追就一直涨；订阅长期不活跃会被清理，进度也一起没了。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">变形与搬迁</div>
+<div class="parts">
+<button class="part" data-part="compact"><b>压缩</b><span>phaseOne 建 key → 最新 MessageId，phaseTwo 写 compacted ledger；horizon 决定读哪本。</span></button>
+<button class="part" data-part="offload"><b>卸载与删除</b><span>complete=true 之后本地副本才允许释放；冷读改走对象存储。</span></button>
+</div>
+</div>
+<p class="hint">记住一条：<b>只有最后一步会动磁盘，前面四步都只是在改「允许删到哪里」。</b></p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：九步走完一条数据的一生</h2></div>
+<p class="sec-sub">盯住琥珀色令牌，用下方 9 个步骤点逐帧定格。</p>
+<div class="quote">「它如何演变与运作？关注时间轴上的发展规律、行为模式和内部流程。核心方法是流程分析、行为追溯。」</div>
+<table class="grid">
+<tr><th>阶段</th><th>相位</th><th>关键动作</th><th>这一步在干什么</th></tr>
+<tr><td>① 追加</td><td>0°–80°</td><td>asyncAddEntry</td><td>entry 进当前 ledger</td></tr>
+<tr><td>② 落副本</td><td>80°–160°</td><td>journal fsync</td><td>Bookie 回 ack，entry log 异步刷</td></tr>
+<tr><td>③ 消费 ack</td><td>160°–240°</td><td>markDelete</td><td>记进度，不等于删除</td></tr>
+<tr><td>④ 保留策略</td><td>240°–320°</td><td>retention 阈值</td><td>决定「允许删到哪里」</td></tr>
+<tr><td>⑤ 后台裁剪</td><td>320°–400°</td><td>trimConsumedLedgersInBackground</td><td>真删（ManagedLedgerImpl:3167）</td></tr>
+<tr><td>⑥ TTL</td><td>400°–480°</td><td>expireMessages</td><td>整本先过期，再逐条找位点</td></tr>
+<tr><td>⑦ 积压</td><td>480°–560°</td><td>backlog / 订阅过期</td><td>没人消费就一直占着</td></tr>
+<tr><td>⑧ 压缩</td><td>560°–640°</td><td>两阶段压缩</td><td>只读视图变，数据没删</td></tr>
+<tr><td>⑨ 卸载删除</td><td>640°–720°</td><td>complete=true + deletionLag</td><td>本地副本释放，冷读改道</td></tr>
+</table>
+<p>三个容易搞混的点：① <b>ack 只是记账</b>，磁盘由 ④ ⑤ 决定；② <b>TTL 也是推进位点</b>，不是直接删数据；③ <b>压缩不删数据</b>，它只是让读路径优先读一本「每个 key 只留最新值」的新账。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：删、留、压，三种代价</h2></div>
+<p class="sec-sub">把「谁触发」和「动了什么」叠起来看。</p>
+<div class="quote">「动静融合的关键是建立映射：将组成部件与操作步骤一一对应，理解各部件如何协同产生外在行为。」</div>
+<table class="grid">
+<tr><th>动作</th><th>触发者</th><th>动了什么</th><th>磁盘立刻降吗</th><th>代价</th></tr>
+<tr><td>ack</td><td>消费者</td><td class="hot">markDeletePosition</td><td>不降</td><td>位点异步持久化，崩溃会重复</td></tr>
+<tr><td>保留策略</td><td>后台任务</td><td class="hot">允许删除的边界</td><td>不降</td><td>配太小会丢未消费数据</td></tr>
+<tr><td>TTL</td><td>过期监控</td><td class="hot">推进 markDelete</td><td>不降（走同一条裁剪）</td><td>可能「吞掉」还没消费的消息</td></tr>
+<tr><td>压缩</td><td>手动 / 自动</td><td class="act">新增 compacted ledger</td><td>不降，反而涨一点</td><td>要跑两遍全量读</td></tr>
+<tr><td>卸载</td><td>卸载策略</td><td class="act">写对象 + 标记 complete</td><td>不降，等 deletionLag</td><td>冷读延迟、流量费</td></tr>
+<tr><td>物理删除</td><td>裁剪任务</td><td class="hot">删 ledger</td><td class="hot">降</td><td>GC 压力、IO 抖动</td></tr>
+</table>
+<p>点题一句：<b>「磁盘没降」从来不是 bug，而是你还没走完最后一步。</b>排查顺序应该是：位点有没有前进 → 保留策略是不是比位点更保守 → 裁剪任务有没有在跑 → 卸载是不是卡在 deletionLag。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：这条链依赖什么</h2></div>
+<p class="sec-sub">主体之外，还有一圈支撑系统。</p>
+<div class="quote">「对事物的认识 = 空间属性 + 时间属性 + 环境属性（外在关系和依赖）。」</div>
+<div class="envcards">
+<div class="env"><b>Bookie 的磁盘与 GC</b><span>entry log 需要后台 GC 回收空间；磁盘写满会直接让写入失败，不是变慢而已。</span></div>
+<div class="env"><b>副本修复</b><span>BookKeeper 的 Auditor + ReplicationWorker 补副本；under-replicated 期间写 quorum 变小。</span></div>
+<div class="env"><b>对象存储</b><span>承载卸载后的冷数据；首字节延迟与流量费是主要成本，删本地前要确认 complete。</span></div>
+<div class="env"><b>元数据存储</b><span>ledger 列表、游标位点、压缩 horizon；它慢了，裁剪与压缩都会跟着慢。</span></div>
+<div class="env"><b>后台线程池</b><span>messageExpiryMonitor、compaction、offload 各占一组线程；排太满会让「该删的没删」。</span></div>
+<div class="env"><b>监控</b><span>storageSize vs backlogSize、under-replicated 数、offload 队列长度、compaction 耗时。</span></div>
+</div>
+<div class="frame2">
+<p style="margin:0"><b>一句说明：</b>BookKeeper 是独立仓库，本仓库里没有它的源码。所以「journal / entry log / Auditor」这一段只讲机制，不引用 file:line；Pulsar 侧（保留、TTL、压缩、卸载）的部分都给了具体位置。</p>
+</div>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">能说清「ack 之后磁盘为什么不降」，才算真的懂。</p>
+<div id="quiz"></div>
+</section>
+
+
+<div class="summary">
+<h2>一页带走</h2>
+<p class="chant">ack 只记账，保留定边界，后台才真删；压缩改读视图，卸载改读路径。</p>
+<p>· 三步分离：ack 记进度 → 保留策略定边界 → trimConsumedLedgersInBackground 真删。</p>
+<p>· TTL 也是推进 markDelete：先按 ledger 关闭时间整本过期，再按 publish_time 逐条。</p>
+<p>· 压缩不删数据：多一本 compacted ledger，读路径按 compactionHorizon 切分。</p>
+<p>· 卸载只是多一条读路径：complete=true 且过了 deletionLag，本地副本才释放。</p>
+<p>· 副本修复在 BookKeeper 侧：Auditor 标记、ReplicationWorker 补，与 Pulsar 无关。</p>
+<p>· 边界与简化：本页为原理示意；默认值/阈值/时序以 Pulsar 5.1.0-SNAPSHOT 的配置与源码为准；异常、重试与批处理细节未展开。</p>
+
+</div>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+
+<script>
+(function(){
+var PERIOD=7600,PHASE_MAX=720;
+var STEPS=[{d:0,t:'追加 entry',x:'消息写进当前 ledger；ledger 只追加，不修改，也不支持「删一条」。'},
+{d:80,t:'落副本',x:'writeQuorum 个 Bookie 各写一份；Bookie 侧 journal 顺序落盘即可回 ack，entry log 异步写。'},
+{d:160,t:'消费与 ack',x:'markDeletePosition 推进。注意：ack 只表示「可以删了」，不等于删除。'},
+{d:240,t:'保留策略',x:'retentionSizeInMB / retentionTimeInMinutes 写进 ManagedLedgerConfig；没到阈值，ack 过的数据也留着。'},
+{d:320,t:'后台裁剪',x:'trimConsumedLedgersInBackground 把 markDelete 之前、且满足保留策略的 ledger 真正删掉。'},
+{d:400,t:'TTL 过期',x:'checkMessageExpiry → expireMessages：先按 ledger 关闭时间整本过期，再按 publish_time 逐条找，最后仍是推进 markDelete。'},
+{d:480,t:'积压与订阅过期',x:'backlog 没消费者追就一直涨；订阅长期不活跃会被 subscriptionExpirationTimeMinutes 清掉。'},
+{d:560,t:'压缩',x:'phaseOne 建「key → 最新 MessageId」映射，phaseTwo 写 compacted ledger；读路径按 compactionHorizon 切分两本账。'},
+{d:640,t:'卸载与删除',x:'卸载完成（offloadContext.complete=true）后本地 ledger 才允许删除；之后冷读走对象存储。'}];
+var PARTS={write:['ledgerPanel','e0','e1','e2'],
+bookie:['bkBox','bk0','bk1','bk2','jrTag'],
+retain:['c1','retBar'],
+expire:['c2','ttlTag'],
+backlog:['c3','backBar'],
+compact:['c4','cmpBox','horizon'],
+offload:['objBox','offArrow'],
+cursor:['mdLine','mdBar']};
+var CHIPS=[{k:'append',l:'写入'},{k:'retention',l:'保留'},{k:'compact',l:'压缩'},{k:'offload',l:'卸载'}];
+var QUIZ=[{q:'消费者 ack 之后，消息就删掉了吗？',opts:['是，ack 即删除','不是：ack 只推进 markDeletePosition，还要满足保留策略，再由后台任务裁剪','只有累积 ack 才删'],a:1,exp:'三件事分开：ack 记进度，保留策略决定能不能删，trimConsumedLedgersInBackground 负责真删。所以「消费完了磁盘没降」是正常现象。'},
+{q:'TTL 是怎么「删除」消息的？',opts:['直接把 entry 从 ledger 里抹掉','推进 markDeletePosition：先整本过期（按 ledger 关闭时间），再按 publish_time 逐条过期','写一条墓碑消息'],a:1,exp:'ledger 只能追加，删不掉单条。PersistentMessageExpiryMonitor.expireMessages（:106）先跑 checkExpiryByLedgerClosureTime，再按时间找位点，最终都是推进 markDelete。'},
+{q:'压缩（compaction）之后，旧的消息还在吗？',opts:['被物理删掉了','原 ledger 还在；只是多了一本 compacted ledger，读路径按 compactionHorizon 决定读哪本','被移到对象存储'],a:1,exp:'压缩是「读视图」的变化，不是删除。horizon 之前读 compacted ledger（每个 key 只留最新），之后读原 ledger。真正的删除仍然由保留策略决定。'},
+{q:'什么条件下本地 ledger 才会被物理删除？',opts:['消息全部 ack 就够了','全部 ack + 超过保留策略 +（如已卸载）卸载完成且过了 deletionLag','只要配了 TTL 就删'],a:1,exp:'三道条件缺一不可。卸载只是多一个读路径，deletionLag 到期后本地副本才会释放。所以开了分层存储也不要指望磁盘立刻降。'},
+{q:'一块 Bookie 磁盘坏了，缺的副本谁来补？',opts:['Pulsar Broker 自己复制','BookKeeper 的 Auditor 标记 under-replicated，ReplicationWorker 负责补副本','等人工介入'],a:1,exp:'副本修复在 BookKeeper 侧完成，Pulsar 只负责 ledger 列表与 ensemble 信息。补副本期间写 quorum 会变小，延迟和失败率都会上升——这也是为什么要盯 under-replicated 指标。'}];
+function box(x,y,w,h,rx,fill,stroke,dash){return '<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="'+(rx||10)+'" fill="'+(fill||'#ffffff')+'" stroke="'+(stroke||'#3B3A34')+'" stroke-width="1.4"'+(dash?' stroke-dasharray="'+dash+'"':'')+'/>';}
+function tx(x,y,s,cls,anchor,fill){return '<text class="'+(cls||'ts')+'" x="'+x+'" y="'+y+'"'+(anchor?' text-anchor="'+anchor+'"':'')+(fill?' fill="'+fill+'"':'')+'>'+s+'</text>';}
+var H='';
+// 上：ledger 条（8 个 entry 格子）
+H+='<g id="ledgerPanel">'+box(24,74,946,72,12,'#FBFAF6','#B4B2A9','6 5')+tx(44,96,'当前 ledger（只追加，不修改）','tn')+'</g>';
+for(var i=0;i<8;i++){var ex=44+i*114;H+='<g id="e'+i+'" opacity="0.25">'+box(ex,104,104,30,6,'#FFF6E8','#EF9F27')+tx(ex+52,123,'entry '+(i+1),'ts','middle','#854F0B')+'</g>';}
+// markDelete 标尺
+H+='<rect x="44" y="158" width="906" height="8" rx="4" fill="#F5F4EF" stroke="#D3D1C7" stroke-width="1"/>';
+H+='<rect id="mdBar" x="44" y="158" width="0" height="8" rx="4" fill="#639922"/>';
+H+='<path id="mdLine" d="M44 150 L44 172" stroke="#4C7A1A" stroke-width="2.2" opacity="0.9"/>';
+H+=tx(44,188,'markDeletePosition','ts','start','#4C7A1A');
+H+='<text class="ts" x="960" y="188" text-anchor="end" fill="#6B695F">lastConfirmedEntry →</text>';
+// 中：五张阶段卡
+var cards=[['① 写入','entry 追加进 ledger','只追加，删不掉单条'],['② 保留','retentionSize / retentionTime','没到阈值不删'],['③ 过期','TTL → 推进 markDelete','整本先，再逐条'],['④ 压缩','key → 最新 MessageId','只读视图变化'],['⑤ 卸载删除','complete=true 才释放','冷读走对象存储']];
+var cx=[24,218,412,606,800];
+for(var c=0;c<5;c++){
+  var x=cx[c];
+  H+='<g id="c'+c+'">'+box(x,206,176,116,10,'#ffffff','#3B3A34')+tx(x+14,230,cards[c][0],'tn')+tx(x+14,252,cards[c][1],'ts')+tx(x+14,270,cards[c][2],'ts')+'</g>';
+}
+// 保留条 / 积压条 / TTL 标记
+H+='<rect x="232" y="288" width="152" height="8" rx="4" fill="#F5F4EF" stroke="#D3D1C7" stroke-width="1"/>';
+H+='<rect id="retBar" x="232" y="288" width="0" height="8" rx="4" fill="#EF9F27"/>';
+H+='<rect x="426" y="288" width="152" height="8" rx="4" fill="#F5F4EF" stroke="#D3D1C7" stroke-width="1"/>';
+H+='<rect id="backBar" x="426" y="288" width="0" height="8" rx="4" fill="#E24B4A"/>';
+// 过期 / 压缩的附属标记放在卡片下方，避免压到卡片边框
+H+='<g id="ttlTag" opacity="0"><rect x="426" y="330" width="152" height="18" rx="4" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1"/>'+tx(502,343,'TTL 到期 → 推进位点','ts','middle','#8A2A2A')+'</g>';
+H+='<g id="cmpBox" opacity="0.3"><rect x="620" y="330" width="152" height="28" rx="6" fill="#EFF6FF" stroke="#2563EB" stroke-width="1"/>'+tx(696,348,'compacted ledger','ts','middle','#1E3A8A')+'</g>';
+H+='<g id="horizon" opacity="0.3"><rect x="620" y="362" width="152" height="20" rx="4" fill="#EFF6FF" stroke="#2563EB" stroke-width="1"/>'+tx(696,376,'horizon 之前读它','ts','middle','#1E3A8A')+'</g>';
+// 卸载 → 对象存储
+H+='<path id="offArrow" d="M888 322 L888 366" stroke="#2563EB" stroke-width="1.6" stroke-dasharray="4 4" marker-end="url(#flw)" fill="none" opacity="0.2"/>';
+H+='<g id="objBox" opacity="0.35">'+box(800,370,176,44,8,'#EFF6FF','#2563EB')+tx(888,392,'对象存储 · 冷数据','ts','middle','#1E3A8A')+tx(888,408,'读完才删 Bookie 副本','ts','middle','#1E3A8A')+'</g>';
+// 下：Bookie 三副本 + journal 提示
+H+='<g id="bkBox">'+box(24,370,480,120,12,'#FBFAF6','#B4B2A9','6 5')+tx(44,392,'Bookie 侧：一次写入的两层落盘','tn')+'</g>';
+H+='<text id="jrTag" class="ts" x="44" y="412">journal（顺序写 + fsync）→ 回 ack</text>';
+H+=tx(44,430,'entry log + index（异步刷）→ 后台 GC','ts','start','#6B695F');
+for(var b=0;b<3;b++){var bx=44+b*112;H+='<g id="bk'+b+'">'+box(bx,444,100,34,6,'#ffffff','#3B3A34')+tx(bx+50,465,'Bookie '+(b+1),'ts','middle')+'</g>';}
+H+=tx(44,486,'副本缺失由 BookKeeper 的 Auditor + ReplicationWorker 补（不在本仓库）','ts','start','#854F0B');
+H+='<text id="stageTag" class="ts" x="985" y="544" text-anchor="end" fill="#854F0B"></text>';
+// token
+H+='<circle id="tok" cx="96" cy="119" r="9" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/>';
+document.getElementById('scene').innerHTML=H;
+var el={};
+document.querySelectorAll('#scene [id]').forEach(function(n){el[n.id]=n;});
+var WP=[[0,96,119],[80,208,119],[160,320,119],[240,432,119],[320,544,119],[400,656,119],[480,768,119],[560,880,119],[640,880,342],[720,96,119]];
+function tokPos(th){if(th>=700)return null;var i=0;while(i<WP.length-2&&th>WP[i+1][0])i++;var a=WP[i],b=WP[i+1];var t=(th-a[0])/(b[0]-a[0]);return[a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];}
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,STEP_DUR=900;
+var dots=[];
+for(var s=0;s<STEPS.length;s++){
+(function(n){
+var b=document.createElement('button');
+b.className='stepnode';
+b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+b.onclick=function(){goStep(n);};
+stepBar.appendChild(b);dots.push(b);
+})(s);
+}
+var chipBox=document.getElementById('stateChips'),chipEls={};
+CHIPS.forEach(function(c){
+var s=document.createElement('span');s.className='chip';
+s.innerHTML=c.l+' <b>--</b>';chipBox.appendChild(s);chipEls[c.k]=s;
+});
+function setChip(k,v){
+var n=chipEls[k];if(!n)return;var b=n.querySelector('b');
+if(b&&b.textContent!==v)b.textContent=v;
+n.classList.toggle('on',/^(开|是|已|完成|生效|放行|进行|2\/2|owner|markDelete)/.test(v));
+n.classList.toggle('off',/^(关|否|待命|—|未)/.test(v));
+}
+var stepIdx=-1;
+function setAuto(on){
+mode='auto';run=on;stepTo=null;btn.textContent=on?'暂停':'播放';
+if(on){stepIdx=-1;dots.forEach(function(d){d.classList.remove('on');});
+stepT.textContent='自动运转模式';
+stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格。';}
+}
+window.goStep=function(i){
+stepIdx=(i+STEPS.length)%STEPS.length;
+mode='step';run=false;
+var target=STEPS[stepIdx].d/PHASE_MAX*PERIOD,delta=target-phase;
+if(reduced||Math.abs(delta)>PERIOD/4){
+phase=target;stepTo=null;render(target/PERIOD*PHASE_MAX+0.01);
+}else{
+stepFrom=phase;stepTo=phase+delta;stepElapsed=0;render(phase/PERIOD*PHASE_MAX+0.01);
+}
+btn.textContent='继续自动运转';
+dots.forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+stepX.textContent=STEPS[stepIdx].x;
+};
+btn.textContent=run?'暂停':'播放';
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+function setOp(id,v){var n=typeof id==='string'?el[id]:id;if(n)n.setAttribute('opacity',v.toFixed(2));}
+function setText(id,s){var n=el[id]||document.getElementById(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setAttr(id,k,v){var n=el[id];if(n)n.setAttribute(k,v);}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){return t*t*(3-2*t);}
+
+function render(th){
+var pr=Math.round(((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX);
+setText('roPhase',pr+'°');
+var si=0;for(var ri=0;ri<STEPS.length;ri++){if(pr>=STEPS[ri].d)si=ri;}
+if(mode==='step'&&stepIdx>=0)si=stepIdx;
+setText('roStep',STEPS[si]?STEPS[si].t:'—');
+var p=tokPos(th);
+if(p){setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));setOp('tok',1);}else{setOp('tok',0);}
+// entry 格子：写入后点亮，过期/裁剪后转灰，卸载后转蓝
+for(var i=0;i<8;i++){
+  var on=th>=40+i*30&&th<400;
+  var dead=th>=320&&i<3;
+  var cold=th>=640&&i>=6;
+  var g=el['e'+i];
+  if(g){
+    g.setAttribute('opacity',dead?'0.25':(on?'1':'0.45'));
+    var r=g.querySelector('rect');
+    if(r){r.setAttribute('fill',cold?'#EFF6FF':(dead?'#F5F4EF':'#FFF6E8'));r.setAttribute('stroke',cold?'#2563EB':(dead?'#D3D1C7':'#EF9F27'));}
+  }
+}
+// markDelete 推进
+var mdw=th>=160?Math.min(906,(th-160)*1.6):0;
+if(el['mdBar'])el['mdBar'].setAttribute('width',mdw.toFixed(1));
+if(el['mdLine'])el['mdLine'].setAttribute('transform','translate('+mdw.toFixed(1)+',0)');
+// 五张卡依次点亮
+for(var c=0;c<5;c++){var n=el['c'+c];if(n){n.setAttribute('opacity',(th>=c*80+40)?1:0.45);}}
+if(el['retBar'])el['retBar'].setAttribute('width',(th>=240?Math.min(152,(th-240)*0.9):0).toFixed(1));
+if(el['backBar'])el['backBar'].setAttribute('width',(th>=480?Math.min(152,(th-480)*1.1):0).toFixed(1));
+setOp('ttlTag',th>=400?1:0);
+setOp('cmpBox',th>=560?1:0.3);
+setOp('horizon',th>=560?1:0.3);
+setOp('offArrow',th>=640?0.95:0.2);setOp('objBox',th>=640?1:0.35);
+var names=['追加 entry','落副本','消费与 ack','保留策略','后台裁剪','TTL 过期','积压与订阅过期','压缩','卸载与删除'];
+var si=0;for(var n=0;n<STEPS.length;n++){if(th>=STEPS[n].d)si=n;}
+setText('stageTag','当前：'+names[si]);
+setText('roKey', th<160?'追加 entry':th<400?'保留/裁剪':th<560?'TTL/积压':th<640?'压缩':'卸载/删除');
+setChip('append', th>=80?'已落副本':'追加中');
+setChip('retention', th>=240?'策略生效':'待命');
+setChip('compact', th>=560?'compacted':'—');
+setChip('offload', th>=640?'对象存储':'—');
+}
+function tick(now){
+var dt=Math.min(50,now-last);last=now;
+if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+if(mode==='step'&&stepTo!==null){
+stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);
+var p=stepElapsed/STEP_DUR;
+var e=p*p*(3-2*p);
+phase=stepFrom+(stepTo-stepFrom)*e;
+if(p>=1){phase=((stepTo%PERIOD)+PERIOD)%PERIOD;stepTo=null;}
+}
+render(phase/PERIOD*PHASE_MAX+0.01);
+requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+document.querySelectorAll('.part').forEach(function(b){
+b.onclick=function(){
+var ids=PARTS[b.getAttribute('data-part')]||[];
+ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+};
+});
+var BASE=(location.pathname.split('/middleware-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/middleware/lab';
+document.getElementById('lnkArt').href=BASE+'/middleware/tutorial/02-broker-ledger';
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+var d=document.createElement('div');d.className='q';
+var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+h+='<div class="exp">'+it.exp+'</div>';
+d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+var b=e.target.closest('.opt');if(!b)return;
+var box2=b.parentElement;if(box2.classList.contains('done'))return;
+box2.classList.add('done');
+var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+box2.querySelectorAll('.opt').forEach(function(x){
+var xi=+x.getAttribute('data-oi');
+if(xi===QUIZ[qi].a)x.classList.add('right');
+else if(x===b)x.classList.add('wrong');
+});
+});
+})();
+</script>
+</body>
+</html>

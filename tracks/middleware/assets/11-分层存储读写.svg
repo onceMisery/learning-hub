@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="620" viewBox="0 0 880 620" role="img" aria-label="分层存储与卸载"><title>分层存储与卸载</title><defs><marker id="arw-D97706" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#D97706"/></marker></defs><rect x="0" y="0" width="880" height="620" fill="#FFFFFF"/><text x="40" y="38" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="20" font-weight="700" fill="#0F172A" text-anchor="start">分层存储：账本还在，数据搬走了</text>
+<text x="40" y="60" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="12" font-weight="400" fill="#64748B" text-anchor="start">bookie 只保留最近的账本，旧的落到对象存储</text>
+<text x="30" y="96" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="12.5" font-weight="700" fill="#475569" text-anchor="start">BookKeeper 上的 ledger（从旧到新）</text>
+<rect x="30" y="110" width="120" height="60" rx="10" fill="#F1F5F9" stroke="#94A3B8" stroke-width="1.5"/>
+<text x="90.0" y="132" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11.5" font-weight="600" fill="#0F172A" text-anchor="middle">L0</text>
+<text x="90.0" y="148.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="9.8" font-weight="400" fill="#475569" text-anchor="middle">ledger</text>
+<rect x="162" y="110" width="120" height="60" rx="10" fill="#F1F5F9" stroke="#94A3B8" stroke-width="1.5"/>
+<text x="222.0" y="132" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11.5" font-weight="600" fill="#0F172A" text-anchor="middle">L1</text>
+<text x="222.0" y="148.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="9.8" font-weight="400" fill="#475569" text-anchor="middle">ledger</text>
+<rect x="294" y="110" width="120" height="60" rx="10" fill="#F1F5F9" stroke="#94A3B8" stroke-width="1.5"/>
+<text x="354.0" y="132" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11.5" font-weight="600" fill="#0F172A" text-anchor="middle">L2</text>
+<text x="354.0" y="148.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="9.8" font-weight="400" fill="#475569" text-anchor="middle">ledger</text>
+<rect x="426" y="110" width="120" height="60" rx="10" fill="#FEF3C7" stroke="#D97706" stroke-width="1.5"/>
+<text x="486.0" y="132" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11.5" font-weight="600" fill="#78350F" text-anchor="middle">L3</text>
+<text x="486.0" y="148.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="9.8" font-weight="400" fill="#92400E" text-anchor="middle">ledger</text>
+<rect x="558" y="110" width="120" height="60" rx="10" fill="#FEF3C7" stroke="#D97706" stroke-width="1.5"/>
+<text x="618.0" y="132" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11.5" font-weight="600" fill="#78350F" text-anchor="middle">L4</text>
+<text x="618.0" y="148.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="9.8" font-weight="400" fill="#92400E" text-anchor="middle">ledger</text>
+<rect x="690" y="110" width="120" height="60" rx="10" fill="#FEF3C7" stroke="#D97706" stroke-width="1.5"/>
+<text x="750.0" y="132" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11.5" font-weight="600" fill="#78350F" text-anchor="middle">L5</text>
+<text x="750.0" y="148.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="9.8" font-weight="400" fill="#92400E" text-anchor="middle">ledger</text>
+<line x1="426" y1="98" x2="426" y2="178" stroke="#DC2626" stroke-width="1.6" stroke-dasharray="5 4"/>
+<text x="432" y="102" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="10.4" font-weight="400" fill="#DC2626" text-anchor="start">卸载阈值（容量 / 时间）</text>
+<text x="30" y="192" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="10.4" font-weight="400" fill="#64748B" text-anchor="start">越靠左越冷；当前正在写的 ledger 永远不卸载</text>
+<path d="M250,180 L250,226" fill="none" stroke="#D97706" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arw-D97706)"/>
+<text x="260" y="210" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="10.6" font-weight="400" fill="#D97706" text-anchor="start">offloadLoop：从冷到热逐本卸载</text>
+<rect x="30" y="234" width="360" height="92" rx="10" fill="#EFF6FF" stroke="#2563EB" stroke-width="1.5"/>
+<text x="42" y="256" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="14" font-weight="600" fill="#1E3A8A" text-anchor="start">对象存储</text>
+<text x="42" y="272.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="10.6" font-weight="400" fill="#1D4ED8" text-anchor="start">S3 / GCS / Azure / 文件系统</text>
+<text x="42" y="289.0" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="10.6" font-weight="400" fill="#1D4ED8" text-anchor="start">按 ledger 存成一段不可变对象</text>
+<text x="30" y="348" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="10.4" font-weight="400" fill="#475569" text-anchor="start">写入方式：流式 offerEntry，不整个读进内存</text>
+<rect x="420" y="210" width="430" height="146" rx="10" fill="#F3E8FF" stroke="#7C3AED" stroke-width="1.5"/>
+<text x="432" y="232" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="14" font-weight="600" fill="#4C1D95" text-anchor="start">元数据里多了一个 offloadContext</text>
+<text x="436" y="250" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="10.6" font-weight="400" fill="#4C1D95" text-anchor="start">uidMsb / uidLsb：对象存储里的唯一标识</text>
+<text x="436" y="272" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="10.6" font-weight="400" fill="#4C1D95" text-anchor="start">complete：卸载完成才置 true</text>
+<text x="436" y="294" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="10.6" font-weight="400" fill="#4C1D95" text-anchor="start">bookkeeperDeleted：bookie 副本已删</text>
+<text x="436" y="316" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="10.6" font-weight="400" fill="#4C1D95" text-anchor="start">timestamp / driverMetadata / offloadSegment</text>
+<text x="420" y="378" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="10.6" font-weight="400" fill="#475569" text-anchor="start">LedgerInfo 仍是那条 LedgerInfo，只是多了一段「数据在哪」</text>
+<rect x="420" y="396" width="430" height="140" rx="10" fill="#DCFCE7" stroke="#059669" stroke-width="1.5"/>
+<text x="432" y="418" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="14" font-weight="600" fill="#064E3B" text-anchor="start">读路径：getLedgerHandle(ledgerId)</text>
+<text x="436" y="436" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="11" font-weight="600" fill="#065F46" text-anchor="start">offloadContext.complete ?</text>
+<text x="436" y="458" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="10.4" font-weight="400" fill="#475569" text-anchor="start">是 → offloader.readOffloaded(ledgerId, uid, metadata)</text>
+<text x="436" y="480" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="10.4" font-weight="400" fill="#475569" text-anchor="start">否 → bookKeeper.newOpenLedgerOp()</text>
+<text x="436" y="502" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="10.4" font-weight="400" fill="#475569" text-anchor="start">OffloadedReadPriority 可以强制先读 bookie</text>
+<text x="436" y="522" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="10.4" font-weight="400" fill="#64748B" text-anchor="start">读延迟从毫秒级变成几十毫秒，缓存与预取很关键</text>
+<rect x="30" y="548" width="820" height="56" rx="10" fill="#FEF3C7" stroke="#D97706" stroke-width="1.5"/>
+<text x="42" y="570" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="14" font-weight="600" fill="#78350F" text-anchor="start">删除是另一条时间线</text>
+<text x="42" y="586.5" font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB',ui-sans-serif,sans-serif" font-size="10.2" font-weight="400" fill="#92400E" text-anchor="start">卸载完成 ≠ 马上删 bookie 副本；deletionLag 到期才删，删完只剩对象存储这一份</text></svg>

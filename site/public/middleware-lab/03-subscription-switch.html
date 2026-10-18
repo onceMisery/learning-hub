@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>订阅开关 · Pulsar 互动原理实验室 第 3 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:920px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:680px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:500;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:12px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:500;fill:#1F1E1A}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:68px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+.modebar{display:flex;align-items:center;gap:8px;margin:6px 4px 0;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.modebar .mlabel{font-weight:600;color:#3B3A34}
+.modebtn{padding:5px 12px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:12.5px;cursor:pointer;font-family:inherit}
+.modebtn:hover{border-color:#888780}
+.modebtn.on{background:#FFF6E8;border-color:#EF9F27;color:#854F0B;font-weight:600}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .outbranch{display:inline-flex;flex-direction:column;align-items:flex-start;gap:6px}
+.flow .outline{display:inline-flex;align-items:center;gap:8px}
+.flow .flownote{font-size:12px;color:#6B695F;font-weight:600;margin-right:4px}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:9px 10px;text-align:center}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+#scene [opacity]{transition:opacity .28s ease}
+#tok,#tokT,#pulse{transition:none}
+@media (prefers-reduced-motion: reduce){#scene [opacity]{transition:none}}
+.frame2{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figure{margin:14px 0 16px;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:12px 14px}
+.figure .figtitle{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:6px}
+.figure svg{width:100%;height:auto;display:block}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：消息与订阅</a>
+  <span class="idx">第 3 / 7 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · 四种订阅的取舍</div>
+<h1>订阅开关：同一个 topic，四种分发人格</h1>
+<p>Exclusive、Failover、Shared、Key_Shared，四种订阅没有绝对的好坏，只有代价放在哪。这页课把 dispatcher 和三个消费者摆在一起，你可以随时切换订阅类型，看消息怎么走、许可怎么还、哪些消费者在待命。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span>
+<span class="mnode">② 静态分解</span>
+<span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span>
+<span class="mnode">⑤ 环境场景</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 560" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>同一个 topic，四种分发方式</title>
+<defs>
+<pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+<line x1="0" y1="0" x2="0" y2="8" stroke="#B4B2A9" stroke-width="0.7"/>
+</pattern>
+<marker id="flw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/>
+</marker>
+<marker id="flwG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/>
+</marker>
+<marker id="flwR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/>
+</marker>
+</defs>
+<text class="th" x="500" y="24" text-anchor="middle">同一个 topic，四种分发方式</text>
+<text class="ts" x="500" y="44" text-anchor="middle">点下方按钮切换订阅类型；琥珀色令牌 = 当前消息，绿色 = 正在收消息的消费者</text>
+<text class="ts" x="985" y="24" text-anchor="end">绿 = 活跃 / 有许可</text>
+<text class="ts" x="985" y="40" text-anchor="end">灰 = 待命 / 拒绝</text>
+<g id="scene"></g>
+</svg>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 轮 / 7 秒</span>
+</div>
+
+<div class="modebar">
+<span class="mlabel">订阅类型</span>
+<button class="modebtn on" data-mode="exclusive">Exclusive</button>
+<button class="modebtn" data-mode="failover">Failover</button>
+<button class="modebtn" data-mode="shared">Shared</button>
+<button class="modebtn" data-mode="key">Key_Shared</button>
+<span id="modeNote" style="margin-left:8px;color:#8A877C">一个消费者吃全部；第二个连上来会被拒绝</span>
+</div>
+
+<div class="readout">
+<span class="ro">进度 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">关键量 <b id="roKey">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav">
+<button class="btn" onclick="prevStep()">‹ 上一步</button>
+<button class="btn warn" onclick="nextStep()">下一步 ›</button>
+</span>
+</div>
+<p class="figcap">进度 0° = 消息进场，720° = ack 超时/DLT 分支结束；四种订阅模式是并列关系。<br>口径：模式语义以 5.1.0 为准；receiverQueue 与分发细节未展开；retry/DLQ 只画主路径。</p>
+</div>
+</div>
+
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：四种「谁收下一条」</h2></div>
+<p class="sec-sub">先不看 dispatcher 实现，只看消费者看到的行为。</p>
+<div class="quote">「对事物的观察包括了静态结构 + 动态生命周期 + 环境场景三个方面的内容。」</div>
+<p>同一个 topic、同一个订阅名，消费者数量一样，消息的走法却可以完全不同：有时全给一个，有时轮流给，有时按 key 绑定。<b>订阅类型就是「谁有资格收下一条」的规则</b>。</p>
+<div class="flow">
+<span class="flownote">四种模式（并列，同一订阅只能选一种）</span>
+<span class="node">Exclusive：一个吃全部</span>
+<span class="node">Failover：一个主收，其余待命</span>
+<span class="node">Shared：轮询</span>
+<span class="node">Key_Shared：按 key 绑定</span>
+</div>
+<p>这四种规则对应四种代价：顺序、扩展、故障切换，最多同时要两个。下面把 dispatcher 打开。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：一条消息要经过谁</h2></div>
+<p class="sec-sub">点部件卡片，动画中对应部分会亮成琥珀色。</p>
+<div class="quote">「它由什么构成？核心方法是分解、分类、结构化——分解需符合 MECE 法则，同层必须粒度一致。」</div>
+<div class="partgroup">
+<div class="gname">消息侧</div>
+<div class="parts">
+<button class="part" data-part="topic"><b>Topic / Partition</b><span>分区是并行上限；key 决定落哪个分区，也决定 Key_Shared 的绑定。</span></button>
+<button class="part" data-part="dispatcher"><b>Dispatcher</b><span>按订阅类型选消费者；维护 totalAvailablePermits，没许可就停读。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">消费者侧</div>
+<div class="parts">
+<button class="part" data-part="consumers"><b>C1 / C2 / C3</b><span>各自有 receiverQueue；不同模式下角色不同：收全部、active、待命、轮询。</span></button>
+<button class="part" data-part="permits"><b>队列与许可</b><span>receiverQueueSize=1000；消费掉一半发 CommandFlow 批量补许可。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">确认侧</div>
+<div class="parts">
+<button class="part" data-part="ack"><b>ack / 位点</b><span>处理完发 ack；累积 ack 推进 markDelete，单条 ack 维护位图。</span></button>
+<button class="part" data-part="redeliver"><b>重投 / retry / DLQ</b><span>超时或负向 ack 触发重投；超过 maxRedeliverCount 进死信 topic。</span></button>
+</div>
+</div>
+<p class="hint">切到动态模式，看四种规则怎么改变同一条消息的落点。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：一条消息的十步</h2></div>
+<p class="sec-sub">先点步骤点走完一条消息（含两次重投），再切换订阅类型看落点变化。</p>
+<div class="quote">「它如何演变与运作？关注时间轴上的发展规律、行为模式和内部流程。核心方法是流程分析、行为追溯。」</div>
+<table class="grid">
+<tr><th>阶段</th><th>相位</th><th>这一步在干什么</th></tr>
+<tr><td>① 消息进场</td><td>0°–80°</td><td>带 key 的消息进入 partition</td></tr>
+<tr><td>② 攒批</td><td>80°–160°</td><td>客户端可能攒批、压缩，再发</td></tr>
+<tr><td>③ 写 entry</td><td>160°–240°</td><td>Broker 把一批写成一个 entry</td></tr>
+<tr><td>④ 发放许可</td><td>240°–320°</td><td>按 receiverQueue 给 permits</td></tr>
+<tr><td>⑤ 选择订阅</td><td>320°–400°</td><td>dispatcher 按类型挑消费者</td></tr>
+<tr><td>⑥ 分发</td><td>400°–480°</td><td>独占 / 主备 / 轮询 / key 哈希</td></tr>
+<tr><td>⑦ 本地队列</td><td>480°–560°</td><td>receiverQueue 填充，等待应用取走</td></tr>
+<tr><td>⑧ ack + 还许可</td><td>560°–640°</td><td>处理完 ack，CommandFlow 补额度</td></tr>
+<tr><td>⑨ ack 超时</td><td>640°–680°</td><td>超时未 ack，客户端发 redeliverUnacknowledgedMessages</td></tr>
+<tr><td>⑩ 负向 ack / DLT</td><td>680°–720°</td><td>主动要求重投；次数超限进 retry / DLQ topic</td></tr>
+</table>
+<p><b>试试：</b>动画播放时依次点四个订阅按钮。Exclusive 只亮 C1；Failover 只亮 active，其余待命；Shared 三个轮流；Key_Shared 里 A/B 去 C1、C 去 C2，C3 待命。</p>
+<div class="frame2">
+<p style="margin:0 0 8px"><b>重投三兄弟：同一个「至少一次」，三种触发方式。</b></p>
+<p style="margin:0 0 6px">① <b>ack 丢失</b> —— Broker 在持久化 ack 前崩溃，重启后从旧位点读。这是「至少一次」的根源，窗口取决于进度账多久刷一次。</p>
+<p style="margin:0 0 6px">② <b>ack 超时</b> —— 客户端 <code>UnAckedMessageTracker</code>（<code>:117</code> 取 <code>ackTimeoutMillis</code>，<code>:177</code> 调 <code>redeliverUnacknowledgedMessages</code>）到点后主动要求重投。批量重投，不看单条进度。</p>
+<p style="margin:0">③ <b>负向 ack</b> —— 业务自己调 <code>negativeAcknowledge()</code>，<code>NegativeAcksTracker</code> 记下这批 id 再发重投请求。粒度最细，也最可控。</p>
+<p style="margin:8px 0 0">Broker 侧收到重投请求后，把位置记进 <code>MessageRedeliveryController</code>（<code>:77</code> add、<code>:194</code> 取待重投集合），下一次读就先读这些位置。重试次数记在消息的 <code>reconsumeTimes</code> 上，超过 <code>maxRedeliverCount</code>（客户端 <code>ConsumerImpl:747</code>）就发往 <code>&lt;topic&gt;-&lt;subscription&gt;-RETRY</code>，再超就进 <code>-DLQ</code>。</p>
+</div>
+<p>三种重投都会产生重复，只是窗口大小不同。要真正做到「处理一次」，只能在消费端按业务 key 做幂等，或者把「处理 + 写结果 + ack」放进一个事务。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：四种模式的代价矩阵</h2></div>
+<p class="sec-sub">顺序、扩展、故障切换，是一组不可能三角。</p>
+<div class="quote">「动静融合的关键是建立映射：将组成部件与操作步骤一一对应，理解各部件如何协同产生外在行为。」</div>
+<table class="grid">
+<tr><th>模式</th><th>顺序</th><th>扩展</th><th>故障切换</th><th>典型场景</th></tr>
+<tr><td>Exclusive</td><td class="hot">最强</td><td>最差</td><td>消费者挂了才能换</td><td>单分区严格有序、低频控制消息</td></tr>
+<tr><td>Failover</td><td class="hot">强</td><td>中等</td><td class="hot">按 priority + name 接班</td><td>主备、分区级有序</td></tr>
+<tr><td>Shared</td><td>不保证</td><td class="hot">最好</td><td class="hot">自动分摊</td><td>日志、通知、无顺序任务</td></tr>
+<tr><td>Key_Shared</td><td class="act">key 内有序</td><td class="hot">好</td><td>hash range 重分配</td><td>订单、账务、按用户维度有序</td></tr>
+</table>
+<p>点题一句：<b>「同一 key 有序 + 多消费者并行」不是免费得到的。</b>Key_Shared 用 hash range 把 key 绑到消费者，consumer 增减时 range 要重分配，重分配期间可能有一小段重投。这就是它比 Shared 贵的地方。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：订阅之外还得有什么</h2></div>
+<p class="sec-sub">订阅类型只是规则，规则能跑起来还要这些条件。</p>
+<div class="quote">「对事物的认识 = 空间属性 + 时间属性 + 环境属性（外在关系和依赖）。」</div>
+<div class="envcards">
+<div class="env"><b>分区键设计</b><span>同一订单要落同一分区，否则 Key_Shared 也保不了序。</span></div>
+<div class="env"><b>消费者命名</b><span>Failover 按 priority + name 排序；名字随机，主备可能和你想的不一样。</span></div>
+<div class="env"><b>ackTimeout</b><span>太短会频繁重投，太长会卡住 backlog；要和业务处理时间匹配。</span></div>
+<div class="env"><b>receiverQueueSize</b><span>太小吞吐上不去，太大内存和重投量都涨。</span></div>
+<div class="env"><b>死信 / 重试</b><span>毒消息要有出口，否则 Shared 也会被一条消息堵住。</span></div>
+<div class="env"><b>监控</b><span>每个消费者的 permits、队列长度、ack 延迟、重投次数。</span></div>
+</div>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">先选对模式，再谈参数。</p>
+<div id="quiz"></div>
+</section>
+
+
+<div class="summary">
+<h2>一页带走</h2>
+<p class="chant">要顺序先定 key，要扩展先加分区；四种订阅，最多同时要两个。</p>
+<p>· Exclusive：一个消费者，顺序最强，扩不动。</p>
+<p>· Failover：主备，按 priority + name 排序接班。</p>
+<p>· Shared：轮询，吞吐最好，顺序不保证。</p>
+<p>· Key_Shared：key 内有序，consumer 变化会重分配 hash range。</p>
+<p>· 重投三兄弟：ack 丢失（崩溃窗口）、ack 超时（客户端计时器）、负向 ack（业务主动）。</p>
+<p>· 毒消息必须有出口：retry topic 重试，超过 maxRedeliverCount 进 DLQ。</p>
+<p>· 边界与简化：本页为原理示意；默认值/阈值/时序以 Pulsar 5.1.0-SNAPSHOT 的配置与源码为准；异常、重试与批处理细节未展开。</p>
+
+</div>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+
+<script>
+(function(){
+var PERIOD=7600,PHASE_MAX=720;
+var STEPS=[{d:0,t:'消息进场',x:'一条带 key 的消息进入 topic / partition；partition 是并行的上限，也是 Key_Shared 的分配边界。'},
+{d:80,t:'攒批 / 压缩',x:'客户端可能先攒批，再压缩 payload；批越大吞吐越高，单条延迟越差。'},
+{d:160,t:'写 entry',x:'Broker 把这一批写成一个 entry；entry 是存储单位，message 是语义单位。'},
+{d:240,t:'发放许可',x:'消费者带 receiverQueueSize 订阅，Broker 按 permits 决定能推多少条；消费掉一半再还许可。'},
+{d:320,t:'选择订阅',x:'Exclusive / Failover / Shared / Key_Shared 决定 dispatcher 用哪种策略挑消费者。'},
+{d:400,t:'分发消息',x:'dispatcher 按模式选目标：独占全给 C1；主备给 active；共享轮询；Key_Shared 按 key 哈希。'},
+{d:480,t:'进入本地队列',x:'目标消费者的 receiverQueue 填充；队列满之前，Broker 可以继续按 permits 推。'},
+{d:560,t:'ack + 还许可',x:'消费者处理完发 ack；CommandFlow 把额度还回去，下一轮继续。'},
+{d:640,t:'ack 超时',x:'消费者迟迟不 ack，客户端 UnAckedMessageTracker 到点后发 redeliverUnacknowledgedMessages，消息整批重投。'},
+{d:680,t:'负向 ack 与 DLT',x:'业务处理不了可以 negativeAcknowledge() 主动要求重投；重投次数超过 maxRedeliverCount 就进 <topic>-<sub>-DLQ。'}];
+var PARTS={topic:['topicBox','k0','k1','k2'],
+dispatcher:['dispBox','modeLabel','dispBar'],
+consumers:['c0','c1','c2','role0','role1','role2'],
+permits:['q0','q1','q2','p0','p1','p2'],
+ack:['ackBox','flowPath'],
+redeliver:['replayPath','replayT','retryBox']};
+var CHIPS=[{k:'mode',l:'当前模式'},{k:'permits',l:'许可'},{k:'flow',l:'CommandFlow'},{k:'retry',l:'重投/DLQ'}];
+var QUIZ=[{q:'要求「同一订单有序，不同订单可以并行」，最合适的订阅类型是？',opts:['Exclusive，因为顺序最强','Key_Shared：按订单号做 key，同一 key 固定消费者，key 内有序','Shared，轮询最均匀'],a:1,exp:'Key_Shared 在 key 内保序，同时允许 consumer 横向扩展；前提是同一订单的消息要落到同一分区。'},
+{q:'Failover 订阅的 active 消费者是怎么选的？',opts:['随机选一个','先比 priority level，再比 consumer name，排在前的当 active','谁先连上谁当 active'],a:1,exp:'排序依据是 priority 和 consumer name，不是连接顺序。分区 topic 上，每个分区各有一个 active，可能落在不同消费者身上。'},
+{q:'Shared 订阅为什么不能保证全局顺序？',opts:['因为 Bookie 写入乱序','因为消息会轮询分给多个消费者，跨消费者的处理完成顺序不可控','因为 ack 会丢'],a:1,exp:'单条 entry 内、单个消费者内仍有顺序；但跨消费者、跨重投之后，全局顺序就不成立了。要顺序就别用 Shared。'},
+{q:'第二个消费者连上 Exclusive 订阅，会发生什么？',opts:['排队等第一个断开','被拒绝：Exclusive 只允许一个消费者','自动变成 Shared'],a:1,exp:'Exclusive 的「扩不动」是真的扩不动。要扩容只能加分区，让消费者订阅不同分区。'},
+{q:'receiverQueueSize=1000，消费者大约什么时候发 CommandFlow？',opts:['每消费一条就发一次','消费掉一半左右时批量补一次，减少网络往返','队列满了才发'],a:1,exp:'阈值是 receiverQueueSize/2。批量补许可减少往返，代价是 Broker 侧许可会有短暂低估。'},
+{q:'ack 超时和 negativeAcknowledge() 的区别是什么？',opts:['没区别，都是重投','超时由客户端计时器批量触发；负向 ack 是业务主动指定这批消息立即重投','超时由 Broker 触发，负向 ack 由客户端触发'],a:1,exp:'两者都在客户端侧发起 redeliverUnacknowledgedMessages，但触发方不同：超时是 UnAckedMessageTracker 到点触发，粒度是「所有超时消息」；负向 ack 由业务代码调用，粒度是「我处理不了的这几条」。'},
+{q:'消费端不配死信 topic，一条毒消息会怎样？',opts:['被自动丢弃','一直重投，占着订阅的位点，把 backlog 越堆越长','只会重投一次'],a:1,exp:'没有 DLT 就没有出口。消息会反复重投，进度卡在那一条上，backlog 一直涨。生产环境至少要配 retry + DLQ 和告警。'}];
+function box(x,y,w,h,rx,fill,stroke,dash){return '<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="'+(rx||10)+'" fill="'+(fill||'#ffffff')+'" stroke="'+(stroke||'#3B3A34')+'" stroke-width="1.4"'+(dash?' stroke-dasharray="'+dash+'"':'')+'/>';}
+function tx(x,y,s,cls,anchor,fill){return '<text class="'+(cls||'ts')+'" x="'+x+'" y="'+y+'"'+(anchor?' text-anchor="'+anchor+'"':'')+(fill?' fill="'+fill+'"':'')+'>'+s+'</text>';}
+var H='';
+// topic
+H+='<g id="topicBox">'+box(24,120,160,118,10,'#ffffff','#3B3A34')+tx(104,144,'Topic / partition 0','tn','middle')+tx(104,164,'key 决定落哪个分区','ts','middle')+'</g>';
+var keys=['A','B','C'];for(var k=0;k<3;k++){H+='<g id="k'+k+'"><rect x="44" y="180+k*18" width="120" height="14" rx="4" fill="#F5F4EF" stroke="#D3D1C7" stroke-width="1"/>'+tx(104,191+k*18,'key '+keys[k],'ts','middle')+'</g>';}
+// dispatcher
+H+='<g id="dispBox">'+box(220,90,190,360,12,'#FBFAF6','#B4B2A9','6 5')+tx(315,116,'Dispatcher','tn','middle')+'</g>';
+H+='<text id="modeLabel" class="tn" x="315" y="140" text-anchor="middle" fill="#854F0B">Exclusive</text>';
+H+='<text class="ts" x="315" y="162" text-anchor="middle">按订阅类型选消费者</text>';
+H+='<text class="ts" x="315" y="292" text-anchor="middle">totalAvailablePermits</text>';
+H+='<rect x="240" y="302" width="150" height="10" rx="5" fill="#F5F4EF" stroke="#D3D1C7" stroke-width="1"/>';
+H+='<rect id="dispBar" x="240" y="302" width="150" height="10" rx="5" fill="#EF9F27"/>';
+H+='<text class="ts" x="315" y="336" text-anchor="middle">没有许可就停止读取</text>';
+// consumers
+var cys=[90,220,350];
+for(var c=0;c<3;c++){
+  var cy=cys[c];
+  H+='<g id="c'+c+'">'+box(470,cy,190,96,10,'#ffffff','#3B3A34')+tx(486,cy+24,'C'+(c+1),'tn')+'</g>';
+  H+='<text id="role'+c+'" class="ts" x="486" y="'+(cy+44)+'">—</text>';
+  H+='<text class="ts" x="486" y="'+(cy+64)+'">receiverQueue</text>';
+  H+='<rect x="486" y="'+(cy+72)+'" width="150" height="10" rx="5" fill="#F5F4EF" stroke="#D3D1C7" stroke-width="1"/>';
+  H+='<rect id="q'+c+'" x="486" y="'+(cy+72)+'" width="0" height="10" rx="5" fill="#EF9F27"/>';
+  H+='<rect x="486" y="'+(cy+86)+'" width="150" height="6" rx="3" fill="#F5F4EF" stroke="#D3D1C7" stroke-width="1"/>';
+  H+='<rect id="p'+c+'" x="486" y="'+(cy+86)+'" width="150" height="6" rx="3" fill="#639922"/>';
+  H+='<path id="ar'+c+'" d="M410 '+(cy+48)+' L466 '+(cy+48)+'" stroke="#D3D1C7" stroke-width="1.6" marker-end="url(#flw)" fill="none"/>';
+}
+// ack / flow panel
+H+='<g id="ackBox">'+box(700,90,270,360,12,'#FBFAF6','#B4B2A9','6 5')+tx(835,116,'客户端侧','tn','middle')+'</g>';
+H+='<text class="ts" x="716" y="146">receiverQueueSize = 1000</text>';
+H+='<text class="ts" x="716" y="170">消费掉一半 → 发 CommandFlow</text>';
+H+='<text class="ts" x="716" y="194">ack → 推进 markDeletePosition</text>';
+H+='<text class="ts" x="716" y="238">四种模式的核心差异：</text>';
+H+='<text class="ts" x="716" y="262">谁有资格收下一条</text>';
+H+='<text class="ts" x="716" y="286">顺序 / 扩展 / 故障切换</text>';
+H+='<text class="ts" x="716" y="310">只能同时要两个</text>';
+H+='<path id="flowPath" d="M700 420 L650 420 L650 270 L414 270" stroke="#639922" stroke-width="1.8" stroke-dasharray="5 4" fill="none" opacity="0" marker-end="url(#flwG)"/>';
+H+='<text id="flowT" class="ts" x="654" y="440" fill="#4C7A1A" opacity="0">CommandFlow：还许可</text>';
+// 重投：红色回环 + retry / DLQ 面板（第 ⑨⑩ 步）
+H+='<path id="replayPath" d="M470 138 L410 138 L410 300 L414 300" stroke="#E24B4A" stroke-width="1.8" stroke-dasharray="5 4" fill="none" opacity="0" marker-end="url(#flwR)"/>';
+H+='<text id="replayT" class="ts" x="404" y="220" fill="#8A2A2A" opacity="0" text-anchor="end">redeliver →</text>';
+H+='<g id="retryBox" opacity="0">'+box(470,458,330,78,10,'#FCEBEB','#E24B4A')+tx(486,482,'retry / DLQ topic','tn')+tx(486,502,'<topic>-<subscription>-RETRY','ts')+tx(486,520,'超过 maxRedeliverCount → 进 -DLQ','ts')+'</g>';
+H+='<text id="stageTag" class="ts" x="985" y="544" text-anchor="end" fill="#854F0B"></text>';
+// token
+H+='<circle id="tok" cx="104" cy="210" r="10" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/>';
+H+='<text id="tokT" class="ts" x="104" y="192" text-anchor="middle" fill="#854F0B">A</text>';
+document.getElementById('scene').innerHTML=H;
+var el={};
+document.querySelectorAll('#scene [id]').forEach(function(n){el[n.id]=n;});
+var MODE='exclusive';
+var MODE_NAME={exclusive:'Exclusive',failover:'Failover',shared:'Shared',key:'Key_Shared'};
+var MODE_NOTE={exclusive:'一个消费者吃全部；第二个连上来会被拒绝',failover:'主消费者收，其余待命；按 priority + name 排序',shared:'轮询分发，吞吐最好，顺序不保证',key:'同一 key 固定消费者，key 内有序'};
+var round=0,lastPhase=0;
+function targetFor(k){
+  if(MODE==='exclusive'||MODE==='failover')return 0;
+  if(MODE==='shared')return k%3;
+  return k===2?1:0;
+}
+function setMode(m){
+  MODE=m;
+  document.querySelectorAll('.modebtn').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-mode')===m);});
+  var note=document.getElementById('modeNote');if(note)note.textContent=MODE_NOTE[m];
+  setText('modeLabel',MODE_NAME[m]);
+}
+document.querySelectorAll('.modebtn').forEach(function(b){b.onclick=function(){setMode(b.getAttribute('data-mode'));};});
+setMode('exclusive');
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,STEP_DUR=900;
+var dots=[];
+for(var s=0;s<STEPS.length;s++){
+(function(n){
+var b=document.createElement('button');
+b.className='stepnode';
+b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+b.onclick=function(){goStep(n);};
+stepBar.appendChild(b);dots.push(b);
+})(s);
+}
+var chipBox=document.getElementById('stateChips'),chipEls={};
+CHIPS.forEach(function(c){
+var s=document.createElement('span');s.className='chip';
+s.innerHTML=c.l+' <b>--</b>';chipBox.appendChild(s);chipEls[c.k]=s;
+});
+function setChip(k,v){
+var n=chipEls[k];if(!n)return;var b=n.querySelector('b');
+if(b&&b.textContent!==v)b.textContent=v;
+n.classList.toggle('on',/^(开|是|已|完成|生效|放行|进行|2\/2|owner|markDelete)/.test(v));
+n.classList.toggle('off',/^(关|否|待命|—|未)/.test(v));
+}
+var stepIdx=-1;
+function setAuto(on){
+mode='auto';run=on;stepTo=null;btn.textContent=on?'暂停':'播放';
+if(on){stepIdx=-1;dots.forEach(function(d){d.classList.remove('on');});
+stepT.textContent='自动运转模式';
+stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格。';}
+}
+window.goStep=function(i){
+stepIdx=(i+STEPS.length)%STEPS.length;
+mode='step';run=false;
+var target=STEPS[stepIdx].d/PHASE_MAX*PERIOD,delta=target-phase;
+if(reduced||Math.abs(delta)>PERIOD/4){
+phase=target;stepTo=null;render(target/PERIOD*PHASE_MAX+0.01);
+}else{
+stepFrom=phase;stepTo=phase+delta;stepElapsed=0;render(phase/PERIOD*PHASE_MAX+0.01);
+}
+btn.textContent='继续自动运转';
+dots.forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+stepX.textContent=STEPS[stepIdx].x;
+};
+btn.textContent=run?'暂停':'播放';
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+function setOp(id,v){var n=typeof id==='string'?el[id]:id;if(n)n.setAttribute('opacity',v.toFixed(2));}
+function setText(id,s){var n=el[id]||document.getElementById(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setAttr(id,k,v){var n=el[id];if(n)n.setAttribute(k,v);}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){return t*t*(3-2*t);}
+
+function render(th){
+var pr=Math.round(((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX);
+setText('roPhase',pr+'°');
+var si=0;for(var ri=0;ri<STEPS.length;ri++){if(pr>=STEPS[ri].d)si=ri;}
+if(mode==='step'&&stepIdx>=0)si=stepIdx;
+setText('roStep',STEPS[si]?STEPS[si].t:'—');
+if(phase<lastPhase)round++;lastPhase=phase;
+var k=(mode==='step'&&stepIdx>=0)?stepIdx%3:round%3;
+var t=targetFor(k);
+var cy=[138,268,398][t];
+var p;
+if(th<80){var u=th/80;p=[104+211*u,210+(270-210)*u];}
+else if(th<160){p=[315,270];}
+else if(th<240){var u=(th-160)/80;p=[315+305*u,270+(cy-270)*u];}
+else if(th<480){p=[620,cy];}
+else if(th<560){var u=(th-480)/80;p=[620-305*u,cy-(cy-270)*u];}
+else{var u=Math.min(1,(th-560)/160);p=[315-211*u,270-(270-210)*u];}
+if(p){setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));setAttr('tokT','x',p[0].toFixed(1));setAttr('tokT','y',(p[1]-16).toFixed(1));setOp('tok',1);setOp('tokT',1);}
+setText('tokT',['A','B','C'][k]);
+var roles=[['收全部','会被拒绝','会被拒绝'],['active','待命','待命'],['轮询','轮询','轮询'],['key A / B','key C','待命']];
+var ri={exclusive:0,failover:1,shared:2,key:3}[MODE];
+for(var i=0;i<3;i++){setText('role'+i,roles[ri][i]);}
+for(var i=0;i<3;i++){
+  var on=(i===t);
+  var ar=el['ar'+i];if(ar){ar.setAttribute('stroke',on?'#639922':'#D3D1C7');}
+  var q=el['q'+i];if(q){q.setAttribute('width',(on&&th>=320&&th<480?Math.min(150,(th-320)*1.1):0).toFixed(1));}
+  var pb=el['p'+i];if(pb){pb.setAttribute('width',(on&&th>=240&&th<480?100:150).toFixed(1));}
+}
+setOp('flowPath',th>=480&&th<560?1:0);setOp('flowT',th>=480&&th<560?1:0);
+// ⑨⑩ 重投：消息从消费者回到 dispatcher，再挑一个消费者重发；超过上限进 retry / DLQ
+var replay=th>=640;
+setOp('replayPath',replay&&th<680?1:0);setOp('replayT',replay&&th<680?1:0);
+setOp('retryBox',th>=680?1:0);
+var names=['消息进场','攒批 / 压缩','写 entry','发放许可','选择订阅','分发消息','进入本地队列','ack + 还许可','ack 超时','负向 ack / DLT'];
+var si=0;for(var n=0;n<STEPS.length;n++){if(th>=STEPS[n].d)si=n;}
+setText('stageTag','当前：'+names[si]);
+setText('roKey','模式：'+MODE_NAME[MODE]);
+setChip('mode',MODE_NAME[MODE]);
+setChip('permits', th>=240?'已发放':'待命');
+setChip('flow', th>=480&&th<560?'归还中':'待命');
+setChip('retry', th>=680?'retry/DLQ':'待命');
+}
+function tick(now){
+var dt=Math.min(50,now-last);last=now;
+if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+if(mode==='step'&&stepTo!==null){
+stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);
+var p=stepElapsed/STEP_DUR;
+var e=p*p*(3-2*p);
+phase=stepFrom+(stepTo-stepFrom)*e;
+if(p>=1){phase=((stepTo%PERIOD)+PERIOD)%PERIOD;stepTo=null;}
+}
+render(phase/PERIOD*PHASE_MAX+0.01);
+requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+document.querySelectorAll('.part').forEach(function(b){
+b.onclick=function(){
+var ids=PARTS[b.getAttribute('data-part')]||[];
+ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+};
+});
+var BASE=(location.pathname.split('/middleware-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/middleware/lab';
+document.getElementById('lnkArt').href=BASE+'/middleware/tutorial/03-messaging-subscriptions';
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+var d=document.createElement('div');d.className='q';
+var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+h+='<div class="exp">'+it.exp+'</div>';
+d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+var b=e.target.closest('.opt');if(!b)return;
+var box2=b.parentElement;if(box2.classList.contains('done'))return;
+box2.classList.add('done');
+var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+box2.querySelectorAll('.opt').forEach(function(x){
+var xi=+x.getAttribute('data-oi');
+if(xi===QUIZ[qi].a)x.classList.add('right');
+else if(x===b)x.classList.add('wrong');
+});
+});
+})();
+</script>
+</body>
+</html>

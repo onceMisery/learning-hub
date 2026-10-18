@@ -31,7 +31,10 @@ export type IconName =
   | 'underline'
   | 'note'
   | 'trash'
-  | 'list';
+  | 'list'
+  | 'expand'
+  | 'collapse'
+  | 'monitor';
 
 const PATHS: Record<IconName, string> = {
   sun: 'M12 4V2m0 20v-2m8-8h2M2 12h2m13.657-5.657 1.414-1.414M4.929 19.071l1.414-1.414m11.314 0 1.414 1.414M4.929 4.929 6.343 6.343M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z',
@@ -65,6 +68,13 @@ const PATHS: Record<IconName, string> = {
   note: 'M12 20h8M4 16.5V20h3.5L18.2 9.3a1.5 1.5 0 0 0 0-2.1l-1.4-1.4a1.5 1.5 0 0 0-2.1 0L4 16.5Z',
   trash: 'M4 7h16M9 7V5h6v2M6.5 7l.9 12.1a1 1 0 0 0 1 .9h7.2a1 1 0 0 0 1-.9L17.5 7M10.5 11v6M13.5 11v6',
   list: 'M8 6h12M8 12h12M8 18h12M4.2 6h.01M4.2 12h.01M4.2 18h.01',
+  // 全屏：四个角向外张（进入全屏）
+  expand:
+    'M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9M15 4h3.5A1.5 1.5 0 0 1 20 5.5V9M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15M9 20H5.5A1.5 1.5 0 0 1 4 18.5V15',
+  // 退出全屏：四个角向内收
+  collapse: 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5',
+  // 显示器：浏览器级全屏（连浏览器边框一起隐去）
+  monitor: 'M3 5.5A1.5 1.5 0 0 1 4.5 4h15A1.5 1.5 0 0 1 21 5.5v11a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 16.5v-11ZM9 21h6',
 };
 
 interface IconProps {

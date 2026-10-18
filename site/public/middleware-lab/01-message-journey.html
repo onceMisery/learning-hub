@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>一条消息的旅程 · Pulsar 互动原理实验室 第 1 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:920px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:680px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:500;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:12px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:500;fill:#1F1E1A}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:68px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+.modebar{display:flex;align-items:center;gap:8px;margin:6px 4px 0;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.modebar .mlabel{font-weight:600;color:#3B3A34}
+.modebtn{padding:5px 12px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:12.5px;cursor:pointer;font-family:inherit}
+.modebtn:hover{border-color:#888780}
+.modebtn.on{background:#FFF6E8;border-color:#EF9F27;color:#854F0B;font-weight:600}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .outbranch{display:inline-flex;flex-direction:column;align-items:flex-start;gap:6px}
+.flow .outline{display:inline-flex;align-items:center;gap:8px}
+.flow .flownote{font-size:12px;color:#6B695F;font-weight:600;margin-right:4px}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:9px 10px;text-align:center}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+#scene [opacity]{transition:opacity .28s ease}
+#tok,#tokT,#pulse{transition:none}
+@media (prefers-reduced-motion: reduce){#scene [opacity]{transition:none}}
+.frame2{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figure .figcap{font-size:12.5px;color:#6B695F;line-height:1.65;margin:8px 2px 0}
+.figure .figcap b{color:#3B3A34;font-weight:600}
+.figure .figsrc{font-size:11.5px;color:#8A877C;margin-top:4px}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+.tag{font-size:10.5px;fill:#6B695F}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:8px 4px 0;font-size:12px;color:#6B695F}
+.legend i{display:inline-block;width:18px;height:0;border-top:2px solid #C46A0A;vertical-align:middle;margin-right:5px}
+.legend i.g{border-color:#639922}
+.legend i.dash{border-top-style:dashed}
+.legend i.gray{border-color:#B4B2A9}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：整体架构</a>
+  <span class="idx">第 1 / 7 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · 一条消息的一生</div>
+<h1>一条消息的旅程：从 sendAsync 到 cursor ack</h1>
+<p>Pulsar 的官方架构图按部署分成四层，但告诉不了你「消息在哪一段停住」。这页按请求路径把系统重切成四段职责，让一枚琥珀色令牌替你走一遍：lookup 找归属、Broker 收消息、ManagedLedger 记账、Bookie 凑 quorum、Dispatcher 分发、Cursor 推进。每一站都能定格看。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span>
+<span class="mnode">② 静态分解</span>
+<span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span>
+<span class="mnode">⑤ 环境场景</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 560" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>一条消息的旅程 · 生产主链</title>
+<defs>
+<pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+<line x1="0" y1="0" x2="0" y2="8" stroke="#B4B2A9" stroke-width="0.7"/>
+</pattern>
+<marker id="flw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/>
+</marker>
+<marker id="flwG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/>
+</marker>
+<marker id="flwR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/>
+</marker>
+</defs>
+<text class="th" x="500" y="24" text-anchor="middle">一条消息的旅程 · 生产主链</text>
+<text class="ts" x="500" y="44" text-anchor="middle">琥珀 = 消息 / 请求；绿实线 = 许可 / 分发；绿虚线 = ack 回执；灰 = 未参与（默认 E=2 不写第三个 Bookie）</text>
+<g id="scene"></g>
+</svg>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 轮 / 7 秒</span>
+</div>
+<div class="legend" aria-label="图例">
+<span><i></i>琥珀 = 消息 / 写入</span>
+<span><i class="g"></i>绿实线 = 许可 / 分发</span>
+<span><i class="g dash"></i>绿虚线 = ack / markDelete</span>
+<span><i class="gray"></i>灰 = 未参与 / 默认不写</span>
+</div>
+<div class="readout">
+<span class="ro">进度 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">关键量 <b id="roKey">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav">
+<button class="btn" onclick="prevStep()">‹ 上一步</button>
+<button class="btn warn" onclick="nextStep()">下一步 ›</button>
+</span>
+</div>
+<p class="figcap">进度 0° = sendAsync 发出，720° = ack 推进游标；分步定格的是关键时刻，不代表真实耗时。<br>口径：Pulsar 5.1.0-SNAPSHOT，默认 E=2/W=2/A=2；Redirect、Batch/压缩细节见前文注脚。</p>
+</div>
+</div>
+
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：先把它当黑盒</h2></div>
+<p class="sec-sub">不急着拆类，只看它对外表现出什么。</p>
+<div class="quote">「对事物的观察包括了静态结构 + 动态生命周期 + 环境场景三个方面的内容。」</div>
+<p>从客户端看，Pulsar 只做一件事：<b>sendAsync 进去，sendReceipt 出来</b>。中间它换了多少个线程、写了几本账、复制了几份，调用方一概不知道。这个黑盒对外承诺两件事：消息不会凭空消失；消费端至少能看到一次。</p>
+<div class="flow">
+<span class="node">sendAsync（异步）</span><span class="arr">→</span>
+<span class="node box">Pulsar（黑盒）</span>
+<span class="outbranch">
+<span class="outline"><span class="arr">→</span><span class="node">sendReceipt / 异常（生产端）</span></span>
+<span class="outline"><span class="arr">↳</span><span class="node">消费端 receive()（消费端）</span></span>
+</span>
+</div>
+<p>黑盒视角的结论：这是一台<b>带持久化承诺的异步转发装置</b>。接下来打开它，看承诺是靠哪些部件兑现的。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：四段职责里各有什么</h2></div>
+<p class="sec-sub">先看总览图的三条路径，再点部件卡片——动画中对应部分会亮成琥珀色。</p>
+<div class="quote">「它由什么构成？核心方法是分解、分类、结构化——分解需符合 MECE 法则，同层必须粒度一致。」</div>
+<div class="figure">
+<svg viewBox="0 0 920 440" role="img" aria-labelledby="ovwTitle ovwDesc">
+<title id="ovwTitle">四段职责 × 三条路径总览</title>
+<desc id="ovwDesc">查找、生产、消费三条路径如何穿过接入、路由、存储、消费四段职责；查找有 Connect 与 Redirect 两个分支。</desc>
+<defs>
+<marker id="ovwA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="ovwG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<text class="th" x="460" y="24" text-anchor="middle">四段职责 × 三条路径</text>
+<text class="ts" x="460" y="44" text-anchor="middle">接入 · 路由 · 存储 · 消费 是按请求路径重切的四段职责；同一组件可以跨段</text>
+<g class="ts">
+<text x="20" y="68" fill="#854F0B">琥珀实线 = 生产</text>
+<text x="150" y="68" fill="#854F0B">琥珀虚线 = 查找 / Redirect</text>
+<text x="350" y="68" fill="#4C7A1A">绿实线 = 许可 / 分发</text>
+<text x="530" y="68" fill="#4C7A1A">绿虚线 = ack / markDelete</text>
+<text x="740" y="68" fill="#8A877C">灰 = 未参与</text>
+</g>
+
+<rect x="8" y="86" width="904" height="104" rx="10" fill="#FBFAF6" stroke="#ECEAE2"/>
+<text class="tn" x="22" y="108">① 查找</text>
+<text class="ts" x="22" y="126">先问归属</text>
+<rect x="100" y="92" width="120" height="58" rx="8" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.3"/>
+<text class="tn" x="160" y="112" text-anchor="middle">客户端</text>
+<text class="tag" x="160" y="130" text-anchor="middle" fill="#C46A0A">接入</text>
+<path d="M220 121 L270 121" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#ovwA)"/>
+<rect x="270" y="92" width="170" height="58" rx="8" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.3"/>
+<text class="tn" x="355" y="112" text-anchor="middle">Broker A</text>
+<text class="ts" x="355" y="130" text-anchor="middle">ServerCnx / Namespace</text>
+<text class="tag" x="355" y="146" text-anchor="middle" fill="#C46A0A">接入 / 路由</text>
+<path d="M440 121 L510 121" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#ovwA)"/>
+<rect x="510" y="92" width="150" height="58" rx="8" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.3"/>
+<text class="tn" x="585" y="112" text-anchor="middle">元数据</text>
+<text class="ts" x="585" y="130" text-anchor="middle">bundle 归属锁</text>
+<text class="tag" x="585" y="146" text-anchor="middle" fill="#854F0B">路由</text>
+<rect x="690" y="92" width="210" height="58" rx="8" fill="#FFF6E8" stroke="#F2D9A7" stroke-width="1.3"/>
+<text class="tb" x="700" y="112" fill="#4C7A1A">A 是 owner → Connect</text>
+<text class="tb" x="700" y="130" fill="#854F0B">A 不是 → Redirect(B)</text>
+<text class="tag" x="700" y="146">带 authoritative=true 重试</text>
+<path d="M585 150 L585 172 L355 172 L355 154" stroke="#C46A0A" stroke-width="1.4" stroke-dasharray="5 4" fill="none" marker-end="url(#ovwA)"/>
+<text class="tag" x="470" y="166" text-anchor="middle" fill="#854F0B">owner</text>
+<path d="M355 150 L355 186 L160 186 L160 154" stroke="#C46A0A" stroke-width="1.4" stroke-dasharray="5 4" fill="none" marker-end="url(#ovwA)"/>
+<text class="tag" x="255" y="181" text-anchor="middle" fill="#854F0B">Connect / Redirect</text>
+
+<rect x="8" y="198" width="904" height="104" rx="10" fill="#FBFAF6" stroke="#ECEAE2"/>
+<text class="tn" x="22" y="220">② 生产</text>
+<text class="ts" x="22" y="238">异步发送</text>
+<rect x="100" y="204" width="120" height="58" rx="8" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.3"/>
+<text class="tn" x="160" y="224" text-anchor="middle">客户端</text>
+<text class="ts" x="160" y="242" text-anchor="middle">pending / 攒批</text>
+<text class="tag" x="160" y="258" text-anchor="middle" fill="#C46A0A">接入</text>
+<path d="M220 233 L270 233" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#ovwA)"/>
+<rect x="270" y="204" width="150" height="58" rx="8" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.3"/>
+<text class="tn" x="345" y="224" text-anchor="middle">Broker</text>
+<text class="ts" x="345" y="242" text-anchor="middle">Producer / Topic</text>
+<text class="tag" x="345" y="258" text-anchor="middle" fill="#C46A0A">接入 / 路由</text>
+<path d="M420 233 L460 233" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#ovwA)"/>
+<rect x="460" y="204" width="150" height="58" rx="8" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.3"/>
+<text class="tn" x="535" y="224" text-anchor="middle">ManagedLedger</text>
+<text class="ts" x="535" y="242" text-anchor="middle">asyncAddEntry</text>
+<text class="tag" x="535" y="258" text-anchor="middle" fill="#3B3A34">存储</text>
+<path d="M610 233 L650 233" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#ovwA)"/>
+<rect x="650" y="204" width="180" height="58" rx="8" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.3"/>
+<text class="tn" x="740" y="222" text-anchor="middle">Bookie ×2（默认）</text>
+<text class="ts" x="740" y="240" text-anchor="middle">W=2 / A=2</text>
+<text class="tag" x="740" y="256" text-anchor="middle" fill="#3B3A34">存储；E=3 时多一个未写入</text>
+<path d="M740 262 L740 276 L345 276 L345 266" stroke="#C46A0A" stroke-width="1.4" stroke-dasharray="5 4" fill="none" marker-end="url(#ovwA)"/>
+<text class="tag" x="540" y="272" text-anchor="middle" fill="#4C7A1A">ack 2/2</text>
+<path d="M345 262 L345 288 L160 288 L160 266" stroke="#C46A0A" stroke-width="1.4" stroke-dasharray="5 4" fill="none" marker-end="url(#ovwA)"/>
+<text class="tag" x="250" y="284" text-anchor="middle" fill="#854F0B">sendReceipt</text>
+
+<rect x="8" y="310" width="904" height="104" rx="10" fill="#FBFAF6" stroke="#ECEAE2"/>
+<text class="tn" x="22" y="332">③ 消费 + ack</text>
+<text class="ts" x="22" y="350">ack 落账</text>
+<rect x="90" y="316" width="140" height="58" rx="8" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.3"/>
+<text class="tn" x="160" y="336" text-anchor="middle">Dispatcher</text>
+<text class="ts" x="160" y="354" text-anchor="middle">permits · 重投</text>
+<text class="tag" x="160" y="370" text-anchor="middle" fill="#C46A0A">接入 / 路由</text>
+<path d="M230 345 L290 345" stroke="#639922" stroke-width="1.5" fill="none" marker-end="url(#ovwG)"/>
+<text class="tag" x="260" y="338" text-anchor="middle" fill="#4C7A1A">许可 / 分发</text>
+<rect x="300" y="316" width="160" height="58" rx="8" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.3"/>
+<text class="tn" x="380" y="336" text-anchor="middle">Consumer</text>
+<text class="ts" x="380" y="354" text-anchor="middle">receiverQueue=1000</text>
+<text class="tag" x="380" y="370" text-anchor="middle" fill="#4C7A1A">消费</text>
+<rect x="540" y="316" width="200" height="58" rx="8" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.3"/>
+<text class="tn" x="640" y="334" text-anchor="middle">Cursor / 元数据</text>
+<text class="ts" x="640" y="352" text-anchor="middle">markDeletePosition + 位图</text>
+<text class="tag" x="640" y="368" text-anchor="middle" fill="#4C7A1A">消费 / 路由</text>
+<path d="M380 374 L380 392 L230 392 L230 374" stroke="#639922" stroke-width="1.4" stroke-dasharray="5 4" fill="none" marker-end="url(#ovwG)"/>
+<text class="tag" x="305" y="388" text-anchor="middle" fill="#4C7A1A">ack</text>
+<path d="M160 374 L160 404 L640 404 L640 374" stroke="#639922" stroke-width="1.4" stroke-dasharray="5 4" fill="none" marker-end="url(#ovwG)"/>
+<text class="tag" x="690" y="400" text-anchor="middle" fill="#4C7A1A">markDelete 异步</text>
+</svg>
+<div class="figcap"><b>读法：</b>先按颜色找三条路径，再看每个方块里的职责标签。查找只发生在建连前；生产主链写 Bookie；消费主链用 permits 推、用 ack 回。四段职责是按请求路径重切的，不是官方部署四层（实例 / 集群 / Broker / Bookie）。<br><span class="figsrc">口径：Pulsar 5.1.0-SNAPSHOT 集群默认 E=2 / W=2 / A=2；查找的 Redirect 细节见下方时序图。</span></div>
+</div>
+<div class="partgroup">
+<div class="gname">接入段 —— 负责「把协议接住」</div>
+<div class="parts">
+<button class="part" data-part="client"><b>客户端</b><span>攒批、压缩、pending 队列、信号量；发送失败在这里重试。</span></button>
+<button class="part" data-part="proxy"><b>Proxy（可选）</b><span>TLS 终止、鉴权、转发；不存消息，挂了换地址重连。</span></button>
+<button class="part" data-part="broker"><b>Broker 接入</b><span>ServerCnx 每连接一个；BrokerService 全局一个，负责 topic 缓存与限流。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">路由段 —— 负责「这块地归谁」</div>
+<div class="parts">
+<button class="part" data-part="metadata"><b>元数据存储</b><span>ledger 列表、游标位点、bundle 归属锁；不是配置中心，是分布式目录。</span></button>
+<button class="part" data-part="broker"><b>NamespaceService</b><span>算 bundle、查归属、返回 Connect 或 Redirect。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">存储段 —— 负责「把消息记住」</div>
+<div class="parts">
+<button class="part" data-part="ledger"><b>ManagedLedger</b><span>把一个 topic 变成一串 BookKeeper ledger；负责滚动、恢复、裁剪。</span></button>
+<button class="part" data-part="bookies"><b>BookKeeper / Bookie</b><span>只追加 ledger；集群默认 E=2 / W=2 / A=2，W 决定副本数、A 决定何时算成功。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">消费段 —— 负责「把消息送出去」</div>
+<div class="parts">
+<button class="part" data-part="consumer"><b>Consumer</b><span>receiverQueue 是本地缓冲；消费掉一半就发 CommandFlow 还许可。</span></button>
+<button class="part" data-part="cursor"><b>Cursor</b><span>进度账。markDeletePosition 在元数据，未确认位图可能写进 cursor ledger。</span></button>
+</div>
+</div>
+<p class="hint">静态分解只回答「有什么」。一条消息怎样穿过这些部件？切到时间维度。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：九步走完一条消息</h2></div>
+<p class="sec-sub">盯住琥珀色令牌，用下方 9 个步骤点逐帧定格。</p>
+<div class="quote">「它如何演变与运作？关注时间轴上的发展规律、行为模式和内部流程。核心方法是流程分析、行为追溯。」</div>
+<p><b>操作：</b>点步骤条圆点，或按「下一步」。建议走两遍：第一遍只看令牌路径，第二遍同时看元数据高亮、entry 格子、Bookie 指示灯和游标条。</p>
+<table class="grid">
+<tr><th>阶段</th><th>相位</th><th>关键动作</th><th>这一步在干什么</th></tr>
+<tr><td>① 查找归属</td><td>0°–80°</td><td>CommandLookupTopic</td><td>客户端问任意 Broker：bundle 归谁</td></tr>
+<tr><td>② 建立连接</td><td>80°–160°</td><td>Connect / Redirect</td><td>拿到 owner 地址，建 producer / consumer</td></tr>
+<tr><td>③ 发送消息</td><td>160°–240°</td><td>sendAsync</td><td>进 pending 队列，拿信号量许可，走 Netty</td></tr>
+<tr><td>④ Broker 校验</td><td>240°–320°</td><td>fencing / 去重 / 限速</td><td>硬约束提前拒绝，比写一半失败便宜</td></tr>
+<tr><td>⑤ 写账本</td><td>320°–410°</td><td>asyncAddEntry</td><td>交给批处理 executor，OpAddEntry 写当前 ledger</td></tr>
+<tr><td>⑥ quorum</td><td>410°–500°</td><td>writeQuorum / ackQuorum</td><td>默认 E=2：写 2 份、收 2 个 ack，没有第三个副本</td></tr>
+<tr><td>⑦ 回 ack</td><td>500°–590°</td><td>sendReceipt</td><td>更新 lastConfirmedEntry 与 entry cache</td></tr>
+<tr><td>⑧ 分发</td><td>590°–680°</td><td>Dispatcher</td><td>按 permits 读取，推给消费者本地队列</td></tr>
+<tr><td>⑨ 推进游标</td><td>680°–720°</td><td>ack / markDelete</td><td>异步持久化；崩溃窗口内会重投</td></tr>
+</table>
+<div class="figure">
+<svg viewBox="0 0 920 340" role="img" aria-labelledby="seqTitle seqDesc">
+<title id="seqTitle">lookup：先问路，再连接到 owner</title>
+<desc id="seqDesc">客户端向 Broker A 发起 lookup；A 查元数据得到 owner 为 Broker B，返回 Redirect；客户端带 authoritative=true 重试并拿到 Connect。若 A 就是 owner，则直接 Connect。</desc>
+<defs>
+<marker id="seqA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="seqG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<text class="th" x="460" y="24" text-anchor="middle">lookup：先问路，再连接到 owner</text>
+<text class="ts" x="460" y="44" text-anchor="middle">第一次 lookup 不保证 Connect；Redirect 是正常流程</text>
+<rect x="40" y="62" width="120" height="30" rx="7" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.3"/>
+<text class="tn" x="100" y="82" text-anchor="middle">客户端</text>
+<rect x="290" y="62" width="120" height="30" rx="7" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.3"/>
+<text class="tn" x="350" y="82" text-anchor="middle">Broker A</text>
+<rect x="540" y="62" width="120" height="30" rx="7" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.3"/>
+<text class="tn" x="600" y="82" text-anchor="middle">元数据</text>
+<rect x="760" y="62" width="120" height="30" rx="7" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.3"/>
+<text class="tn" x="820" y="82" text-anchor="middle">Broker B（owner）</text>
+<g stroke="#D3D1C7" stroke-width="1.2" stroke-dasharray="5 5">
+<line x1="100" y1="92" x2="100" y2="326"/>
+<line x1="350" y1="92" x2="350" y2="326"/>
+<line x1="600" y1="92" x2="600" y2="326"/>
+<line x1="820" y1="92" x2="820" y2="326"/>
+</g>
+<text class="tag" x="225" y="112" text-anchor="middle" fill="#854F0B">CommandLookupTopic(authoritative=false)</text>
+<path d="M100 118 L350 118" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#seqA)"/>
+<text class="tag" x="475" y="146" text-anchor="middle" fill="#854F0B">getBrokerServiceUrlAsync / 查 bundle</text>
+<path d="M350 152 L600 152" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#seqA)"/>
+<text class="tag" x="475" y="180" text-anchor="middle" fill="#854F0B">owner = Broker B</text>
+<path d="M600 186 L350 186" stroke="#C46A0A" stroke-width="1.4" stroke-dasharray="5 4" fill="none" marker-end="url(#seqA)"/>
+<text class="tag" x="225" y="214" text-anchor="middle" fill="#854F0B">Redirect(B)</text>
+<path d="M350 220 L100 220" stroke="#C46A0A" stroke-width="1.4" stroke-dasharray="5 4" fill="none" marker-end="url(#seqA)"/>
+<text class="tag" x="225" y="246" text-anchor="middle" fill="#4C7A1A">Connect（A 是 owner）</text>
+<path d="M350 252 L100 252" stroke="#639922" stroke-width="1.4" stroke-dasharray="5 4" fill="none" marker-end="url(#seqG)"/>
+<text class="tag" x="460" y="278" text-anchor="middle" fill="#854F0B">CommandLookupTopic(authoritative=true)</text>
+<path d="M100 284 L820 284" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#seqA)"/>
+<text class="tag" x="460" y="310" text-anchor="middle" fill="#4C7A1A">Connect + producer / consumer</text>
+<path d="M820 316 L100 316" stroke="#639922" stroke-width="1.5" fill="none" marker-end="url(#seqG)"/>
+</svg>
+<div class="figcap"><b>读法：</b>时间从上往下。Broker A 只是被任意问到的一台；它查元数据拿到 owner 后，要么直接 Connect（自己就是 owner），要么 Redirect 到 Broker B，客户端带 authoritative=true 再问一次。Redirect 可能发生 1–2 次，是正常流程。琥珀 = 请求 / Redirect，绿 = Connect，灰色虚线 = 角色时间线。<br><span class="figsrc">口径：Pulsar 5.1.0-SNAPSHOT TopicLookupBase.lookupTopicAsync / NamespaceService.getBrokerServiceUrlAsync；行号以本地 checkout 为准。</span></div>
+</div>
+<p>两个容易看漏的点：① 第 ⑤ 步写的是当前 ledger，元数据里的 ledger 列表<b>不会</b>每条消息都更新，只在账本创建、关闭、删除时更新；② 第 ⑥ 步的 ack 只代表 <code>ackQuorum</code> 个副本确认。集群默认 E=W=A=2，所以两份都写、都确认；只有把 E 调到 3、W 仍为 2 时，才会出现一个在 ensemble 里但不在本次 writeQuorum 的第三个 Bookie——它不是 standby，也不持有这条 entry 的副本。</p>
+<div class="figure">
+<svg viewBox="0 0 920 320" role="img" aria-labelledby="qTitle qDesc">
+<title id="qTitle">quorum：E / W / A 各管什么</title>
+<desc id="qDesc">默认 E=2/W=2/A=2 时两个 Bookie 都写、都确认；示例 E=3/W=2/A=2 时第三个在 ensemble 里但不在本次 writeQuorum，不是 standby 副本。</desc>
+<defs>
+<marker id="qA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<text class="th" x="460" y="24" text-anchor="middle">quorum：E / W / A 各管什么</text>
+<text class="ts" x="460" y="44" text-anchor="middle">E = 账本可用的 Bookie 集合；W = 每条 entry 写几份；A = 收几个 ack 算完成</text>
+<text class="tag" x="460" y="62" text-anchor="middle" fill="#4C7A1A">绿 = 已写并确认 · 灰 = 未写入 / 默认不参与</text>
+<rect x="20" y="72" width="420" height="196" rx="12" fill="#FBFAF6" stroke="#ECEAE2"/>
+<text class="tn" x="40" y="96">集群默认：E=2 / W=2 / A=2</text>
+<rect x="150" y="106" width="160" height="34" rx="7" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.3"/>
+<text class="tb" x="230" y="127" text-anchor="middle">ManagedLedger</text>
+<path d="M200 140 L140 162" stroke="#C46A0A" stroke-width="1.4" fill="none" marker-end="url(#qA)"/>
+<path d="M260 140 L320 162" stroke="#C46A0A" stroke-width="1.4" fill="none" marker-end="url(#qA)"/>
+<rect x="70" y="158" width="320" height="66" rx="10" fill="none" stroke="#B4B2A9" stroke-dasharray="5 4"/>
+<text class="tag" x="80" y="154" fill="#8A877C">ensemble E=2</text>
+<rect x="80" y="164" width="120" height="54" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text class="tn" x="140" y="184" text-anchor="middle">Bookie 1</text>
+<text class="tag" x="140" y="202" text-anchor="middle" fill="#4C7A1A">已写 · 已 ack</text>
+<rect x="260" y="164" width="120" height="54" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text class="tn" x="320" y="184" text-anchor="middle">Bookie 2</text>
+<text class="tag" x="320" y="202" text-anchor="middle" fill="#4C7A1A">已写 · 已 ack</text>
+<text class="tag" x="230" y="240" text-anchor="middle" fill="#4C7A1A">W=2：两份都写；A=2：两份都确认</text>
+<text class="ts" x="230" y="256" text-anchor="middle" fill="#6B695F">默认没有第三个副本</text>
+<rect x="470" y="72" width="430" height="196" rx="12" fill="#FBFAF6" stroke="#ECEAE2"/>
+<text class="tn" x="490" y="96">示例：E=3 / W=2 / A=2</text>
+<rect x="590" y="106" width="160" height="34" rx="7" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.3"/>
+<text class="tb" x="670" y="127" text-anchor="middle">ManagedLedger</text>
+<path d="M620 140 L560 162" stroke="#C46A0A" stroke-width="1.4" fill="none" marker-end="url(#qA)"/>
+<path d="M690 140 L680 162" stroke="#C46A0A" stroke-width="1.4" fill="none" marker-end="url(#qA)"/>
+<rect x="490" y="158" width="380" height="66" rx="10" fill="none" stroke="#B4B2A9" stroke-dasharray="5 4"/>
+<text class="tag" x="500" y="154" fill="#8A877C">ensemble E=3</text>
+<rect x="500" y="164" width="100" height="54" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text class="tn" x="550" y="184" text-anchor="middle">Bookie 1</text>
+<text class="tag" x="550" y="202" text-anchor="middle" fill="#4C7A1A">已写 · 已 ack</text>
+<rect x="630" y="164" width="100" height="54" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text class="tn" x="680" y="184" text-anchor="middle">Bookie 2</text>
+<text class="tag" x="680" y="202" text-anchor="middle" fill="#4C7A1A">已写 · 已 ack</text>
+<rect x="760" y="164" width="100" height="54" rx="8" fill="#F5F4EF" stroke="#B4B2A9" stroke-width="1.3"/>
+<text class="tn" x="810" y="184" text-anchor="middle">Bookie 3</text>
+<text class="tag" x="810" y="202" text-anchor="middle" fill="#8A877C">未写入</text>
+<text class="tag" x="685" y="240" text-anchor="middle" fill="#3B3A34">第三个在 ensemble 里，但不在本次 writeQuorum</text>
+<text class="tag" x="685" y="256" text-anchor="middle" fill="#8A877C">不是 standby 副本</text>
+<text class="tn" x="460" y="286" text-anchor="middle">ackQuorum ≤ writeQuorum ≤ ensembleSize</text>
+<text class="ts" x="460" y="302" text-anchor="middle">默认 2 ≤ 2 ≤ 2；standalone 1 / 1 / 1</text>
+</svg>
+<div class="figcap"><b>读法：</b>左边是集群默认 2/2/2，两个 Bookie 都写、都 ack；右边只用于讲差异，E=3 时第三个在 ensemble 里，但不在本次 writeQuorum，也不是 standby。公式的顺序不能反：A ≤ W ≤ E。<br><span class="figsrc">口径：Pulsar 5.1.0-SNAPSHOT conf/broker.conf:1417–1423、standalone.conf:946–952；源码默认 ServiceConfiguration.java:2568–2581。</span></div>
+</div>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件 × 阶段的角色矩阵</h2></div>
+<p class="sec-sub">把第 2 节的结构和第 3 节的流程叠起来，才是理解的完成态。</p>
+<div class="quote">「动静融合的关键是建立映射：将组成部件与操作步骤一一对应，理解各部件如何协同产生外在行为。」</div>
+<table class="grid">
+<tr><th>部件 ＼ 阶段</th><th>① lookup</th><th>② 连接</th><th>③ 发送</th><th>④ 校验</th><th>⑤ 写账本</th><th>⑥ quorum</th><th>⑦ ack</th><th>⑧ 分发</th><th>⑨ 游标</th></tr>
+<tr><td>客户端</td><td class="hot">发起</td><td class="act">建连</td><td class="hot">入队</td><td>—</td><td>—</td><td>—</td><td class="act">future 完成</td><td>—</td><td>—</td></tr>
+<tr><td>Proxy</td><td>转发</td><td>转发</td><td>转发</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>Broker</td><td class="hot">查归属</td><td class="act">返地址</td><td>接收</td><td class="hot">过闸门</td><td class="act">转交</td><td>—</td><td class="hot">回执</td><td class="hot">读+推</td><td>—</td></tr>
+<tr><td>ManagedLedger</td><td>—</td><td>—</td><td>—</td><td>—</td><td class="hot">写 entry</td><td class="act">等 ack</td><td class="act">更新 LAC</td><td>提供读</td><td>—</td></tr>
+<tr><td>Bookie</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td class="hot">复制</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>元数据</td><td class="hot">bundle 锁</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td class="act">markDelete</td></tr>
+<tr><td>Consumer / Cursor</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td class="hot">收消息</td><td class="hot">ack</td></tr>
+</table>
+<p>点题一句：<b>「Broker 无状态」这个外在特性，不是 Broker 一个部件的属性，而是「数据在 Bookie、索引在元数据、Broker 只持有缓存与归属」整体协同的结果。</b>拆开看，每个部件都很普通；合起来，才能做到存储与计算独立伸缩。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：它依赖什么才能工作</h2></div>
+<p class="sec-sub">主体之外，还有一圈支撑系统。</p>
+<div class="quote">「对事物的认识 = 空间属性 + 时间属性 + 环境属性（外在关系和依赖）。」</div>
+<div class="envcards">
+<div class="env"><b>元数据存储</b><span>ZooKeeper / RocksDB / Oxia。ledger 索引、游标位点、bundle 锁都在这；它慢了，topic 加载和 ledger 切换先疼。</span></div>
+<div class="env"><b>BookKeeper 集群</b><span>独立的一套复制与恢复系统；Bookie 的磁盘、GC、网络直接反映到 produce 延迟。</span></div>
+<div class="env"><b>Proxy / 负载均衡</b><span>Proxy 可选；负载均衡决定 bundle 归属，leader 挂了要重新选。</span></div>
+<div class="env"><b>认证与授权</b><span>lookup、produce、consume 各自鉴权；权限错了会在很靠前的地方被拒。</span></div>
+<div class="env"><b>DNS 与服务发现</b><span>客户端只认 serviceUrl；地址解析失败，lookup 连第一步都走不到。</span></div>
+<div class="env"><b>监控与留痕</b><span>topic 加载耗时、ledger 切换次数、Bookie 写延迟、消费 backlog——排障的四个入口。</span></div>
+</div>
+<p>动画里的链路能跑通，前提是这六个系统在环境里就位。拆掉任何一个，外在行为立即消失。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">用自己的话能讲清楚，才算真的懂。</p>
+<div id="quiz"></div>
+</section>
+
+
+<div class="summary">
+<h2>一页带走</h2>
+<p class="chant">先问归属再连接，写完账本才回执；数据在 Bookie，索引在元数据，进度在游标。</p>
+
+<p>· 路径：lookup → 连接 → 发送 → 校验 → 写账本 → quorum → ack → 分发 → 推进游标。</p>
+<p>· 三本账：数据账每条消息都写，索引账换 ledger 才写，进度账按 ack 批量写。</p>
+<p>· 三个数字：E=2 决定账本用几个 Bookie，W=2 决定每条消息写几份，A=2 决定收几个 ack 算成功。</p>
+<p>· 一个边界：ack 是异步持久化的，所以语义是「至少一次」，不是「恰好一次」。</p>
+<p>· 边界与简化：默认 E=2 / W=2 / A=2；Redirect 次数、Batch/压缩细节、四段职责与官方部署四层的关系见前文注脚；异常与重试未展开。</p>
+
+</div>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+
+<script>
+(function(){
+var PERIOD=7600,PHASE_MAX=720;
+var STEPS=[{d:0,t:'查找归属',x:'客户端先发 CommandLookupTopic，随便找一台 Broker 问：这个 topic 的 bundle 归谁？'},
+{d:80,t:'建立连接',x:'Broker 返回 Connect 或 Redirect。拿到真正的 owner 地址后，客户端才建 producer / consumer。'},
+{d:160,t:'发送消息',x:'sendAsync 之后消息先进入客户端 pending 队列，拿到信号量许可才通过 Netty 发给 Broker。'},
+{d:240,t:'校验',x:'ServerCnx → Producer → PersistentTopic：fencing、最大消息、延迟投递、去重，一关一关过。'},
+{d:320,t:'写账本',x:'asyncAddEntry 把写请求交给批处理 executor，OpAddEntry 写进当前 ledger，entry 出现在账本条上。'},
+{d:410,t:'quorum',x:'entry 被写到 writeQuorum 个 Bookie，收齐 ackQuorum 个 ack 就算成功。集群默认 E=2/W=2/A=2：两份都写、都确认，没有第三个副本；若把 E 调到 3，第三个在 ensemble 里但不在本次 writeQuorum，也不是 standby。'},
+{d:500,t:'回执',x:'回调更新 lastConfirmedEntry 和 entry cache，Broker 回 sendReceipt；客户端 future 完成。'},
+{d:590,t:'分发',x:'订阅的 dispatcher 按 permits 读取 entry，推给消费者；消费者本地队列填充，消费掉一半再还许可。'},
+{d:680,t:'推进游标',x:'消费者处理完发 ack。累积 ack 推进 markDeletePosition，单条 ack 维护位图；两者都是异步持久化。'}];
+var PARTS={client:['clientBox','tok'],
+proxy:['proxyBox'],
+broker:['brokerBox','cnxBox','topicBox','subBox'],
+ledger:['ledgerBox','e0','e1','e2','e3','e4'],
+bookies:['bkBox','bookie0','bookie1','bookie2','b0','b1','b2'],
+metadata:['metaBox','metaGlow','metaBundle','metaLedger'],
+consumer:['consumerBox','queueBar','ackPath'],
+cursor:['cursorBox','curBar']};
+var QUIZ=[{q:'客户端第一次 lookup，拿到的结果可能是什么？',opts:['一定是 owner 的地址，一次就中','可能是 Redirect：当前 Broker 不是 owner，告诉客户端去另一个地址再问','一定是 TopicNotFound，因为 topic 还没创建'],a:1,exp:'客户端连的 Broker 不一定是 owner。若当前 Broker 就是 owner，会直接 Connect；否则返回 Redirect，客户端带 authoritative=true 再问一次。Redirect 是正常流程，不是错误。见上方 lookup 时序图。'},
+{q:'集群默认 E=2、W=2、A=2，一条消息有几份副本？',opts:['3 份，每个 Bookie 一份','2 份，两个 Bookie 都写、都 ack','1 份，ack 只代表写成功'],a:1,exp:'默认是 2 份：E=2 决定这个 ledger 用两个 Bookie，W=2 决定每条 entry 写两份，A=2 决定两个都必须确认；没有第三个副本。若配置 E=3/W=2/A=2，第三个只是在 ensemble 里，不在本次 writeQuorum，也不是 standby。'},
+{q:'为什么 Broker 刚写完的消息，消费者立刻能读到？',opts:['因为 Bookie 写盘只要 0ms','因为读路径会先看 lastConfirmedEntry 和 entry cache，不一定去 Bookie','因为消费者读的是副本'],a:1,exp:'追尾读通常直接命中 Broker 内存里的 entry cache；只有读历史或缓存未命中才去 Bookie。这也是 Broker 内存会影响消费延迟的原因。'},
+{q:'ack 之后消息一定不会重投吗？',opts:['一定不会','不一定：ack 是异步持久化的，Broker 在落盘前崩溃会从旧位点重读','只要用了累积 ack 就不会'],a:1,exp:'至少一次的来源就在这里。消息不会丢，但崩溃窗口内会重复；要解决重复，只能在消费端做幂等，或者用事务。'},
+{q:'元数据存储挂了，最先出问题的是哪类操作？',opts:['已有 topic 的追尾消费','新 topic 加载、ledger 切换、bundle 归属变更','客户端压缩'],a:1,exp:'元数据是账本的目录和归属锁。已有读写能靠缓存撑一段，但新 topic 加载、ledger 滚动、ownership 变更都要写元数据。'}];
+var CHIPS=[{k:'prod',l:'生产入口'},{k:'quorum',l:'Bookie quorum'},{k:'dispatch',l:'消费分发'},{k:'ack',l:'游标 ack'}];
+function box(x,y,w,h,rx,fill,stroke,dash){return '<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="'+(rx||10)+'" fill="'+(fill||'#ffffff')+'" stroke="'+(stroke||'#3B3A34')+'" stroke-width="1.4"'+(dash?' stroke-dasharray="'+dash+'"':'')+'/>';}
+function tx(x,y,s,cls,anchor,fill){return '<text class="'+(cls||'ts')+'" x="'+x+'" y="'+y+'"'+(anchor?' text-anchor="'+anchor+'"':'')+(fill?' fill="'+fill+'"':'')+'>'+s+'</text>';}
+var H='';
+H+='<rect id="brokerBox" x="324" y="70" width="316" height="334" rx="14" fill="#FBFAF6" stroke="#B4B2A9" stroke-width="1.4" stroke-dasharray="6 5"/>';
+H+=tx(482,92,'Broker 集群（不存消息本体）','tn','middle');
+H+='<g id="clientBox">'+box(26,96,132,86)+tx(92,122,'客户端','tn','middle')+tx(92,144,'sendAsync / receive','ts','middle')+tx(92,164,'pending 队列','ts','middle')+'</g>';
+H+='<g id="proxyBox">'+box(188,96,104,86)+tx(240,122,'Proxy','tn','middle')+tx(240,144,'TLS / 鉴权','ts','middle')+tx(240,164,'可选','ts','middle')+'</g>';
+H+='<g id="cnxBox">'+box(344,104,276,50)+tx(358,124,'ServerCnx / Producer','tn')+tx(358,142,'协议解析 · 去重 · 限速','ts')+'</g>';
+H+='<g id="topicBox">'+box(344,164,276,50)+tx(358,184,'PersistentTopic','tn')+tx(358,202,'fencing · 最大消息 · 延迟投递','ts')+'</g>';
+H+='<g id="ledgerBox">'+box(344,224,276,50)+tx(358,244,'ManagedLedger','tn')+tx(358,262,'pendingAddEntries → OpAddEntry','ts')+'</g>';
+for(var i=0;i<5;i++){var ex=352+i*52;H+='<g id="e'+i+'" opacity="0.18">'+box(ex,280,44,16,4,'#FFF6E8','#EF9F27')+tx(ex+22,292,'entry','ts','middle','#854F0B')+'</g>';}
+H+='<g id="subBox">'+box(344,304,276,50)+tx(358,324,'Subscription / Dispatcher','tn')+tx(358,342,'permits · 分发 · 重投','ts')+'</g>';
+H+='<path d="M316 139 L340 139" stroke="#C46A0A" stroke-width="1.5" marker-end="url(#flw)" fill="none"/>';
+H+='<path d="M158 139 L184 139" stroke="#C46A0A" stroke-width="1.5" marker-end="url(#flw)" fill="none"/>';
+H+='<path d="M482 154 L482 160" stroke="#C46A0A" stroke-width="1.5" marker-end="url(#flw)" fill="none"/>';
+H+='<path d="M482 214 L482 220" stroke="#C46A0A" stroke-width="1.5" marker-end="url(#flw)" fill="none"/>';
+H+='<path d="M482 274 L482 276" stroke="#C46A0A" stroke-width="1.5" marker-end="url(#flw)" fill="none"/>';
+H+='<path d="M482 354 L482 424" stroke="#C46A0A" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#flw)" fill="none"/>';
+H+='<path d="M620 129 L668 129" stroke="#C46A0A" stroke-width="1.5" stroke-dasharray="4 4" marker-end="url(#flw)" fill="none"/>';
+H+='<path d="M620 329 L668 329" stroke="#639922" stroke-width="1.5" marker-end="url(#flwG)" fill="none"/>';
+H+='<path id="ackPath" d="M668 350 L628 350" stroke="#639922" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#flwG)" fill="none" opacity="0.35"/>';
+H+='<text id="ackLabel" class="tag" x="648" y="368" text-anchor="middle" fill="#4C7A1A" opacity="0.55">ack</text>';
+H+='<path id="lookupPath" d="M92 96 L92 66 L482 66 L482 100 M482 66 L820 66 L820 82" stroke="#C46A0A" stroke-width="1.6" stroke-dasharray="5 4" fill="none" opacity="0.2" marker-end="url(#flw)"/>';
+// metadata
+H+='<g id="metaBox">'+box(672,84,300,190,10,'#ffffff','#3B3A34')+tx(688,108,'元数据存储','tn')+tx(688,128,'ZooKeeper / RocksDB / Oxia','ts')+'</g>';
+H+='<rect id="metaGlow" x="682" y="140" width="280" height="118" rx="8" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.4" opacity="0"/>';
+H+='<rect id="metaAckGlow" x="682" y="140" width="280" height="118" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.4" opacity="0"/>';
+H+='<g id="metaBundle">'+tx(690,158,'/namespace/tenant/ns/range','ts','start','#854F0B')+tx(690,176,'  bundle 归属锁','ts','start','#854F0B')+'</g>';
+H+='<g id="metaLedger">'+tx(690,204,'/managed-ledgers/…','ts')+tx(690,222,'  ledger 列表 + 游标位点','ts')+'</g>';
+H+='<text id="metaAckNote" class="ts" x="690" y="244" fill="#6B695F" opacity="0.55">ack → markDelete 异步持久化</text>';
+// bookies
+H+='<g id="bkBox"><rect x="324" y="424" width="316" height="112" rx="14" fill="#FBFAF6" stroke="#B4B2A9" stroke-width="1.4" stroke-dasharray="6 5"/>'+tx(482,446,'BookKeeper 集群（默认写 2 份）','tn','middle')+'</g>';
+for(var b=0;b<3;b++){var bx=340+b*100;H+='<g id="bookie'+b+'">'+box(bx,456,84,58,10,'#ffffff','#3B3A34')+tx(bx+42,478,'Bookie '+(b+1),'tn','middle')+tx(bx+42,496,(b===2?'默认不写入':'ledger 副本'),'ts','middle')+'</g>';H+='<circle id="b'+b+'" cx="'+(bx+42)+'" cy="508" r="5" fill="#D3D1C7" stroke="#B4B2A9" stroke-width="1"/>';}
+// consumer
+H+='<g id="consumerBox">'+box(672,300,300,74)+tx(688,324,'Consumer','tn')+tx(688,344,'receiverQueue = 1000','ts')+tx(688,362,'本地队列 + permits','ts')+'</g>';
+H+='<rect x="840" y="310" width="116" height="12" rx="6" fill="#F5F4EF" stroke="#D3D1C7" stroke-width="1"/>';
+H+='<rect id="queueBar" x="840" y="310" width="0" height="12" rx="6" fill="#EF9F27"/>';
+// cursor
+H+='<g id="cursorBox">'+box(672,394,300,86)+tx(688,418,'cursor.markDeletePosition','tn')+tx(688,438,'进度账：读到哪了','ts')+'</g>';
+H+='<rect x="688" y="452" width="268" height="12" rx="6" fill="#F5F4EF" stroke="#D3D1C7" stroke-width="1"/>';
+H+='<rect id="curBar" x="688" y="452" width="0" height="12" rx="6" fill="#639922"/>';
+H+='<text id="stageTag" class="ts" x="985" y="544" text-anchor="end" fill="#854F0B"></text>';
+// token
+H+='<circle id="tok" cx="92" cy="139" r="9" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/>';
+document.getElementById('scene').innerHTML=H;
+var el={};
+document.querySelectorAll('#scene [id]').forEach(function(n){el[n.id]=n;});
+var WP=[[0,92,139],[20,92,139],[50,482,129],[80,482,129],[160,482,129],[200,482,169],[240,482,189],[320,482,249],[410,482,480],[500,482,129],[590,822,337],[680,822,453],[720,822,453]];
+function tokPos(th){
+  if(th>=690)return null;
+  var i=0;while(i<WP.length-2&&th>WP[i+1][0])i++;
+  var a=WP[i],b=WP[i+1];var t=(th-a[0])/(b[0]-a[0]);
+  return[a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+}
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,STEP_DUR=900;
+var dots=[];
+for(var s=0;s<STEPS.length;s++){
+(function(n){
+var b=document.createElement('button');
+b.className='stepnode';
+b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+b.onclick=function(){goStep(n);};
+stepBar.appendChild(b);dots.push(b);
+})(s);
+}
+var chipBox=document.getElementById('stateChips'),chipEls={};
+CHIPS.forEach(function(c){
+var s=document.createElement('span');s.className='chip';
+s.innerHTML=c.l+' <b>--</b>';chipBox.appendChild(s);chipEls[c.k]=s;
+});
+function setChip(k,v){
+var n=chipEls[k];if(!n)return;var b=n.querySelector('b');
+if(b&&b.textContent!==v)b.textContent=v;
+n.classList.toggle('on',/^(开|是|已|完成|生效|放行|进行|2\/2|owner|markDelete)/.test(v));
+n.classList.toggle('off',/^(关|否|待命|—|未)/.test(v));
+}
+var stepIdx=-1;
+function setAuto(on){
+mode='auto';run=on;stepTo=null;btn.textContent=on?'暂停':'播放';
+if(on){stepIdx=-1;dots.forEach(function(d){d.classList.remove('on');});
+stepT.textContent='自动运转模式';
+stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格。';}
+}
+window.goStep=function(i){
+stepIdx=(i+STEPS.length)%STEPS.length;
+mode='step';run=false;
+var target=STEPS[stepIdx].d/PHASE_MAX*PERIOD,delta=target-phase;
+if(reduced||Math.abs(delta)>PERIOD/4){
+phase=target;stepTo=null;render(target/PERIOD*PHASE_MAX+0.01);
+}else{
+stepFrom=phase;stepTo=phase+delta;stepElapsed=0;render(phase/PERIOD*PHASE_MAX+0.01);
+}
+btn.textContent='继续自动运转';
+dots.forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+stepX.textContent=STEPS[stepIdx].x;
+};
+btn.textContent=run?'暂停':'播放';
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+function setOp(id,v){var n=typeof id==='string'?el[id]:id;if(n)n.setAttribute('opacity',v.toFixed(2));}
+function setText(id,s){var n=el[id]||document.getElementById(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setAttr(id,k,v){var n=el[id];if(n)n.setAttribute(k,v);}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){return t*t*(3-2*t);}
+
+function render(th){
+var pr=Math.round(((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX);
+setText('roPhase',pr+'°');
+var si=0;for(var ri=0;ri<STEPS.length;ri++){if(pr>=STEPS[ri].d)si=ri;}
+if(mode==='step'&&stepIdx>=0)si=stepIdx;
+setText('roStep',STEPS[si]?STEPS[si].t:'—');
+var p=tokPos(th);
+if(p){setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));setOp('tok',1);}
+else{setOp('tok',0);}
+setOp('lookupPath',th>=10&&th<100?0.95:0.2);
+setOp('metaGlow',th>=20&&th<100?1:0);
+setOp('metaAckGlow',th>=680?1:0);
+setOp('metaBundle',th>=20&&th<100?1:0.45);
+setOp('metaLedger',th>=20&&th<100?0.55:0.95);
+setOp('metaAckNote',th>=680?1:0.55);
+setAttr('metaAckNote','fill',th>=680?'#4C7A1A':'#6B695F');
+setOp('ackPath',th>=680?1:0.35);
+setOp('ackLabel',th>=680?1:0.55);
+var lit=th>=400?1:0.18;
+setOp('e0',lit);setOp('e1',th>=410?lit:0.18);setOp('e2',th>=420?lit:0.18);setOp('e3',th>=430?lit:0.18);setOp('e4',th>=440?lit:0.18);
+setOp('b0',th>=410?1:0.35);setOp('b1',th>=420?1:0.35);setOp('b2',0.35);
+var bOn=th>=470?1:0.35;
+for(var b=0;b<3;b++){var c=el['b'+b];if(c){c.setAttribute('fill',b<2&&th>=410?'#639922':'#D3D1C7');c.setAttribute('stroke',b<2&&th>=410?'#4C7A1A':'#B4B2A9');}}
+setOp('queueBar',th>=590?1:0.2);
+if(el['queueBar'])el['queueBar'].setAttribute('width',(th>=590?Math.min(116,(th-590)*1.4):0).toFixed(1));
+if(el['curBar'])el['curBar'].setAttribute('width',(th>=680?Math.min(268,(th-680)*2.6):0).toFixed(1));
+var names=['查找归属','建立连接','发送消息','Broker 校验','写 ManagedLedger','Bookie quorum','回 sendReceipt','分发到消费者','ack 推进游标'];
+var si=Math.min(8,Math.floor(th/80));
+setText('stageTag',th>=690?'':'当前：'+names[si]);
+setText('roKey',th>=680?'markDelete 已推进':th>=410?'Bookie 2/2':'—');
+setChip('prod',th>=160?'已进入':'待命');
+setChip('quorum',th>=410?'2/2':'待命');
+setChip('dispatch',th>=590?'已分发':'待命');
+setChip('ack',th>=680?'已推进':'待命');
+}
+function tick(now){
+var dt=Math.min(50,now-last);last=now;
+if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+if(mode==='step'&&stepTo!==null){
+stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);
+var p=stepElapsed/STEP_DUR;
+var e=p*p*(3-2*p);
+phase=stepFrom+(stepTo-stepFrom)*e;
+if(p>=1){phase=((stepTo%PERIOD)+PERIOD)%PERIOD;stepTo=null;}
+}
+render(phase/PERIOD*PHASE_MAX+0.01);
+requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+document.querySelectorAll('.part').forEach(function(b){
+b.onclick=function(){
+var ids=PARTS[b.getAttribute('data-part')]||[];
+ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+};
+});
+var BASE=(location.pathname.split('/middleware-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/middleware/lab';
+document.getElementById('lnkArt').href=BASE+'/middleware/tutorial/01-architecture';
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+var d=document.createElement('div');d.className='q';
+var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+h+='<div class="exp">'+it.exp+'</div>';
+d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+var b=e.target.closest('.opt');if(!b)return;
+var box2=b.parentElement;if(box2.classList.contains('done'))return;
+box2.classList.add('done');
+var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+box2.querySelectorAll('.opt').forEach(function(x){
+var xi=+x.getAttribute('data-oi');
+if(xi===QUIZ[qi].a)x.classList.add('right');
+else if(x===b)x.classList.add('wrong');
+});
+});
+})();
+</script>
+</body>
+</html>

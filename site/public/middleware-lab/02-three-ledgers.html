@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>三本账 · Pulsar 互动原理实验室 第 2 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:920px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:680px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:500;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:12px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:500;fill:#1F1E1A}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:68px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+.modebar{display:flex;align-items:center;gap:8px;margin:6px 4px 0;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.modebar .mlabel{font-weight:600;color:#3B3A34}
+.modebtn{padding:5px 12px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:12.5px;cursor:pointer;font-family:inherit}
+.modebtn:hover{border-color:#888780}
+.modebtn.on{background:#FFF6E8;border-color:#EF9F27;color:#854F0B;font-weight:600}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .outbranch{display:inline-flex;flex-direction:column;align-items:flex-start;gap:6px}
+.flow .outline{display:inline-flex;align-items:center;gap:8px}
+.flow .flownote{font-size:12px;color:#6B695F;font-weight:600;margin-right:4px}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:9px 10px;text-align:center}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+#scene [opacity]{transition:opacity .28s ease}
+#tok,#tokT,#pulse{transition:none}
+@media (prefers-reduced-motion: reduce){#scene [opacity]{transition:none}}
+.frame2{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figure{margin:14px 0 16px;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:12px 14px}
+.figure .figtitle{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:6px}
+.figure svg{width:100%;height:auto;display:block}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：Broker 与账本</a>
+  <span class="idx">第 2 / 7 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · 账本、索引与进度</div>
+<h1>三本账：数据、索引、进度为什么不能一起更新</h1>
+<p>Broker 到底往磁盘上写了什么？答案是三本账：消息在 Bookie 的 ledger 里，ledger 列表在元数据里，消费进度在游标里。三本账的更新频率完全不同，理解这个差异，才能理解「为什么刚写完就能读到」「为什么崩溃后会重投」。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span>
+<span class="mnode">② 静态分解</span>
+<span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span>
+<span class="mnode">⑤ 环境场景</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 560" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>三本账 · 一次写入与一次账本滚动</title>
+<defs>
+<pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+<line x1="0" y1="0" x2="0" y2="8" stroke="#B4B2A9" stroke-width="0.7"/>
+</pattern>
+<marker id="flw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/>
+</marker>
+<marker id="flwG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/>
+</marker>
+<marker id="flwR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/>
+</marker>
+</defs>
+<text class="th" x="500" y="24" text-anchor="middle">三本账 · 一次写入与一次账本滚动</text>
+<text class="ts" x="500" y="44" text-anchor="middle">数据账每条消息都写；索引账换 ledger 才写；进度账按 ack 批量写</text>
+<text class="ts" x="985" y="24" text-anchor="end">琥珀 = 正在写入</text>
+<text class="ts" x="985" y="40" text-anchor="end">绿 = 已确认 / 已推进</text>
+<g id="scene"></g>
+</svg>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 轮 / 7 秒</span>
+</div>
+
+<div class="readout">
+<span class="ro">进度 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">关键量 <b id="roKey">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav">
+<button class="btn" onclick="prevStep()">‹ 上一步</button>
+<button class="btn warn" onclick="nextStep()">下一步 ›</button>
+</span>
+</div>
+<p class="figcap">进度 0° = 写入到达，720° = 崩溃恢复完成；分步定格的是关键时刻，不代表真实耗时。<br>口径：8/8 是演示容量；maxEntriesPerLedger、writeQuorum/ackQuorum 以 broker.conf 为准；崩溃重投按至少一次处理。</p>
+</div>
+</div>
+
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：一次写入，三种「记住」</h2></div>
+<p class="sec-sub">先别急着看类，只看 Broker 对外承诺了什么。</p>
+<div class="quote">「对事物的观察包括了静态结构 + 动态生命周期 + 环境场景三个方面的内容。」</div>
+<p>客户端只看到「消息发出去了，ack 回来了」。但 Broker 为了这个 ack，至少记住了三件事：<b>消息内容在哪</b>、<b>这段内容属于哪本 ledger</b>、<b>消费者读到了哪</b>。三件事分别落在 Bookie、元数据、游标上，更新频率完全不同。</p>
+<div class="flow">
+<span class="node">消息写入（每条都发生）</span>
+<span class="outbranch">
+<span class="outline"><span class="arr">→</span><span class="node">数据账：Bookie ledger（每条）</span></span>
+<span class="outline"><span class="arr">↳</span><span class="node">索引账：换本才写</span></span>
+<span class="outline"><span class="arr">↳</span><span class="node">进度账：ack 才写</span></span>
+</span>
+</div>
+<p>这个「不同步」不是设计缺陷，而是性能与可靠性的折中。三本账要是每条消息一起更新，元数据存储会先被打爆。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：三本账各自的载体</h2></div>
+<p class="sec-sub">先看静态结构图，再点部件卡片——动画中对应部分会亮成琥珀色。</p>
+<div class="quote">「它由什么构成？核心方法是分解、分类、结构化——分解需符合 MECE 法则，同层必须粒度一致。」</div>
+<figure class="figure">
+<div class="figtitle">三本账静态结构 · 谁在什么时候写</div>
+<svg viewBox="0 0 920 300" role="img" aria-label="三本账静态结构">
+<title>三本账静态结构</title>
+<defs>
+<marker id="m2a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="m2g" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<rect x="330" y="102" width="260" height="96" rx="12" fill="#fff" stroke="#3B3A34" stroke-width="1.4"/>
+<text class="tn" x="460" y="130" text-anchor="middle">Broker 栈</text>
+<text class="ts" x="460" y="152" text-anchor="middle">ServerCnx → PersistentTopic</text>
+<text class="ts" x="460" y="172" text-anchor="middle">→ ManagedLedger</text>
+<rect x="36" y="102" width="240" height="96" rx="12" fill="#fff" stroke="#3B3A34" stroke-width="1.4"/>
+<text class="tn" x="156" y="128" text-anchor="middle">BookKeeper / Bookie</text>
+<text class="ts" x="156" y="150" text-anchor="middle">数据账：entry 每条都写</text>
+<text class="ts" x="156" y="170" text-anchor="middle">演示 8 条；W=2 / A=2</text>
+<rect x="650" y="46" width="234" height="82" rx="12" fill="#fff" stroke="#3B3A34" stroke-width="1.4"/>
+<text class="tn" x="767" y="72" text-anchor="middle">元数据存储</text>
+<text class="ts" x="767" y="94" text-anchor="middle">索引账：ledger 列表</text>
+<text class="ts" x="767" y="114" text-anchor="middle">换本 / 关闭时才写</text>
+<rect x="650" y="172" width="234" height="82" rx="12" fill="#fff" stroke="#3B3A34" stroke-width="1.4"/>
+<text class="tn" x="767" y="198" text-anchor="middle">Cursor</text>
+<text class="ts" x="767" y="220" text-anchor="middle">进度账：markDelete</text>
+<text class="ts" x="767" y="240" text-anchor="middle">ack 异步批量写</text>
+<path d="M330 150 L280 150" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#m2a)"/>
+<text class="ts" x="304" y="140" text-anchor="middle" fill="#854F0B">entry</text>
+<path d="M590 126 L650 92" stroke="#C46A0A" stroke-width="1.4" stroke-dasharray="5 4" fill="none" marker-end="url(#m2a)"/>
+<text class="ts" x="612" y="96" fill="#854F0B">换本</text>
+<path d="M590 176 L650 212" stroke="#639922" stroke-width="1.4" stroke-dasharray="5 4" fill="none" marker-end="url(#m2g)"/>
+<text class="ts" x="612" y="214" fill="#4C7A1A">ack</text>
+</svg>
+<figcaption class="figcap">读法：左边数据账每条都写，右上索引账换本才写，右下进度账 ack 才写；虚线表示低频更新。口径：8/8 为演示容量，maxEntriesPerLedger 与 W/A 以配置为准。</figcaption>
+</figure>
+<div class="partgroup">
+<div class="gname">写入侧</div>
+<div class="parts">
+<button class="part" data-part="broker"><b>Broker 栈</b><span>ServerCnx → PersistentTopic → ManagedLedger；负责校验、去重、把写请求交给账本。</span></button>
+<button class="part" data-part="ledger"><b>ManagedLedger</b><span>一个 topic 的逻辑日志；currentLedger 写满就滚动，ledgers 里存 ledger 列表。</span></button>
+<button class="part" data-part="bookies"><b>BookKeeper / Bookie</b><span>数据账的物理落点；entry 按 writeQuorum 复制，按 ackQuorum 确认。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">索引侧</div>
+<div class="parts">
+<button class="part" data-part="metadata"><b>元数据存储</b><span>存 ManagedLedgerInfo：ledgerId、entries、size、timestamp、offloadContext。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">进度侧</div>
+<div class="parts">
+<button class="part" data-part="cursor"><b>Cursor</b><span>markDeletePosition 在元数据；未确认位图可能写进单独的 cursor ledger。</span></button>
+</div>
+</div>
+<p class="hint">三本账不是三个数据库，而是三种「更新时机」。下一节看它们怎么错开。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：一次写入 + 一次滚动</h2></div>
+<p class="sec-sub">用 9 个步骤点看三本账各自在什么时候被写。</p>
+<div class="quote">「它如何演变与运作？关注时间轴上的发展规律、行为模式和内部流程。核心方法是流程分析、行为追溯。」</div>
+<table class="grid">
+<tr><th>阶段</th><th>相位</th><th>数据账</th><th>索引账</th><th>进度账</th><th>这一步在干什么</th></tr>
+<tr><td>① 写入到达</td><td>0°–80°</td><td>—</td><td>—</td><td>—</td><td>校验、去重、限速，准备入账</td></tr>
+<tr><td>② 进入账本</td><td>80°–160°</td><td>排队</td><td>—</td><td>—</td><td>交接给批处理 executor</td></tr>
+<tr><td>③ 写 entry</td><td>160°–250°</td><td class="hot">逐条写</td><td>—</td><td>—</td><td>写 L1，更新 currentLedgerEntries</td></tr>
+<tr><td>④ 写满</td><td>250°–340°</td><td class="hot">8/8</td><td>—</td><td>—</td><td>标记 closeWhenDone</td></tr>
+<tr><td>⑤ 关闭 L1</td><td>340°–420°</td><td>停止写</td><td>—</td><td>—</td><td>更新条目数 / 大小 / 时间戳</td></tr>
+<tr><td>⑥ 创建 L2</td><td>420°–500°</td><td class="hot">新 ledger</td><td>—</td><td>—</td><td>L2 成为 currentLedger</td></tr>
+<tr><td>⑦ 写索引账</td><td>500°–590°</td><td>—</td><td class="hot">写 L1 + L2</td><td>—</td><td>创建完才把列表写回元数据</td></tr>
+<tr><td>⑧ 推进进度账</td><td>590°–680°</td><td>—</td><td>—</td><td class="hot">markDelete</td><td>ack 异步落盘</td></tr>
+<tr><td>⑨ 崩溃恢复</td><td>680°–720°</td><td>重放</td><td class="hot">读列表</td><td class="act">恢复 cursor</td><td>先索引、再 ledger、最后 cursor</td></tr>
+</table>
+<p>这张表最该记住的是 ⑥ 和 ⑧：<b>索引账不是每条消息都写，进度账也不是每次 ack 都同步写。</b>三本账的更新点错开，才有了 Pulsar 的吞吐。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：错开更新换来了什么</h2></div>
+<p class="sec-sub">把结构和流程叠起来看，才能解释「看起来不一致」的现象。</p>
+<div class="quote">「动静融合的关键是建立映射：将组成部件与操作步骤一一对应，理解各部件如何协同产生外在行为。」</div>
+<table class="grid">
+<tr><th>现象</th><th>原因</th><th>后果</th></tr>
+<tr><td>刚写完就能消费</td><td>entry cache + lastConfirmedEntry 在内存</td><td>追尾读不走 Bookie，延迟低</td></tr>
+<tr><td>元数据里少一条 ledger</td><td>索引账只在创建 / 关闭时写</td><td>恢复时以 Bookie 为准补上</td></tr>
+<tr><td>崩溃后消息重投</td><td>进度账异步持久化</td><td>至少一次，消费端要幂等</td></tr>
+<tr><td>账本越大恢复越慢</td><td>最后一本 ledger 要 recovery</td><td>maxEntriesPerLedger 不能拍太大</td></tr>
+</table>
+<p>点题一句：<b>「三本账」不是三个孤立存储，而是三种更新频率的组合。</b>数据账追求「每条都落」，索引账追求「换本才落」，进度账追求「批量落」。理解这个组合，排障时就不会拿「元数据没更新」当 bug。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：谁在支撑这三本账</h2></div>
+<p class="sec-sub">三本账能各写各的，前提是环境里有这三套系统。</p>
+<div class="quote">「对事物的认识 = 空间属性 + 时间属性 + 环境属性（外在关系和依赖）。」</div>
+<div class="envcards">
+<div class="env"><b>BookKeeper 集群</b><span>数据账的物理载体；磁盘、复制、恢复都在这。</span></div>
+<div class="env"><b>元数据存储</b><span>索引账与游标位点；ZK / RocksDB / Oxia 都能当底座。</span></div>
+<div class="env"><b>cursor ledger</b><span>位图太大时，游标快照另开一本 BookKeeper ledger。</span></div>
+<div class="env"><b>保留与裁剪策略</b><span>retention / backlog quota 决定旧 ledger 什么时候删。</span></div>
+<div class="env"><b>监控</b><span>ledger 切换次数、元数据写延迟、cursor 持久化延迟，是三个关键指标。</span></div>
+<div class="env"><b>对象存储（可选）</b><span>开启分层存储后，旧 ledger 会多一个 offloadContext。</span></div>
+</div>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">能解释「为什么不必同步」，才算真的懂。</p>
+<div id="quiz"></div>
+</section>
+
+
+<div class="summary">
+<h2>一页带走</h2>
+<p class="chant">数据账每条都写，索引账换本才写，进度账批量才写；先落数据，再改索引。</p>
+<p>· 三本账：数据账在 Bookie，索引账在元数据，进度账在游标。</p>
+<p>· 两个「才写」：索引账换 ledger 才写，进度账按 ack 批量写。</p>
+<p>· 恢复顺序：读 ledger 列表 → 打开最后一本 ledger 恢复 LAC → 逐个恢复 cursor。</p>
+<p>· 一个代价：三本账不同步，所以崩溃窗口内会重投；语义是至少一次。</p>
+<p>· 边界与简化：本页为原理示意；默认值/阈值/时序以 Pulsar 5.1.0-SNAPSHOT 的配置与源码为准；异常、重试与批处理细节未展开。</p>
+
+</div>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+
+<script>
+(function(){
+var PERIOD=7600,PHASE_MAX=720;
+var STEPS=[{d:0,t:'写入到达',x:'客户端消息到达 ServerCnx，进入 Producer / PersistentTopic 的校验与去重。'},
+{d:80,t:'进入账本',x:'asyncAddEntry 把写请求交给批处理 executor，OpAddEntry 准备写当前 ledger。'},
+{d:160,t:'写 entry',x:'entry 一个接一个写进 L1；数据账每条消息都写，只追加，不修改。'},
+{d:250,t:'写满 8 条',x:'L1 达到本轮演示的容量上限，最后一条写完后标记 closeWhenDone。'},
+{d:340,t:'关闭 L1',x:'ledger 关闭，更新条目数、大小、时间戳；此时还没改元数据。'},
+{d:420,t:'创建 L2',x:'创建新 ledger 并把它加进内存里的 ledgers 列表；L2 成为当前写入账本。'},
+{d:500,t:'写索引账',x:'把 L1 的 entries / size 和 L2 的 ledgerId 一起写进 /managed-ledgers/...；这才是「换账本才更新」的那一次。'},
+{d:590,t:'推进进度账',x:'消费者 ack 后，markDeletePosition 异步持久化；进度账按 ack 批量写，不跟写入同步。'},
+{d:680,t:'崩溃恢复',x:'Broker 挂了：新 owner 读索引账拿到 ledger 列表，打开最后一本 ledger 恢复 LAC，再逐个恢复 cursor。'}];
+var PARTS={broker:['brokerBox','cnxBox','topicBox','mlBox'],
+ledger:['ledgerPanel','l0','l1','l2','e0','e1','e2','e3','e4','e5','e6','e7','fillBar'],
+bookies:['bkPanel','bk0','bk1','bk2','b0','b1','b2'],
+metadata:['metaBox','metaGlow','metaL0','metaL1','metaL2'],
+cursor:['cursorBox','curBar']};
+var CHIPS=[{k:'data',l:'数据账'},{k:'index',l:'索引账'},{k:'cursor',l:'进度账'},{k:'recover',l:'恢复'}];
+var QUIZ=[{q:'为什么元数据里的 ledger 列表可以「少一条正在写的 ledger」？',opts:['这是 bug，应该每条消息都更新','ledger 列表只在创建 / 关闭 / 删除时更新；正在写的 ledger 由 Bookie 侧恢复时补上','因为元数据存储会丢数据'],a:1,exp:'数据账每条都写，索引账换本才写。恢复时以 Bookie 上的 ledger 为准，把最后一条补回来，所以短暂的「少一条」是正常的。'},
+{q:'一条消息写入成功后，哪本账最先更新？',opts:['索引账','数据账：entry 先落到 Bookie 的 ledger 上','进度账'],a:1,exp:'先写数据，再谈索引和进度。如果反过来，索引会指向不存在的数据。'},
+{q:'ack 之后消息仍然可能重投，根因是哪本账？',opts:['数据账没写成功','进度账是异步持久化的，崩溃时最后一段 ack 可能还没落盘','索引账版本冲突'],a:1,exp:'至少一次的来源就在进度账。消息不会丢，但会重复；要解决重复只能做幂等或用事务。'},
+{q:'cursor 的未确认位图为什么可能写到单独的 cursor ledger？',opts:['为了好看','位图可能很大，放元数据节点会撑爆节点大小限制','因为 Bookie 更便宜'],a:1,exp:'位置是小的、频繁更新的，放元数据；位图是大的、可批量写的，放 BookKeeper。两者通过 cursorsLedgerId 关联。'},
+{q:'Broker 重启后恢复 topic，正确的顺序是？',opts:['先恢复 cursor，再读 ledger 列表','读元数据 ledger 列表 → 打开最后一本 ledger 恢复 LAC → 逐个恢复 cursor','直接让客户端重发'],a:1,exp:'没有 ledger 列表就不知道去哪找数据；没有 LAC 就不知道最后一条在哪；最后才是每个订阅的 cursor。'}];
+function box(x,y,w,h,rx,fill,stroke,dash){return '<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="'+(rx||10)+'" fill="'+(fill||'#ffffff')+'" stroke="'+(stroke||'#3B3A34')+'" stroke-width="1.4"'+(dash?' stroke-dasharray="'+dash+'"':'')+'/>';}
+function tx(x,y,s,cls,anchor,fill){return '<text class="'+(cls||'ts')+'" x="'+x+'" y="'+y+'"'+(anchor?' text-anchor="'+anchor+'"':'')+(fill?' fill="'+fill+'"':'')+'>'+s+'</text>';}
+var H='';
+// broker stack
+H+='<g id="brokerBox">'+box(24,90,200,200,12,'#FBFAF6','#B4B2A9','6 5')+tx(124,84,'Broker 内部','tn','middle')+'</g>';
+H+='<g id="cnxBox">'+box(40,122,168,44)+tx(52,140,'ServerCnx','tn')+tx(52,156,'校验 / 去重','ts')+'</g>';
+H+='<g id="topicBox">'+box(40,174,168,44)+tx(52,192,'PersistentTopic','tn')+tx(52,208,'fencing / 限速','ts')+'</g>';
+H+='<g id="mlBox">'+box(40,226,168,48)+tx(52,246,'ManagedLedger','tn')+tx(52,262,'pendingAddEntries','ts')+'</g>';
+H+='<path d="M124 166 L124 170" stroke="#C46A0A" stroke-width="1.5" marker-end="url(#flw)" fill="none"/>';
+H+='<path d="M124 218 L124 222" stroke="#C46A0A" stroke-width="1.5" marker-end="url(#flw)" fill="none"/>';
+H+='<path d="M208 250 L244 250" stroke="#C46A0A" stroke-width="1.5" marker-end="url(#flw)" fill="none"/>';
+// ledger panel
+H+='<g id="ledgerPanel"><rect x="248" y="84" width="420" height="268" rx="14" fill="#FBFAF6" stroke="#B4B2A9" stroke-width="1.4" stroke-dasharray="6 5"/>'+tx(458,108,'ManagedLedger = 一串 ledger','tn','middle')+'</g>';
+H+='<g id="l0">'+box(264,122,388,44,8,'#F5F4EF','#B4B2A9')+tx(278,140,'L0 · 已关闭','tn')+tx(278,156,'50,000 条 · 100 MB','ts')+'</g>';
+H+='<g id="l1">'+box(264,176,388,64,8,'#FFF6E8','#EF9F27')+tx(278,194,'L1 · 当前写入','tn')+tx(560,194,'closeWhenDone=false','ts','end')+'</g>';
+for(var i=0;i<8;i++){var ex=276+i*46;H+='<g id="e'+i+'" opacity="0.15">'+box(ex,206,38,16,4,'#EF9F27','#D97E06')+'</g>';}
+H+='<rect x="264" y="228" width="388" height="8" rx="4" fill="#F5F4EF" stroke="#D3D1C7" stroke-width="1"/>';
+H+='<rect id="fillBar" x="264" y="228" width="0" height="8" rx="4" fill="#EF9F27"/>';
+H+='<g id="l2">'+box(264,252,388,44,8,'#ffffff','#B4B2A9','5 4')+tx(278,270,'L2 · 待创建','tn')+tx(278,286,'创建后成为 currentLedger','ts')+'</g>';
+H+='<path d="M124 274 L124 300 L458 300 L458 300" stroke="#C46A0A" stroke-width="1.2" stroke-dasharray="4 4" fill="none" opacity="0.35"/>';
+H+='<path d="M458 352 L458 382" stroke="#C46A0A" stroke-width="1.5" marker-end="url(#flw)" fill="none"/>';
+// bookies
+H+='<g id="bkPanel"><rect x="248" y="382" width="420" height="112" rx="14" fill="#FBFAF6" stroke="#B4B2A9" stroke-width="1.4" stroke-dasharray="6 5"/>'+tx(458,398,'BookKeeper：entry 复制到 writeQuorum 个 Bookie','tn','middle')+'</g>';
+for(var b=0;b<3;b++){var bx=264+b*136;H+='<g id="bk'+b+'">'+box(bx,418,112,48,8,'#ffffff','#3B3A34')+tx(bx+56,438,'Bookie '+(b+1),'tn','middle')+tx(bx+56,456,'ledger 副本','ts','middle')+'</g>';H+='<circle id="b'+b+'" cx="'+(bx+56)+'" cy="476" r="5" fill="#D3D1C7" stroke="#B4B2A9" stroke-width="1"/>';}
+// metadata
+H+='<g id="metaBox">'+box(692,84,284,248,10,'#ffffff','#3B3A34')+tx(708,108,'元数据存储','tn')+tx(708,128,'/managed-ledgers/tenant/ns/topic','ts')+'</g>';
+H+='<rect id="metaGlow" x="700" y="138" width="268" height="180" rx="8" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.4" opacity="0"/>';
+H+='<g id="metaL0">'+tx(708,156,'L0 · 50000 条 · 100MB','ts')+'</g>';
+H+='<g id="metaL1" opacity="0">'+tx(708,184,'L1 · 8 条 · 512KB','ts','start','#854F0B')+'</g>';
+H+='<g id="metaL2" opacity="0">'+tx(708,212,'L2 · 0 条','ts','start','#854F0B')+'</g>';
+H+='<line x1="708" y1="232" x2="960" y2="232" stroke="#ECEAE2" stroke-width="1"/>';
+H+='<text class="ts" x="708" y="256">…/topic/cursor</text>';
+H+='<text class="ts" x="708" y="278">markDeletePosition</text>';
+H+='<text class="ts" x="708" y="300">cursorsLedgerId</text>';
+// cursor
+H+='<g id="cursorBox">'+box(692,352,284,134,10,'#ffffff','#3B3A34')+tx(708,376,'Cursor · 进度账','tn')+tx(708,396,'读到哪里，就记到哪里','ts')+'</g>';
+H+='<rect x="708" y="418" width="252" height="14" rx="7" fill="#F5F4EF" stroke="#D3D1C7" stroke-width="1"/>';
+H+='<rect id="curBar" x="708" y="418" width="0" height="14" rx="7" fill="#639922"/>';
+H+='<text id="curT" class="ts" x="708" y="458">markDeletePosition = —</text>';
+H+='<path id="recoverPath" d="M692 300 L650 300 L650 208 L652 208" stroke="#E24B4A" stroke-width="1.8" stroke-dasharray="5 4" fill="none" opacity="0" marker-end="url(#flwR)"/>';
+H+='<text id="recoverT" class="ts" x="654" y="326" fill="#8A2A2A" opacity="0">恢复：读索引账 → 打开最后一本 ledger</text>';
+H+='<text id="stageTag" class="ts" x="985" y="544" text-anchor="end" fill="#854F0B"></text>';
+H+='<circle id="tok" cx="124" cy="124" r="9" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/>';
+H+='<text id="tokT" class="ts" x="124" y="106" text-anchor="middle" fill="#854F0B">entry</text>';
+document.getElementById('scene').innerHTML=H;
+var el={};
+document.querySelectorAll('#scene [id]').forEach(function(n){el[n.id]=n;});
+var WP=[[0,124,124],[80,124,250],[160,450,196],[250,450,196],[340,450,196],[420,450,276],[500,930,250],[590,930,430],[680,838,180],[720,124,124]];
+function tokPos(th){if(th>=710)return null;var i=0;while(i<WP.length-2&&th>WP[i+1][0])i++;var a=WP[i],b=WP[i+1];var t=(th-a[0])/(b[0]-a[0]);return[a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];}
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,STEP_DUR=900;
+var dots=[];
+for(var s=0;s<STEPS.length;s++){
+(function(n){
+var b=document.createElement('button');
+b.className='stepnode';
+b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+b.onclick=function(){goStep(n);};
+stepBar.appendChild(b);dots.push(b);
+})(s);
+}
+var chipBox=document.getElementById('stateChips'),chipEls={};
+CHIPS.forEach(function(c){
+var s=document.createElement('span');s.className='chip';
+s.innerHTML=c.l+' <b>--</b>';chipBox.appendChild(s);chipEls[c.k]=s;
+});
+function setChip(k,v){
+var n=chipEls[k];if(!n)return;var b=n.querySelector('b');
+if(b&&b.textContent!==v)b.textContent=v;
+n.classList.toggle('on',/^(开|是|已|完成|生效|放行|进行|2\/2|owner|markDelete)/.test(v));
+n.classList.toggle('off',/^(关|否|待命|—|未)/.test(v));
+}
+var stepIdx=-1;
+function setAuto(on){
+mode='auto';run=on;stepTo=null;btn.textContent=on?'暂停':'播放';
+if(on){stepIdx=-1;dots.forEach(function(d){d.classList.remove('on');});
+stepT.textContent='自动运转模式';
+stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格。';}
+}
+window.goStep=function(i){
+stepIdx=(i+STEPS.length)%STEPS.length;
+mode='step';run=false;
+var target=STEPS[stepIdx].d/PHASE_MAX*PERIOD,delta=target-phase;
+if(reduced||Math.abs(delta)>PERIOD/4){
+phase=target;stepTo=null;render(target/PERIOD*PHASE_MAX+0.01);
+}else{
+stepFrom=phase;stepTo=phase+delta;stepElapsed=0;render(phase/PERIOD*PHASE_MAX+0.01);
+}
+btn.textContent='继续自动运转';
+dots.forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+stepX.textContent=STEPS[stepIdx].x;
+};
+btn.textContent=run?'暂停':'播放';
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+function setOp(id,v){var n=typeof id==='string'?el[id]:id;if(n)n.setAttribute('opacity',v.toFixed(2));}
+function setText(id,s){var n=el[id]||document.getElementById(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setAttr(id,k,v){var n=el[id];if(n)n.setAttribute(k,v);}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){return t*t*(3-2*t);}
+
+function render(th){
+var pr=Math.round(((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX);
+setText('roPhase',pr+'°');
+var si=0;for(var ri=0;ri<STEPS.length;ri++){if(pr>=STEPS[ri].d)si=ri;}
+if(mode==='step'&&stepIdx>=0)si=stepIdx;
+setText('roStep',STEPS[si]?STEPS[si].t:'—');
+var p=tokPos(th);
+if(p){setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));setAttr('tokT','x',p[0].toFixed(1));setAttr('tokT','y',(p[1]-18).toFixed(1));setOp('tok',1);setOp('tokT',1);}else{setOp('tok',0);setOp('tokT',0);}
+var n=clamp(Math.floor((th-160)/22),0,8);
+for(var i=0;i<8;i++){setOp('e'+i,i<n?1:0.15);}
+if(el['fillBar'])el['fillBar'].setAttribute('width',(n/8*388).toFixed(1));
+setOp('metaGlow',th>=500&&th<600?1:0);
+setOp('metaL1',th>=500?1:0);
+setOp('metaL2',th>=500?1:0);
+setOp('l1',th>=340?0.55:1);
+setOp('l2',th>=420?1:0.55);
+if(el['l2']){var l2r=el['l2'].querySelector('rect');if(th>=420){l2r.setAttribute('fill','#FFF6E8');l2r.setAttribute('stroke','#EF9F27');}else{l2r.setAttribute('fill','#ffffff');l2r.setAttribute('stroke','#B4B2A9');}}
+if(el['curBar'])el['curBar'].setAttribute('width',(th>=590?Math.min(252,(th-590)*2.6):0).toFixed(1));
+setText('curT',th>=590?'markDeletePosition = 6:120':'markDeletePosition = —');
+for(var b=0;b<3;b++){var c=el['b'+b];if(c){c.setAttribute('fill',b<2&&th>=160?'#639922':'#D3D1C7');c.setAttribute('stroke',b<2&&th>=160?'#4C7A1A':'#B4B2A9');}}
+setOp('recoverPath',th>=660?0.95:0);setOp('recoverT',th>=660?1:0);
+var names=['写入到达','进入账本','写 entry','写满 8 条','关闭 L1','创建 L2','写索引账','推进进度账','崩溃恢复'];
+var si=Math.min(8,Math.floor(th/80));
+setText('stageTag',th>=710?'':'当前：'+names[si]);
+setText('roKey', th>=590?'markDeletePosition = 6:120':th>=500?'索引账已写':'—');
+setChip('data', th>=160?'每条写入':'待命');
+setChip('index', th>=500?'已写 L1/L2':'待命');
+setChip('cursor', th>=590?'markDelete':'待命');
+setChip('recover', th>=660?'回放中':'—');
+}
+function tick(now){
+var dt=Math.min(50,now-last);last=now;
+if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+if(mode==='step'&&stepTo!==null){
+stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);
+var p=stepElapsed/STEP_DUR;
+var e=p*p*(3-2*p);
+phase=stepFrom+(stepTo-stepFrom)*e;
+if(p>=1){phase=((stepTo%PERIOD)+PERIOD)%PERIOD;stepTo=null;}
+}
+render(phase/PERIOD*PHASE_MAX+0.01);
+requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+document.querySelectorAll('.part').forEach(function(b){
+b.onclick=function(){
+var ids=PARTS[b.getAttribute('data-part')]||[];
+ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+};
+});
+var BASE=(location.pathname.split('/middleware-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/middleware/lab';
+document.getElementById('lnkArt').href=BASE+'/middleware/tutorial/02-broker-ledger';
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+var d=document.createElement('div');d.className='q';
+var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+h+='<div class="exp">'+it.exp+'</div>';
+d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+var b=e.target.closest('.opt');if(!b)return;
+var box2=b.parentElement;if(box2.classList.contains('done'))return;
+box2.classList.add('done');
+var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+box2.querySelectorAll('.opt').forEach(function(x){
+var xi=+x.getAttribute('data-oi');
+if(xi===QUIZ[qi].a)x.classList.add('right');
+else if(x===b)x.classList.add('wrong');
+});
+});
+})();
+</script>
+</body>
+</html>
