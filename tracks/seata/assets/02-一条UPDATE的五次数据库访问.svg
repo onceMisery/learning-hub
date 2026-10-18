@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 620" width="1000" height="620" font-family="Microsoft YaHei, sans-serif">
+<defs>
+<marker id="flw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="flwG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="flwR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="flwB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<rect x="0" y="0" width="1000" height="620" fill="#ffffff"/>
+<text x="500" y="34" font-size="20" fill="#1F1E1A" text-anchor="middle" font-weight="600">一条 UPDATE 的五次数据库访问</text>
+<text x="500" y="56" font-size="12" fill="#6B695F" text-anchor="middle" font-weight="400">以 UPDATE stock SET count = count - 1 WHERE id = 100 为例：SQL 先执行，全局锁在本地 commit 前才拿</text>
+<text x="960" y="28" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">橙色：本地数据库</text>
+<text x="960" y="44" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色：TC 全局锁</text>
+<rect x="40" y="76" width="360" height="96" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="56" y="100" font-size="14" fill="#1F1E1A" text-anchor="start" font-weight="600">业务 SQL</text>
+<text x="56" y="124" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="400">UPDATE stock SET count = count - 1</text>
+<text x="56" y="144" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="400">WHERE id = 100;</text>
+<text x="56" y="162" font-size="11" fill="#6B695F" text-anchor="start" font-weight="400">影响行数 1，但还没 commit</text>
+<rect x="700" y="76" width="260" height="132" rx="10" fill="#fff" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="716" y="100" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">undo_log 表（同一本地事务）</text>
+<text x="716" y="124" font-size="11" fill="#6B695F" text-anchor="start" font-weight="400">branch_id / xid</text>
+<text x="716" y="142" font-size="11" fill="#6B695F" text-anchor="start" font-weight="400">rollback_info（JSON）</text>
+<text x="716" y="160" font-size="11" fill="#6B695F" text-anchor="start" font-weight="400">  beforeImage / afterImage</text>
+<text x="716" y="178" font-size="11" fill="#6B695F" text-anchor="start" font-weight="400">log_status = 0</text>
+<text x="716" y="196" font-size="11" fill="#4C7A1A" text-anchor="start" font-weight="400">唯一键 (xid, branch_id)</text>
+<line x1="70" y1="292" x2="930" y2="292" stroke="#D3D1C7" stroke-width="2"/>
+<circle cx="110" cy="292" r="15" fill="#ffffff" stroke="#C46A0A" stroke-width="2"/>
+<text x="110" y="296" font-size="11" fill="#C46A0A" text-anchor="middle" font-weight="700">1</text>
+<text x="110" y="326" font-size="11" fill="#1F1E1A" text-anchor="middle" font-weight="600">SELECT ... FOR UPDATE</text>
+<text x="110" y="342" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">beforeImage，拿本地行锁</text>
+<circle cx="250" cy="292" r="15" fill="#ffffff" stroke="#C46A0A" stroke-width="2"/>
+<text x="250" y="296" font-size="11" fill="#C46A0A" text-anchor="middle" font-weight="700">2</text>
+<text x="250" y="326" font-size="11" fill="#1F1E1A" text-anchor="middle" font-weight="600">UPDATE stock ...</text>
+<text x="250" y="342" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">业务 SQL 修改数据</text>
+<circle cx="390" cy="292" r="15" fill="#ffffff" stroke="#C46A0A" stroke-width="2"/>
+<text x="390" y="296" font-size="11" fill="#C46A0A" text-anchor="middle" font-weight="700">3</text>
+<text x="390" y="326" font-size="11" fill="#1F1E1A" text-anchor="middle" font-weight="600">SELECT ... WHERE id=100</text>
+<text x="390" y="342" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">afterImage，按主键回查</text>
+<circle cx="540" cy="292" r="15" fill="#ffffff" stroke="#C46A0A" stroke-width="2"/>
+<text x="540" y="296" font-size="11" fill="#C46A0A" text-anchor="middle" font-weight="700">4</text>
+<text x="540" y="326" font-size="11" fill="#1F1E1A" text-anchor="middle" font-weight="600">BranchRegister</text>
+<text x="540" y="342" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">向 TC 抢全局锁（RPC）</text>
+<circle cx="690" cy="292" r="15" fill="#ffffff" stroke="#C46A0A" stroke-width="2"/>
+<text x="690" y="296" font-size="11" fill="#C46A0A" text-anchor="middle" font-weight="700">5</text>
+<text x="690" y="326" font-size="11" fill="#1F1E1A" text-anchor="middle" font-weight="600">INSERT undo_log</text>
+<text x="690" y="342" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">写回滚日志</text>
+<circle cx="840" cy="292" r="15" fill="#ffffff" stroke="#C46A0A" stroke-width="2"/>
+<text x="840" y="296" font-size="11" fill="#C46A0A" text-anchor="middle" font-weight="700">6</text>
+<text x="840" y="326" font-size="11" fill="#1F1E1A" text-anchor="middle" font-weight="600">COMMIT</text>
+<text x="840" y="342" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">本地事务提交</text>
+<rect x="80" y="370" width="790" height="26" rx="6" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="90" y="387" font-size="11" fill="#C46A0A" text-anchor="start" font-weight="400">本地数据库行锁：从 beforeImage 的 FOR UPDATE 一直持有到本地 COMMIT</text>
+<rect x="510" y="406" width="370" height="26" rx="6" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="520" y="423" font-size="11" fill="#4C7A1A" text-anchor="start" font-weight="400">TC 全局锁：从 BranchRegister 到全局决议（AT 提交时提前释放）</text>
+<rect x="40" y="462" width="920" height="100" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="56" y="486" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">两个容易搞错的点</text>
+<text x="56" y="510" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="400">① 全局锁在 SQL 执行之后才拿：update 成功不代表锁抢到了，冲突通常在 commit 时才暴露。</text>
+<text x="56" y="530" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="400">② undo_log 和业务 SQL 在同一个本地事务里：本地提交失败，undo_log 也一起回滚。</text>
+<text x="56" y="550" font-size="12" fill="#6B695F" text-anchor="start" font-weight="400">③ 默认只抓「更新列 + 主键」（onlyCareUpdateColumns=true），不是整行快照。</text>
+</svg>

@@ -1,0 +1,117 @@
+{
+  "id": "seata",
+  "title": "分布式事务 · 读 Seata 源码",
+  "subtitle": "沿着一条 XID 的旅程，把 AT 的镜像与锁、TC 的会话账本、TCC/Saga/XA 的补偿路径读成一套能复述的系统",
+  "order": 65,
+  "status": "active",
+  "accent": "amber",
+  "tags": [
+    "Seata",
+    "分布式事务",
+    "AT",
+    "TCC",
+    "Saga",
+    "XA"
+  ],
+  "toolchain": "Apache Seata 2.8.0-SNAPSHOT",
+  "verifiedAt": "2026-10-18",
+  "outline": [
+    "全局事务：一条 XID 从 begin 走到 commit",
+    "AT 一阶段：一条 UPDATE 怎么变成 undo log 和一把全局锁",
+    "AT 二阶段：提交为什么先返回，回滚怎么把数据倒放",
+    "TC 的账本：状态机、超时重试与一台服务器倒下之后",
+    "TCC、Saga、XA：三种把回滚交给别人的方式",
+    "XID 的边界：传播、代理与那些看起来在事务里的调用"
+  ],
+  "sections": [
+    {
+      "id": "tutorial",
+      "title": "教程",
+      "path": "tutorial",
+      "order": 10,
+      "pages": [
+        {
+          "file": "01-全局事务.md",
+          "slug": "01-global-transaction",
+          "title": "全局事务：一条 XID 从 begin 走到 commit",
+          "tags": [
+            "TM",
+            "TC",
+            "RM",
+            "XID",
+            "两阶段"
+          ]
+        },
+        {
+          "file": "02-AT第一阶段.md",
+          "slug": "02-at-phase-one",
+          "title": "AT 一阶段：一条 UPDATE 怎么变成 undo log 和一把全局锁",
+          "tags": [
+            "AT",
+            "undo log",
+            "前后镜像",
+            "全局锁",
+            "DataSourceProxy"
+          ]
+        },
+        {
+          "file": "03-AT第二阶段.md",
+          "slug": "03-at-phase-two",
+          "title": "AT 二阶段：提交为什么先返回，回滚怎么把数据倒放",
+          "tags": [
+            "异步提交",
+            "回滚",
+            "脏写",
+            "锁冲突",
+            "undo log"
+          ]
+        },
+        {
+          "file": "04-TC账本.md",
+          "slug": "04-tc-ledger",
+          "title": "TC 的账本：状态机、超时重试与一台服务器倒下之后",
+          "tags": [
+            "Session",
+            "Raft",
+            "超时",
+            "重试",
+            "高可用"
+          ]
+        },
+        {
+          "file": "05-补偿模式.md",
+          "slug": "05-tcc-saga-xa",
+          "title": "TCC、Saga、XA：三种把回滚交给别人的方式",
+          "tags": [
+            "TCC",
+            "Saga",
+            "XA",
+            "fence",
+            "补偿"
+          ]
+        },
+        {
+          "file": "06-XID边界.md",
+          "slug": "06-xid-boundary",
+          "title": "XID 的边界：传播、代理与那些看起来在事务里的调用",
+          "tags": [
+            "RootContext",
+            "XID 传播",
+            "线程池",
+            "RPC",
+            "代理"
+          ]
+        }
+      ]
+    }
+  ],
+  "codeRoots": [],
+  "assets": [
+    "assets"
+  ],
+  "lab": {
+    "title": "互动原理实验室",
+    "subtitle": "六章动态图解：从一条 XID 的旅程、AT 的镜像与锁，到 TC 状态机、三种补偿模式与 XID 的边界",
+    "route": "/seata/lab"
+  }
+}

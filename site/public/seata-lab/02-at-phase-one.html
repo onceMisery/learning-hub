@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AT 一阶段：镜像与锁 · Seata 互动原理实验室 第 2 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:960px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:720px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:600;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:12px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:600;fill:#1F1E1A}
+.tag{font-size:10.5px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:66px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+.modebar{display:flex;align-items:center;gap:8px;margin:6px 4px 0;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.modebar .mlabel{font-weight:600;color:#3B3A34}
+.modebtn{padding:5px 12px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:12.5px;cursor:pointer;font-family:inherit}
+.modebtn:hover{border-color:#888780}
+.modebtn.on{background:#FFF6E8;border-color:#EF9F27;color:#854F0B;font-weight:600}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .outbranch{display:inline-flex;flex-direction:column;align-items:flex-start;gap:6px}
+.flow .outline{display:inline-flex;align-items:center;gap:8px}
+.flow .flownote{font-size:12px;color:#6B695F;font-weight:600;margin-right:4px}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 10px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+#scene [opacity]{transition:opacity .28s ease}
+#sub [opacity]{transition:opacity .28s ease}
+@media (prefers-reduced-motion: reduce){#scene [opacity],#sub [opacity]{transition:none}}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:8px 4px 0;font-size:12px;color:#6B695F}
+.legend i{display:inline-block;width:18px;height:0;border-top:2px solid #C46A0A;vertical-align:middle;margin-right:5px}
+.legend i.g{border-color:#639922}
+.legend i.r{border-color:#E24B4A}
+.legend i.dash{border-top-style:dashed}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：AT 一阶段：一条 UPDATE 怎么变成 undo log 和一把全局锁</a>
+  <span class="idx">第 2 / 6 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">SEATA · AT 一阶段</div>
+<h1>一条 UPDATE 的两本账</h1>
+<p>一条 UPDATE 被执行了，不等于它已经在全局事务里。镜像、锁键、undo_log、本地提交，四件事各有各的时点。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span>
+<span class="mnode">② 静态分解</span>
+<span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span>
+<span class="mnode">⑤ 环境场景</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 580" role="img" xmlns="http://www.w3.org/2000/svg"><title>一条 UPDATE 的两本账：镜像与锁</title><defs><marker id="flw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="flwG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="flwR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="flwB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker></defs><text class="th" x="500" y="26" text-anchor="middle">一条 UPDATE 的两本账：镜像与锁</text><text class="ts" x="500" y="47" text-anchor="middle">SQL 先执行，镜像和 undo_log 在同一个本地事务里；全局锁在本地 COMMIT 之前才拿</text><text x="985" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">橙色：本地数据库</text><text x="985" y="42" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色：TC 全局锁</text><g id="scene"><g id="sqlCard"><rect x="34" y="76" width="300" height="92" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="48" y="98" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">业务 SQL</text><text x="48" y="118" font-size="11" fill="#6B695F" text-anchor="start" font-weight="400">UPDATE stock SET count = count - 1</text><text x="48" y="135" font-size="11" fill="#6B695F" text-anchor="start" font-weight="400">WHERE id = 100;  影响 1 行，未提交</text></g><g id="undoCard"><rect x="666" y="76" width="300" height="132" rx="10" fill="#ffffff" stroke="#639922" stroke-width="1.3"/><text x="680" y="98" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">undo_log（同一本地事务）</text><text x="680" y="118" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">branch_id / xid</text><text x="680" y="135" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">rollback_info(JSON): before/after</text><text x="680" y="152" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">log_status = 0</text><text x="680" y="169" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">唯一键 (xid, branch_id)</text></g><g id="tcLock"><rect x="666" y="222" width="300" height="72" rx="10" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/><text x="680" y="244" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">TC：lock_table + branch_table</text><text x="680" y="264" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">resource → table → pk → XID</text><text x="680" y="281" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">逐行抢，冲突时整批已拿的锁释放</text></g><rect x="34" y="188" width="600" height="34" rx="8" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/><text x="48" y="210" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">RM / DataSourceProxy：解析 SQL、生成镜像、攒锁键</text><line x1="70" y1="300" x2="930" y2="300" stroke="#D3D1C7" stroke-width="2"/><g id="stage0"><circle cx="90" cy="300" r="15" fill="#fff" stroke="#C46A0A" stroke-width="2"/><text x="90" y="304" font-size="11" fill="#C46A0A" text-anchor="middle" font-weight="700">1</text><text x="90" y="334" font-size="11" fill="#1F1E1A" text-anchor="middle" font-weight="600">SELECT</text><text x="90" y="350" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">... FOR UPDATE</text><text x="90" y="366" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">beforeImage + 本地行锁</text></g><g id="stage1"><circle cx="240" cy="300" r="15" fill="#fff" stroke="#C46A0A" stroke-width="2"/><text x="240" y="304" font-size="11" fill="#C46A0A" text-anchor="middle" font-weight="700">2</text><text x="240" y="334" font-size="11" fill="#1F1E1A" text-anchor="middle" font-weight="600">UPDATE</text><text x="240" y="350" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">业务 SQL</text><text x="240" y="366" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">数据已修改</text></g><g id="stage2"><circle cx="390" cy="300" r="15" fill="#fff" stroke="#C46A0A" stroke-width="2"/><text x="390" y="304" font-size="11" fill="#C46A0A" text-anchor="middle" font-weight="700">3</text><text x="390" y="334" font-size="11" fill="#1F1E1A" text-anchor="middle" font-weight="600">SELECT</text><text x="390" y="350" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">WHERE id=100</text><text x="390" y="366" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">afterImage 回查</text></g><g id="stage3"><circle cx="540" cy="300" r="15" fill="#fff" stroke="#C46A0A" stroke-width="2"/><text x="540" y="304" font-size="11" fill="#C46A0A" text-anchor="middle" font-weight="700">4</text><text x="540" y="334" font-size="11" fill="#1F1E1A" text-anchor="middle" font-weight="600">BranchRegister</text><text x="540" y="350" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">RPC → TC</text><text x="540" y="366" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">注册分支、抢全局锁</text></g><g id="stage4"><circle cx="690" cy="300" r="15" fill="#fff" stroke="#C46A0A" stroke-width="2"/><text x="690" y="304" font-size="11" fill="#C46A0A" text-anchor="middle" font-weight="700">5</text><text x="690" y="334" font-size="11" fill="#1F1E1A" text-anchor="middle" font-weight="600">INSERT</text><text x="690" y="350" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">undo_log</text><text x="690" y="366" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">同一本地事务</text></g><g id="stage5"><circle cx="840" cy="300" r="15" fill="#fff" stroke="#C46A0A" stroke-width="2"/><text x="840" y="304" font-size="11" fill="#C46A0A" text-anchor="middle" font-weight="700">6</text><text x="840" y="334" font-size="11" fill="#1F1E1A" text-anchor="middle" font-weight="600">COMMIT</text><text x="840" y="350" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">本地事务</text><text x="840" y="366" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">数据对外可见</text></g><path d="M540 285 L720 294" fill="none" stroke="#C46A0A" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#flw)"/><text x="600" y="266" font-size="10.5" fill="#C46A0A" text-anchor="middle" font-weight="600">④ BranchRegister</text><rect id="localLock" x="66" y="404" width="788" height="24" rx="7" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="78" y="421" font-size="10.5" fill="#C46A0A" text-anchor="start" font-weight="400">本地数据库行锁：beforeImage 的 FOR UPDATE → 本地 COMMIT</text><rect id="globalLock" x="510" y="438" width="344" height="24" rx="7" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="522" y="455" font-size="10.5" fill="#4C7A1A" text-anchor="start" font-weight="400">TC 全局锁：BranchRegister → 全局决议（AT 提交提前释放）</text><rect x="34" y="480" width="932" height="72" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/><text x="50" y="504" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">两个容易搞错的点</text><text x="50" y="524" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="400">① update 成功不代表锁抢到了：冲突通常发生在 commit 前的 register()。</text><text x="50" y="542" font-size="11" fill="#6B695F" text-anchor="start" font-weight="400">② 默认只抓「更新列 + 主键」（onlyCareUpdateColumns=true），不是整行快照。</text></g><circle id="tok" cx="-20" cy="-20" r="9" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/></svg>
+<svg id="eng2" viewBox="0 0 1000 180" role="img" xmlns="http://www.w3.org/2000/svg"><text x="40" y="26" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">相位总线：自动与分步共用同一进度</text><text x="960" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">0° → 720°</text><rect id="seg0" x="42.0" y="52" width="111.0" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="97.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">SQL</text><text x="97.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">0°</text><rect id="seg1" x="157.0" y="52" width="111.0" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="212.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">beforeImage</text><text x="212.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">90°</text><rect id="seg2" x="272.0" y="52" width="111.0" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="327.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">UPDATE</text><text x="327.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">170°</text><rect id="seg3" x="387.0" y="52" width="111.0" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="442.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">afterImage</text><text x="442.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">250°</text><rect id="seg4" x="502.0" y="52" width="111.0" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="557.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">注册+锁</text><text x="557.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">330°</text><rect id="seg5" x="617.0" y="52" width="111.0" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="672.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">undo_log</text><text x="672.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">430°</text><rect id="seg6" x="732.0" y="52" width="111.0" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="787.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">COMMIT</text><text x="787.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">520°</text><rect id="seg7" x="847.0" y="52" width="111.0" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="902.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">上报</text><text x="902.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">620°</text><line id="subNow" x1="40" y1="44" x2="40" y2="126" stroke="#C46A0A" stroke-width="2"/><text x="500" y="152" font-size="11" fill="#6B695F" text-anchor="middle" font-weight="400">每格是一个可定格的关键时刻；分步时所有视图冻结到同一相位。</text></svg>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 轮 / 7.8 秒</span>
+</div>
+
+<div class="readout">
+<span class="ro">相位 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">锁键 / 时点 <b id="roKey">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav">
+<button class="btn" onclick="prevStep()">‹ 上一步</button>
+<button class="btn warn" onclick="nextStep()">下一步 ›</button>
+</span>
+</div>
+<div class="legend"><span><i></i>本地数据库</span><span><i class="g"></i>TC 全局锁</span><span><i class="dash"></i>RPC / 异步</span><span><i class="r"></i>失败 / 回滚</span></div>
+<p class="figcap">进度 0° = beforeImage 开始，720° = 本地提交并上报完成；分步定格的是关键时刻，不代表真实耗时。<br>口径：Seata 2.8.0-SNAPSHOT；默认 onlyCareUpdateColumns=true，锁重试 30 次 / 10ms；不同数据库的行锁行为可能不同。</p>
+</div>
+</div>
+
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：先把它当黑盒</h2></div>
+<p class="sec-sub">不急着拆类，只看它对外表现出什么。</p>
+<div class="quote"><i>先把系统当黑盒：只看输入、输出和边界，不急着解释内部。</i></div>
+
+<p>站在业务代码的角度，`executeUpdate()` 返回了 1，就算成功。它不告诉你镜像查了几次、锁有没有抢到、undo_log 写没写。</p>
+<div class="flow">
+<span class="node">UPDATE ...</span><span class="arr">→</span>
+<span class="node box">DataSourceProxy / ConnectionProxy</span>
+<span class="outbranch">
+<span class="outline"><span class="arr">→</span><span class="node">beforeImage + 业务 SQL + afterImage</span></span>
+<span class="outline"><span class="arr">↳</span><span class="node">注册分支 + undo_log + 本地 COMMIT</span></span>
+</span>
+</div>
+<p>这条链路里，真正会让业务线程停下来等的是「注册分支 + 抢全局锁」。SQL 本身反而先跑完了。所以并发冲突的表现通常是：update 成功，commit 报 `LockKeyConflict`。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：部件各管什么</h2></div>
+<p class="sec-sub">先把结构钉住，再让时间进来。点下面的部件卡，动画里对应部分会亮起。</p>
+<div class="quote"><i>结构分解要 MECE：同一层只放同一粒度的部件。</i></div>
+<div class="figure"><svg viewBox="0 0 920 220" role="img" xmlns="http://www.w3.org/2000/svg"><text x="460" y="24" font-size="15" fill="#1F1E1A" text-anchor="middle" font-weight="600">一条 UPDATE 的七次动作</text><text x="460" y="44" font-size="11.5" fill="#6B695F" text-anchor="middle" font-weight="400">镜像 → 业务 SQL → 回查 → 注册/锁 → undo_log → 本地 COMMIT</text><rect x="20" y="80" width="150" height="64" rx="9" fill="#fff" stroke="#C46A0A" stroke-width="1.3"/><text x="32" y="104" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">① beforeImage</text><text x="32" y="126" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">SELECT ... FOR UPDATE</text><rect x="190" y="80" width="150" height="64" rx="9" fill="#fff" stroke="#C46A0A" stroke-width="1.3"/><text x="202" y="104" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">② 业务 SQL</text><text x="202" y="126" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">UPDATE stock</text><rect x="360" y="80" width="150" height="64" rx="9" fill="#fff" stroke="#C46A0A" stroke-width="1.3"/><text x="372" y="104" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">③ afterImage</text><text x="372" y="126" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">按主键回查</text><rect x="530" y="80" width="150" height="64" rx="9" fill="#fff" stroke="#C46A0A" stroke-width="1.3"/><text x="542" y="104" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">④ 注册/锁</text><text x="542" y="126" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">TC BranchRegister</text><rect x="700" y="80" width="150" height="64" rx="9" fill="#fff" stroke="#C46A0A" stroke-width="1.3"/><text x="712" y="104" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">⑤ undo_log</text><text x="712" y="126" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">INSERT 同一事务</text><path d="M170 112 L186 112" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><path d="M340 112 L356 112" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><path d="M510 112 L526 112" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><path d="M680 112 L696 112" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><rect x="700" y="160" width="150" height="34" rx="7" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="775" y="182" font-size="11.5" fill="#4C7A1A" text-anchor="middle" font-weight="600">⑥ 本地 COMMIT</text><path d="M775 144 L775 156" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flw)"/><text x="460" y="200" font-size="11" fill="#C46A0A" text-anchor="middle" font-weight="600">分支注册、写 undo_log、本地 COMMIT 的顺序是死的；先锁后提交。</text></svg></div>
+<div class="partgroup"><div class="gname">代理与执行</div><div class="parts"><button class="part" data-part="proxy"><b>1. DataSourceProxy</b><span>包住连接，让 SQL 进入 Seata 的执行模板。</span></button><button class="part" data-part="sql"><b>2. SQL 解析</b><span>Druid 解析失败会退化成 PlainExecutor，不生成镜像。</span></button></div></div><div class="partgroup"><div class="gname">镜像与锁</div><div class="parts"><button class="part" data-part="image"><b>3. 前后镜像</b><span>beforeImage 带 FOR UPDATE；afterImage 按主键回查。</span></button><button class="part" data-part="lock"><b>4. 锁键</b><span>表 + 主键；一次 commit 批量提交，不是每条 SQL 一次。</span></button></div></div><div class="partgroup"><div class="gname">账本</div><div class="parts"><button class="part" data-part="undo"><b>5. undo_log</b><span>和业务 SQL 同一本地事务；默认只抓更新列 + 主键。</span></button><button class="part" data-part="commit"><b>6. 本地 COMMIT</b><span>数据可见，分支上报 PhaseOne_Done。</span></button></div></div>
+<p class="hint">静态图与动画共用同一套编号和口径；把动画暂停，它就是一张可打印的结构图。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：一步一停看顺序</h2></div>
+<p class="sec-sub">重点不是记住箭头，而是记住每一步「谁在等谁」。</p>
+<div class="quote"><i>动态分析看三件事：顺序、状态、触发条件。</i></div>
+
+<table class="grid">
+<tr><th>动作</th><th>发生在哪</th><th>谁在等</th><th>失败会怎样</th></tr>
+<tr><td>beforeImage</td><td>SELECT ... FOR UPDATE</td><td>本地行锁</td><td>查询失败，本地事务回滚</td></tr>
+<tr><td>业务 SQL</td><td>UPDATE</td><td>本地数据库</td><td>执行失败，本地事务回滚</td></tr>
+<tr><td>afterImage</td><td>按主键回查</td><td>本地数据库</td><td>查不到/行数不一致，报错</td></tr>
+<tr><td>注册 + 锁</td><td>TC BranchRegister</td><td>TC</td><td>冲突重试，30×10ms 后超时</td></tr>
+<tr><td>undo_log</td><td>同一本地事务</td><td>本地数据库</td><td>写入失败，本地事务回滚</td></tr>
+<tr><td>COMMIT</td><td>本地数据库</td><td>本地数据库</td><td>提交失败，上报 PhaseOne_Failed</td></tr>
+</table>
+<p>注意「注册 + 锁」在「业务 SQL」之后。全局锁保护的是提交窗口，不是执行窗口；真正让并发写排队的是 beforeImage 拿到的本地行锁。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件 × 阶段</h2></div>
+<p class="sec-sub">同一部件在不同阶段扮演不同角色，这张矩阵是排障时的索引。</p>
+<div class="quote"><i>把部件放回阶段里，才能看清谁在什么时候接力。</i></div>
+
+<table class="grid">
+<tr><th>阶段</th><th>本地数据库</th><th>TC</th><th>undo_log</th><th>全局锁</th></tr>
+<tr><td>beforeImage</td><td>SELECT FOR UPDATE，持行锁</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>业务 SQL</td><td>数据已改，未提交</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>afterImage</td><td>按主键回查</td><td>—</td><td>内存中</td><td>—</td></tr>
+<tr><td>注册 + 锁</td><td>行锁仍持有</td><td>branch_table / lock_table</td><td>内存中</td><td>逐行抢</td></tr>
+<tr><td>写 undo</td><td>同一事务 INSERT</td><td>分支已注册</td><td>落库</td><td>持有</td></tr>
+<tr><td>COMMIT</td><td>提交，数据可见</td><td>收 PhaseOne_Done</td><td>随事务提交</td><td>持有到全局决议</td></tr>
+</table>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：它依赖什么才能成立</h2></div>
+<p class="sec-sub">拆掉任意一个外部依赖，前面看到的行为都会变。</p>
+<div class="quote"><i>任何机制都有环境前提；拆掉外部依赖，它就不再成立。</i></div>
+<div class="envcards">
+<div class="env"><b>主键</b><span>镜像按主键回查，锁键按主键构造；无主键用不了 AT。</span></div>
+<div class="env"><b>可解析的 SQL</b><span>存储过程、特殊方言、动态拼接可能退化成 PlainExecutor。</span></div>
+<div class="env"><b>undo_log 表</b><span>每个参与库都要建；唯一键 (xid, branch_id)。</span></div>
+<div class="env"><b>TC 锁存储</b><span>file/db/redis/raft 决定锁放在哪、多 TC 是否共享。</span></div>
+<div class="env"><b>数据库隔离级别</b><span>AT 默认读到未全局提交的数据；需要时用 SELECT FOR UPDATE 收紧。</span></div>
+</div>
+<p class="figcap">边界：本页只画 AT 的写路径；批量 SQL、Savepoint、多数据源、不同数据库的 FOR UPDATE 行为未展开。锁键数量受 RPC 传输上限约束。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">四个问题，检查你是否能在边界上做判断。</p>
+<div class="quote"><i>自测不是复述结论，而是检查你能否在边界上做判断。</i></div>
+<div id="quiz"></div>
+</section>
+
+
+<div class="summary">
+<h2>一页带走</h2>
+
+<p class="chant">SQL 先跑，镜像随后，锁在提交前，undo 在同一事务。</p>
+<p>· 全局锁不是 SQL 执行锁；它保护的是本地提交到全局决议之间的窗口。</p>
+<p>· 分支在 commit 前懒注册；只读、无主键、解析失败、无代理都会让分支消失。</p>
+<p>· 回滚的素材是 beforeImage + afterImage；默认只抓更新列，不是整行。</p>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+</div>
+
+<script>
+(function(){
+var PERIOD=7800,PHASE_MAX=720;
+var STEPS=[{"d":0,"t":"SQL","x":"RM 解析 SQL，确认表、主键和更新列；准备生成镜像。"},{"d":90,"t":"beforeImage","x":"按 WHERE 条件查旧值，SQL 末尾带 FOR UPDATE，拿住本地行锁。"},{"d":170,"t":"UPDATE","x":"执行业务 SQL；数据已改，但本地事务还没提交。"},{"d":250,"t":"afterImage","x":"按主键回查新值；前后镜像一起组成 undo 的录像。"},{"d":330,"t":"注册+锁","x":"本地 commit 前，把攒下的锁键一次性提交给 TC，抢全局锁。"},{"d":430,"t":"undo_log","x":"抢锁成功后，把 undo_log 写进同一个本地事务。"},{"d":520,"t":"COMMIT","x":"本地提交；数据对外可见，向 TC 上报 PhaseOne_Done。"},{"d":620,"t":"上报","x":"TC 记录分支状态；全局决议还没发生。"}];
+var PARTS={"proxy":["sqlCard"],"sql":["sqlCard"],"image":["undoCard"],"lock":["tcLock","globalLock"],"undo":["undoCard"],"commit":["localLock"]};
+var CHIPS=[{"k":"sql","l":"SQL"},{"k":"local","l":"本地行锁"},{"k":"global","l":"全局锁"},{"k":"undo","l":"undo_log"}];
+var QUIZ=[{"q":"AT 的全局锁是在哪一步拿到的？","opts":["执行业务 SQL 之前","本地 commit 之前","TC 收到 GlobalCommit 之后"],"a":1,"exp":"ConnectionProxy.processGlobalTransactionCommit() 里先 register() 抢锁，再 flushUndoLogs()、本地 commit。业务 SQL 已经执行，但还没提交。"},{"q":"beforeImage 为什么带 FOR UPDATE？","opts":["为了拿 TC 的全局锁","为了拿本地数据库的行锁，防止查镜像和改数据之间被插队","为了提升查询速度"],"a":1,"exp":"全局锁是 TC 侧的记录锁；FOR UPDATE 拿的是本地数据库行锁，保护镜像和业务 SQL 之间的窗口。"},{"q":"默认情况下，undo_log 抓的是整行吗？","opts":["是，整行快照","不是，只抓更新列 + 主键","只抓主键"],"a":1,"exp":"onlyCareUpdateColumns 默认为 true，getNeedColumns() 只取更新列和主键；回滚也只还原这些列。"},{"q":"分支注册会为每条 SQL 发一次 RPC 吗？","opts":["会，一条 SQL 一次","不会，本地提交前把锁键去重后批量注册一次","只在第一条 SQL 时注册"],"a":1,"exp":"ConnectionContext 按 Savepoint 攒锁键，buildLockKeys() 去重拼成字符串，一次 BranchRegisterRequest 提交。"},{"q":"一条 SQL 解析失败，会发生什么？","opts":["全局事务直接失败","退化成 PlainExecutor，原样执行，不生成镜像/分支","自动改成本地事务并告警"],"a":1,"exp":"ExecuteTemplate 解析失败时使用 PlainExecutor，SQL 照常执行，但 Seata 没有拿到 undo 和锁键，TC 不知道这条 SQL 存在。"}];
+var WP=[[0,90,300],[100,240,300],[180,390,300],[260,540,300],[300,540,250],[330,816,224],[370,816,224],[400,540,250],[430,540,300],[500,690,300],[580,840,300],[680,840,300]];
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,STEP_DUR=650;
+var stepIdx=-1;
+var el={};
+document.querySelectorAll('#eng [id],#eng2 [id]').forEach(function(n){el[n.id]=n;});
+function setOp(id,v){var n=typeof id==='string'?el[id]:id;if(n)n.setAttribute('opacity',v.toFixed(2));}
+function setText(id,s){var n=el[id]||document.getElementById(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setAttr(id,k,v){var n=el[id];if(n)n.setAttribute(k,v);}
+function setChip(k,v){var n=document.querySelector('#stateChips .chip[data-k="'+k+'"]');if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',/^(开|是|已|完成|生效|放行|进行|成功|COMMIT|提交|回滚|有|命中|持有|可选|新 leader|已落定)/.test(v));n.classList.toggle('off',/^(关|否|待命|—|未|无|失败|丢失|释放|默认关|停)/.test(v));}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){return t*t*(3-2*t);}
+function tokenPos(th){
+  if(!WP||WP.length<2)return null;
+  var p=norm(th);var i=0;while(i<WP.length-2&&p>WP[i+1][0])i++;
+  var a=WP[i],b=WP[i+1];var t=(p-a[0])/((b[0]-a[0])||1);t=clamp(t,0,1);
+  return [a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+}
+
+function renderScene(th,pr,si){
+  function band(id,a,b,lo,hi){setOp(id,(pr>=a&&pr<b)?(hi===undefined?1:hi):(lo===undefined?0.2:lo));}
+  band('sqlCard',0,90,0.55);band('undoCard',430,560,0.3);
+  band('tcLock',330,430,0.25);band('localLock',0,560,0.25);band('globalLock',330,560,0.25);
+  var bands=[[0,90],[90,170],[170,250],[250,330],[330,430],[430,520]];
+  for(var i=0;i<6;i++){setOp('stage'+i,(pr>=bands[i][0]&&pr<bands[i][1])?1:0.45);}
+  var key='stock:100';
+  if(pr>=250)key='1 行镜像';
+  if(pr>=330)key='抢锁中';
+  if(pr>=430)key='undo 已落库';
+  if(pr>=520)key='本地已提交';
+  setText('roKey',key);
+  setChip('sql',pr>=170?'已执行':'待命');
+  setChip('local',pr>=90&&pr<520?'持有':pr>=520?'释放':'待命');
+  setChip('global',pr>=330&&pr<620?'持有':pr>=620?'待决':'待命');
+  setChip('undo',pr>=430?'已写':'内存');
+}
+
+
+function renderSub(th){
+  var pr=norm(th); var si=0;
+  for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)si=i;}
+  for(var i=0;i<STEPS.length;i++){setOp('seg'+i,i===si?1:0.35);}
+  var x=40+(pr/PHASE_MAX)*920;
+  setAttr('subNow','x1',x.toFixed(1)); setAttr('subNow','x2',x.toFixed(1));
+}
+
+function render(th){
+  var pr=norm(th);
+  setText('roPhase',Math.round(pr)+'°');
+  var si=0;for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)si=i;}
+  if(mode==='step'&&stepIdx>=0)si=stepIdx;
+  setText('roStep',STEPS[si]?STEPS[si].t:'—');
+  var p=tokenPos(th);
+  if(p){setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));setOp('tok',1);}
+  else{setOp('tok',0);}
+  renderScene(th,pr,si);
+  if(typeof renderSub==='function')renderSub(th,pr,si);
+}
+function tick(now){
+  var dt=Math.min(50,now-last);last=now;
+  if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+  if(mode==='step'&&stepTo!==null){
+    stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);
+    var p=stepElapsed/STEP_DUR;var e=smooth(p);
+    phase=stepFrom+(stepTo-stepFrom)*e;
+    if(p>=1){phase=((stepTo%PERIOD)+PERIOD)%PERIOD;stepTo=null;}
+  }
+  render(phase/PERIOD*PHASE_MAX);
+  requestAnimationFrame(tick);
+}
+function setAuto(on){
+  mode='auto';run=on;stepTo=null;btn.textContent=on?'暂停':'播放';
+  if(on){stepIdx=-1;document.querySelectorAll('.stepnode').forEach(function(d){d.classList.remove('on');});
+  stepT.textContent='自动运转模式';stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格。';}
+}
+window.goStep=function(i){
+  stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+  var target=STEPS[stepIdx].d/PHASE_MAX*PERIOD;var delta=target-phase;
+  if(reduced||Math.abs(delta)>PERIOD/3){phase=target;stepTo=null;render(target/PERIOD*PHASE_MAX+0.01);}
+  else{stepFrom=phase;stepTo=phase+delta;stepElapsed=0;render(phase/PERIOD*PHASE_MAX+0.01);}
+  btn.textContent='继续自动运转';
+  document.querySelectorAll('.stepnode').forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+  stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+  stepX.textContent=STEPS[stepIdx].x;
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+btn.textContent=run?'暂停':'播放';
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+for(var s=0;s<STEPS.length;s++){(function(n){
+  var b=document.createElement('button');b.className='stepnode';
+  b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+  b.onclick=function(){goStep(n);};stepBar.appendChild(b);
+})(s);}
+CHIPS.forEach(function(c){var s=document.createElement('span');s.className='chip';s.setAttribute('data-k',c.k);s.innerHTML=c.l+' <b>--</b>';document.getElementById('stateChips').appendChild(s);});
+document.querySelectorAll('.part').forEach(function(b){
+  b.onclick=function(){
+    var ids=PARTS[b.getAttribute('data-part')]||[];
+    ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+    document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+    setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+  };
+});
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+  var d=document.createElement('div');d.className='q';
+  var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+  it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+  h+='<div class="exp">'+it.exp+'</div>';d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+  var b=e.target.closest('.opt');if(!b)return;var box2=b.parentElement;if(box2.classList.contains('done'))return;
+  box2.classList.add('done');
+  var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+  box2.querySelectorAll('.opt').forEach(function(x,n){x.classList.add(n===QUIZ[qi].a?'right':'wrong');});
+});
+var BASE=(location.pathname.split('/seata-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/seata/lab';
+document.getElementById('lnkArt').href=BASE+'/seata/tutorial/02-at-phase-one';
+
+requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

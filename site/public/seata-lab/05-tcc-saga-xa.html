@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TCC、Saga、XA：三种补偿 · Seata 互动原理实验室 第 5 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:960px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:720px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:600;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:12px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:600;fill:#1F1E1A}
+.tag{font-size:10.5px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:66px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+.modebar{display:flex;align-items:center;gap:8px;margin:6px 4px 0;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.modebar .mlabel{font-weight:600;color:#3B3A34}
+.modebtn{padding:5px 12px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:12.5px;cursor:pointer;font-family:inherit}
+.modebtn:hover{border-color:#888780}
+.modebtn.on{background:#FFF6E8;border-color:#EF9F27;color:#854F0B;font-weight:600}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .outbranch{display:inline-flex;flex-direction:column;align-items:flex-start;gap:6px}
+.flow .outline{display:inline-flex;align-items:center;gap:8px}
+.flow .flownote{font-size:12px;color:#6B695F;font-weight:600;margin-right:4px}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 10px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+#scene [opacity]{transition:opacity .28s ease}
+#sub [opacity]{transition:opacity .28s ease}
+@media (prefers-reduced-motion: reduce){#scene [opacity],#sub [opacity]{transition:none}}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:8px 4px 0;font-size:12px;color:#6B695F}
+.legend i{display:inline-block;width:18px;height:0;border-top:2px solid #C46A0A;vertical-align:middle;margin-right:5px}
+.legend i.g{border-color:#639922}
+.legend i.r{border-color:#E24B4A}
+.legend i.dash{border-top-style:dashed}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：TCC、Saga、XA：三种把回滚交给别人的方式</a>
+  <span class="idx">第 5 / 6 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">SEATA · 补偿模式</div>
+<h1>TCC、Saga、XA：把回滚交给谁</h1>
+<p>同一笔订单，三种责任划分。先看谁持锁、数据何时可见，再看回滚由谁执行；不要把它们都叫成「二阶段」。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span>
+<span class="mnode">② 静态分解</span>
+<span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span>
+<span class="mnode">⑤ 环境场景</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 620" role="img" xmlns="http://www.w3.org/2000/svg"><title>TCC、Saga、XA：三种把回滚交给别人的方式</title><defs><marker id="flw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="flwG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="flwR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="flwB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker></defs><text class="th" x="500" y="26" text-anchor="middle">TCC、Saga、XA：三种把回滚交给别人的方式</text><text class="ts" x="500" y="47" text-anchor="middle">同一笔订单，三种责任划分：回滚交给业务方法、补偿链，还是数据库的 XA 协议</text><text x="985" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">琥珀：TCC</text><text x="985" y="42" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色：Saga / 蓝色：XA</text><g id="scene"><text x="44" y="64" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">0° 一阶段</text><text x="500" y="64" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">360° 决议</text><text x="956" y="64" font-size="10.5" fill="#6B695F" text-anchor="end" font-weight="400">720° 二阶段收尾</text><rect x="30" y="76" width="280" height="56" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="46" y="100" font-size="16" fill="#1F1E1A" text-anchor="start" font-weight="700">TCC</text><text x="46" y="120" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">回滚交给业务方法</text><rect x="350" y="76" width="280" height="56" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="366" y="100" font-size="16" fill="#1F1E1A" text-anchor="start" font-weight="700">Saga</text><text x="366" y="120" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">回滚交给补偿链</text><rect x="670" y="76" width="280" height="56" rx="10" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/><text x="686" y="100" font-size="16" fill="#1F1E1A" text-anchor="start" font-weight="700">XA</text><text x="686" y="120" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">回滚交给数据库</text><g id="t0"><rect x="30" y="150" width="280" height="64" rx="8" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="44" y="170" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">一阶段</text><text x="44" y="189" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">try：预留资源（冻结/预扣）</text><text x="44" y="205" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">业务自己决定可见性</text></g><g id="t1"><rect x="30" y="226" width="280" height="64" rx="8" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="44" y="246" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">二阶段提交</text><text x="44" y="265" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">confirm：把预留转正式</text><text x="44" y="281" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">反射调用本地 bean 方法</text></g><g id="t2"><rect x="30" y="302" width="280" height="64" rx="8" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="44" y="322" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">二阶段回滚</text><text x="44" y="341" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">cancel：释放预留</text><text x="44" y="357" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">默认不处理幂等/悬挂</text></g><g id="s0"><rect x="350" y="150" width="280" height="64" rx="8" fill="#ffffff" stroke="#639922" stroke-width="1.3"/><text x="364" y="170" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">一阶段</text><text x="364" y="189" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">每个 state 是一个本地事务</text><text x="364" y="205" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">提交后立即对外可见</text></g><g id="s1"><rect x="350" y="226" width="280" height="64" rx="8" fill="#ffffff" stroke="#639922" stroke-width="1.3"/><text x="364" y="246" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">二阶段提交</text><text x="364" y="265" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">TC commit 可能是 forward</text><text x="364" y="281" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">engine.forward(xid)</text></g><g id="s2"><rect x="350" y="302" width="280" height="64" rx="8" fill="#ffffff" stroke="#639922" stroke-width="1.3"/><text x="364" y="322" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">二阶段回滚</text><text x="364" y="341" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">engine.compensate(xid)</text><text x="364" y="357" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">逆序调用补偿服务</text></g><g id="x0"><rect x="670" y="150" width="280" height="64" rx="8" fill="#ffffff" stroke="#2F6FA8" stroke-width="1.3"/><text x="684" y="170" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">一阶段</text><text x="684" y="189" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">XA START → XA END</text><text x="684" y="205" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">→ PREPARE；prepare 后不可见</text></g><g id="x1"><rect x="670" y="226" width="280" height="64" rx="8" fill="#ffffff" stroke="#2F6FA8" stroke-width="1.3"/><text x="684" y="246" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">二阶段提交</text><text x="684" y="265" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">数据库 XA commit</text><text x="684" y="281" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">由 TC BranchCommit 驱动</text></g><g id="x2"><rect x="670" y="302" width="280" height="64" rx="8" fill="#ffffff" stroke="#2F6FA8" stroke-width="1.3"/><text x="684" y="322" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">二阶段回滚</text><text x="684" y="341" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">数据库 XA rollback</text><text x="684" y="357" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">由 TC BranchRollback 驱动</text></g><g id="t3"><rect x="30" y="386" width="280" height="64" rx="8" fill="#FBFAF6" stroke="#C46A0A" stroke-width="1.3"/><text x="44" y="406" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">锁 / 可见性</text><text x="44" y="425" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">框架无全局锁；由 try 决定</text><text x="44" y="441" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">confirm/cancel 是本地调用</text></g><g id="s3"><rect x="350" y="386" width="280" height="64" rx="8" fill="#FBFAF6" stroke="#639922" stroke-width="1.3"/><text x="364" y="406" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">锁 / 可见性</text><text x="364" y="425" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">无全局锁；每个本地事务可见</text><text x="364" y="441" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">补偿失败只能重试/人工</text></g><g id="x3"><rect x="670" y="386" width="280" height="64" rx="8" fill="#FBFAF6" stroke="#2F6FA8" stroke-width="1.3"/><text x="684" y="406" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">锁 / 可见性</text><text x="684" y="425" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">数据库 XA 行锁</text><text x="684" y="441" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">prepare 后仍不可见</text></g><g id="t4"><rect x="30" y="462" width="280" height="64" rx="8" fill="#FBFAF6" stroke="#C46A0A" stroke-width="1.3"/><text x="44" y="482" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">TC 的角色</text><text x="44" y="501" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">try 前注册分支</text><text x="44" y="517" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">反射调用 confirm/cancel</text></g><g id="s4"><rect x="350" y="462" width="280" height="64" rx="8" fill="#FBFAF6" stroke="#639922" stroke-width="1.3"/><text x="364" y="482" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">TC 的角色</text><text x="364" y="501" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">只维护全局生命周期</text><text x="364" y="517" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">branchId=-1 的虚拟分支</text></g><g id="x4"><rect x="670" y="462" width="280" height="64" rx="8" fill="#FBFAF6" stroke="#2F6FA8" stroke-width="1.3"/><text x="684" y="482" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">TC 的角色</text><text x="684" y="501" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">驱动 commit/rollback</text><text x="684" y="517" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">TC 无全局锁</text></g><line id="nowLine" x1="30" y1="140" x2="30" y2="530" stroke="#C46A0A" stroke-width="2" stroke-dasharray="4 4"/><rect x="30" y="546" width="940" height="58" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/><text x="46" y="568" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">边界与默认值</text><text x="46" y="588" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">TCC 默认 useTCCFence=false；幂等/空回滚/悬挂是业务责任。Saga 默认不逐 state 注册分支；XA 的 prepare 成功不上报 PhaseOne_Done。</text></g><circle id="tok" cx="-20" cy="-20" r="9" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/></svg>
+<svg id="eng2" viewBox="0 0 1000 180" role="img" xmlns="http://www.w3.org/2000/svg"><text x="40" y="26" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">相位总线：自动与分步共用同一进度</text><text x="960" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">0° → 720°</text><rect id="seg0" x="42.0" y="52" width="111.0" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="97.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">一阶段</text><text x="97.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">0°</text><rect id="seg1" x="157.0" y="52" width="111.0" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="212.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">决策</text><text x="212.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">180°</text><rect id="seg2" x="272.0" y="52" width="111.0" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="327.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">TCC 二阶段</text><text x="327.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">260°</text><rect id="seg3" x="387.0" y="52" width="111.0" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="442.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">Saga forward</text><text x="442.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">360°</text><rect id="seg4" x="502.0" y="52" width="111.0" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="557.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">XA commit</text><text x="557.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">460°</text><rect id="seg5" x="617.0" y="52" width="111.0" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="672.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">回滚路径</text><text x="672.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">560°</text><rect id="seg6" x="732.0" y="52" width="111.0" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="787.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">对比</text><text x="787.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">640°</text><rect id="seg7" x="847.0" y="52" width="111.0" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="902.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">收尾</text><text x="902.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">700°</text><line id="subNow" x1="40" y1="44" x2="40" y2="126" stroke="#C46A0A" stroke-width="2"/><text x="500" y="152" font-size="11" fill="#6B695F" text-anchor="middle" font-weight="400">每格是一个可定格的关键时刻；分步时所有视图冻结到同一相位。</text></svg>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 轮 / 8.4 秒</span>
+</div>
+
+<div class="readout">
+<span class="ro">相位 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">阶段 / 模式 <b id="roKey">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav">
+<button class="btn" onclick="prevStep()">‹ 上一步</button>
+<button class="btn warn" onclick="nextStep()">下一步 ›</button>
+</span>
+</div>
+<div class="legend"><span><i></i>TCC</span><span><i class="g"></i>Saga</span><span><i class="dash"></i>XA / 异步</span><span><i class="r"></i>回滚</span></div>
+<p class="figcap">进度 0° = 一阶段，720° = 二阶段收尾；竖线扫过三列，表示同一时刻三种模式的对应动作。<br>口径：Seata 2.8.0-SNAPSHOT；TCC fence 默认关闭，Saga 默认不逐 state 注册分支，XA 要求物理连接初始 autoCommit=true。</p>
+</div>
+</div>
+
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：先把它当黑盒</h2></div>
+<p class="sec-sub">不急着拆类，只看它对外表现出什么。</p>
+<div class="quote"><i>先把系统当黑盒：只看输入、输出和边界，不急着解释内部。</i></div>
+
+<p>业务代码只看到三个不同的接口形态：TCC 是三个方法，Saga 是一张状态机定义，XA 几乎不用改代码。它们都能让一笔跨服务操作「一起成功或一起回滚」。</p>
+<div class="flow">
+<span class="node">同一笔订单</span><span class="arr">→</span>
+<span class="node box">全局事务</span>
+<span class="outbranch">
+<span class="outline"><span class="arr">→</span><span class="node">TCC：try / confirm / cancel</span></span>
+<span class="outline"><span class="arr">→</span><span class="node">Saga：state / forward / compensate</span></span>
+<span class="outline"><span class="arr">→</span><span class="node">XA：prepare / commit / rollback</span></span>
+</span>
+</div>
+<p>黑盒视角的共同点只有一句：二阶段都能回滚。区别在「回滚是谁做的」：业务方法、补偿服务，还是数据库。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：部件各管什么</h2></div>
+<p class="sec-sub">先把结构钉住，再让时间进来。点下面的部件卡，动画里对应部分会亮起。</p>
+<div class="quote"><i>结构分解要 MECE：同一层只放同一粒度的部件。</i></div>
+<div class="figure"><svg viewBox="0 0 920 250" role="img" xmlns="http://www.w3.org/2000/svg"><text x="460" y="24" font-size="15" fill="#1F1E1A" text-anchor="middle" font-weight="600">三种模式的责任划分</text><text x="460" y="44" font-size="11.5" fill="#6B695F" text-anchor="middle" font-weight="400">看三件事：谁持锁、数据何时可见、回滚由谁执行</text><rect x="20" y="66" width="280" height="150" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="34" y="90" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="700">TCC</text><rect x="320" y="66" width="280" height="150" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="334" y="90" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="700">Saga</text><rect x="620" y="66" width="280" height="150" rx="10" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/><text x="634" y="90" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="700">XA</text><text x="34" y="116" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">一阶段：预留 / 本地事务 / prepare</text><text x="334" y="116" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">一阶段：预留 / 本地事务 / prepare</text><text x="634" y="116" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">一阶段：预留 / 本地事务 / prepare</text><text x="34" y="146" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">二阶段：confirm / forward / commit</text><text x="334" y="146" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">二阶段：confirm / forward / commit</text><text x="634" y="146" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">二阶段：confirm / forward / commit</text><text x="34" y="176" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">回滚：cancel / compensate / rollback</text><text x="334" y="176" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">回滚：cancel / compensate / rollback</text><text x="634" y="176" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">回滚：cancel / compensate / rollback</text><text x="460" y="238" font-size="10.5" fill="#C46A0A" text-anchor="middle" font-weight="600">TCC/Saga 的回滚是业务语义，XA 的回滚是数据库语义；三种都不是 AT 的 undo 回放。</text></svg></div>
+<div class="partgroup"><div class="gname">TCC</div><div class="parts"><button class="part" data-part="try"><b>1. try / confirm / cancel</b><span>预留、确认、释放；分支在 try 之前注册。</span></button><button class="part" data-part="fence"><b>2. tcc_fence_log</b><span>可选：TRIED/COMMITTED/ROLLBACKED/SUSPENDED 四态。</span></button></div></div><div class="partgroup"><div class="gname">Saga</div><div class="parts"><button class="part" data-part="state"><b>3. 状态机</b><span>每个 state 是本地事务；失败后靠补偿链回退。</span></button><button class="part" data-part="comp"><b>4. compensate</b><span>TC 的回滚驱动 engine.compensate；commit 可能是 forward。</span></button></div></div><div class="partgroup"><div class="gname">XA</div><div class="parts"><button class="part" data-part="xa"><b>5. prepare</b><span>XA END + PREPARE；数据不可见，行锁由数据库持有。</span></button><button class="part" data-part="xac"><b>6. XA commit</b><span>TC 驱动 RM 执行 xaResource.commit；无全局锁。</span></button></div></div>
+<p class="hint">静态图与动画共用同一套编号和口径；把动画暂停，它就是一张可打印的结构图。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：一步一停看顺序</h2></div>
+<p class="sec-sub">重点不是记住箭头，而是记住每一步「谁在等谁」。</p>
+<div class="quote"><i>动态分析看三件事：顺序、状态、触发条件。</i></div>
+
+<table class="grid">
+<tr><th>阶段</th><th>TCC</th><th>Saga</th><th>XA</th></tr>
+<tr><td>一阶段</td><td>try 预留资源</td><td>每个 state 本地提交</td><td>XA START / END / PREPARE</td></tr>
+<tr><td>可见性</td><td>由 try 决定</td><td>提交后立即可见</td><td>prepare 后仍不可见</td></tr>
+<tr><td>提交</td><td>confirm</td><td>engine.forward()</td><td>XA commit</td></tr>
+<tr><td>回滚</td><td>cancel</td><td>engine.compensate()</td><td>XA rollback</td></tr>
+<tr><td>锁</td><td>业务预留</td><td>无全局锁</td><td>数据库 XA 行锁</td></tr>
+<tr><td>失败面</td><td>幂等/悬挂要自己兜</td><td>补偿失败要重试/人工</td><td>prepare 后锁持有时间更长</td></tr>
+</table>
+<p>如果一张表就能选完，选型就不难了。真正难的是：你的业务能不能接受中间态可见、回滚方法是否幂等、数据库是否稳定支持 XA。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件 × 阶段</h2></div>
+<p class="sec-sub">同一部件在不同阶段扮演不同角色，这张矩阵是排障时的索引。</p>
+<div class="quote"><i>把部件放回阶段里，才能看清谁在什么时候接力。</i></div>
+
+<table class="grid">
+<tr><th>维度</th><th>TCC</th><th>Saga</th><th>XA</th></tr>
+<tr><td>谁持锁</td><td>业务预留资源</td><td>无框架锁</td><td>数据库 XA 行锁</td></tr>
+<tr><td>何时可见</td><td>try 决定</td><td>每个本地事务后</td><td>XA commit 后</td></tr>
+<tr><td>回滚执行者</td><td>cancel 方法</td><td>compensate 服务</td><td>数据库</td></tr>
+<tr><td>TC 的角色</td><td>注册/调用分支</td><td>虚拟分支 + forward</td><td>驱动 XA 二阶段</td></tr>
+<tr><td>典型坑</td><td>空回滚/悬挂/幂等</td><td>补偿不幂等、中间态</td><td>autoCommit 配置、长锁</td></tr>
+</table>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：它依赖什么才能成立</h2></div>
+<p class="sec-sub">拆掉任意一个外部依赖，前面看到的行为都会变。</p>
+<div class="quote"><i>任何机制都有环境前提；拆掉外部依赖，它就不再成立。</i></div>
+<div class="envcards">
+<div class="env"><b>TCC fence 表</b><span>开启 useTCCFence 后需要 tcc_fence_log；默认关闭。</span></div>
+<div class="env"><b>Saga 状态存储</b><span>状态机定义与实例日志要持久化；补偿依赖它。</span></div>
+<div class="env"><b>数据库 XA 支持</b><span>驱动、连接池、数据库都要支持 XA；连接初始 autoCommit 必须为 true。</span></div>
+<div class="env"><b>业务幂等</b><span>confirm/cancel/补偿都可能被重试；业务要能承受重复执行。</span></div>
+<div class="env"><b>TC</b><span>三种模式都靠 TC 驱动分支；Saga 还多一层本地状态机引擎。</span></div>
+</div>
+<p class="figcap">边界：本页只比较机制，不给选型结论；TCC 的 fence、Saga 的 recoverStrategy、XA 的 XAER_NOTA 细节见文章。默认值以 2.8.0-SNAPSHOT 源码为准。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">四个问题，检查你是否能在边界上做判断。</p>
+<div class="quote"><i>自测不是复述结论，而是检查你能否在边界上做判断。</i></div>
+<div id="quiz"></div>
+</section>
+
+
+<div class="summary">
+<h2>一页带走</h2>
+
+<p class="chant">TCC 交给方法，Saga 交给补偿链，XA 交给数据库。</p>
+<p>· 先看锁和可见性，再看回滚执行者；三者不是同一种「二阶段」。</p>
+<p>· TCC 的幂等/空回滚/悬挂默认是业务责任；fence 是可选增强。</p>
+<p>· Saga 的 commit 可能是 forward；XA 的 prepare 成功不上报 PhaseOne_Done。</p>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+</div>
+
+<script>
+(function(){
+var PERIOD=8400,PHASE_MAX=720;
+var STEPS=[{"d":0,"t":"一阶段","x":"TCC try 预留；Saga 执行本地 state；XA START/END/PREPARE。"},{"d":180,"t":"决策","x":"全局事务决定提交还是回滚；三条路的二阶段从这里分叉。"},{"d":260,"t":"TCC 二阶段","x":"confirm 转正式；失败时 cancel 释放预留。"},{"d":360,"t":"Saga forward","x":"TC commit 可能只是继续 forward；回滚才 compensate。"},{"d":460,"t":"XA commit","x":"TC 发 BranchCommit，RM 执行数据库 XA commit。"},{"d":560,"t":"回滚路径","x":"TCC cancel、Saga compensate、XA rollback，三种语义完全不同。"},{"d":640,"t":"对比","x":"锁、可见性、回滚执行者是三条路的分水岭。"},{"d":700,"t":"收尾","x":"fence 可选；Saga 补偿需幂等；XA 锁持有到 commit/rollback。"}];
+var PARTS={"try":["t0","t1","t2"],"fence":["t2"],"state":["s0"],"comp":["s2"],"xa":["x0"],"xac":["x1"]};
+var CHIPS=[{"k":"tcc","l":"TCC"},{"k":"saga","l":"Saga"},{"k":"xa","l":"XA"},{"k":"fence","l":"fence"}];
+var QUIZ=[{"q":"TCC 默认会处理空回滚、悬挂和幂等吗？","opts":["会，框架自动处理","不会，useTCCFence 默认 false，三种都是业务责任","只在 Spring 下会"],"a":1,"exp":"TwoPhaseBusinessAction.useTCCFence 默认 false；不开 fence 时 TCCResourceManager 直接反射调用 confirm/cancel，不做状态判断。"},{"q":"Saga 的 TC commit 一定意味着状态机结束了吗？","opts":["一定","不一定；可能是 engine.forward() 继续执行剩余 state","只在没有补偿时"],"a":1,"exp":"SagaResourceManager.branchCommit() 调 engine.forward(xid)；状态机没跑完时，TC 的 commit 会继续往前执行。"},{"q":"XA 的 prepare 成功后，数据可见吗？","opts":["可见","不可见，要等 XA commit","取决于隔离级别"],"a":1,"exp":"XA prepare 后数据由数据库持有，未 commit 前不可见；这是 XA 与 AT 一阶段最大的差别。"},{"q":"Saga 状态抛异常，默认会自动补偿吗？","opts":["会","不会；需要 Catch.Next 指向 CompensationTrigger 或显式 compensate","只在超时时"],"a":1,"exp":"ServiceTaskStateHandler 只把异常交给 Catch 匹配；没有配补偿路由就进入失败，不会自动逆序补偿。"},{"q":"XA 连接池最常见的接入问题是什么？","opts":["数据库版本太低","连接初始 autoCommit=false，ConnectionProxyXA.init 直接抛异常","没有 undo_log 表"],"a":1,"exp":"ConnectionProxyXA.init() 要求物理连接初始 autoCommit=true；连接池或上层事务拦截器提前改成 false 会导致启动失败。"}];
+var WP=[[0,30,136],[720,970,136]];
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,STEP_DUR=650;
+var stepIdx=-1;
+var el={};
+document.querySelectorAll('#eng [id],#eng2 [id]').forEach(function(n){el[n.id]=n;});
+function setOp(id,v){var n=typeof id==='string'?el[id]:id;if(n)n.setAttribute('opacity',v.toFixed(2));}
+function setText(id,s){var n=el[id]||document.getElementById(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setAttr(id,k,v){var n=el[id];if(n)n.setAttribute(k,v);}
+function setChip(k,v){var n=document.querySelector('#stateChips .chip[data-k="'+k+'"]');if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',/^(开|是|已|完成|生效|放行|进行|成功|COMMIT|提交|回滚|有|命中|持有|可选|新 leader|已落定)/.test(v));n.classList.toggle('off',/^(关|否|待命|—|未|无|失败|丢失|释放|默认关|停)/.test(v));}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){return t*t*(3-2*t);}
+function tokenPos(th){
+  if(!WP||WP.length<2)return null;
+  var p=norm(th);var i=0;while(i<WP.length-2&&p>WP[i+1][0])i++;
+  var a=WP[i],b=WP[i+1];var t=(p-a[0])/((b[0]-a[0])||1);t=clamp(t,0,1);
+  return [a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+}
+
+function renderScene(th,pr,si){
+  function band(id,a,b,lo,hi){setOp(id,(pr>=a&&pr<b)?(hi===undefined?1:hi):(lo===undefined?0.18:lo));}
+  var phase1=pr<180, commit=pr>=180&&pr<520, rollback=pr>=520;
+  band('t0',0,180,0.3);band('s0',0,180,0.3);band('x0',0,180,0.3);
+  band('t1',180,520,0.3);band('s1',180,520,0.3);band('x1',180,520,0.3);
+  band('t2',520,720,0.3);band('s2',520,720,0.3);band('x2',520,720,0.3);
+  band('t3',0,720,0.7);band('s3',0,720,0.7);band('x3',0,720,0.7);
+  band('t4',0,720,0.7);band('s4',0,720,0.7);band('x4',0,720,0.7);
+  var x=30+(pr/PHASE_MAX)*940;
+  setAttr('nowLine','x1',x.toFixed(1));setAttr('nowLine','x2',x.toFixed(1));
+  var key='一阶段';
+  if(pr>=180)key='二阶段提交';
+  if(pr>=520)key='二阶段回滚';
+  if(pr>=640)key='对比';
+  setText('roKey',key);
+  setChip('tcc',pr<520?'try → confirm':'try → cancel');
+  setChip('saga',pr<520?'state → forward':'state → compensate');
+  setChip('xa',pr<520?'prepare → commit':'prepare → rollback');
+  setChip('fence',pr>=640?'可选':'默认关');
+}
+
+
+function renderSub(th){
+  var pr=norm(th); var si=0;
+  for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)si=i;}
+  for(var i=0;i<STEPS.length;i++){setOp('seg'+i,i===si?1:0.35);}
+  var x=40+(pr/PHASE_MAX)*920;
+  setAttr('subNow','x1',x.toFixed(1)); setAttr('subNow','x2',x.toFixed(1));
+}
+
+function render(th){
+  var pr=norm(th);
+  setText('roPhase',Math.round(pr)+'°');
+  var si=0;for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)si=i;}
+  if(mode==='step'&&stepIdx>=0)si=stepIdx;
+  setText('roStep',STEPS[si]?STEPS[si].t:'—');
+  var p=tokenPos(th);
+  if(p){setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));setOp('tok',1);}
+  else{setOp('tok',0);}
+  renderScene(th,pr,si);
+  if(typeof renderSub==='function')renderSub(th,pr,si);
+}
+function tick(now){
+  var dt=Math.min(50,now-last);last=now;
+  if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+  if(mode==='step'&&stepTo!==null){
+    stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);
+    var p=stepElapsed/STEP_DUR;var e=smooth(p);
+    phase=stepFrom+(stepTo-stepFrom)*e;
+    if(p>=1){phase=((stepTo%PERIOD)+PERIOD)%PERIOD;stepTo=null;}
+  }
+  render(phase/PERIOD*PHASE_MAX);
+  requestAnimationFrame(tick);
+}
+function setAuto(on){
+  mode='auto';run=on;stepTo=null;btn.textContent=on?'暂停':'播放';
+  if(on){stepIdx=-1;document.querySelectorAll('.stepnode').forEach(function(d){d.classList.remove('on');});
+  stepT.textContent='自动运转模式';stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格。';}
+}
+window.goStep=function(i){
+  stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+  var target=STEPS[stepIdx].d/PHASE_MAX*PERIOD;var delta=target-phase;
+  if(reduced||Math.abs(delta)>PERIOD/3){phase=target;stepTo=null;render(target/PERIOD*PHASE_MAX+0.01);}
+  else{stepFrom=phase;stepTo=phase+delta;stepElapsed=0;render(phase/PERIOD*PHASE_MAX+0.01);}
+  btn.textContent='继续自动运转';
+  document.querySelectorAll('.stepnode').forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+  stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+  stepX.textContent=STEPS[stepIdx].x;
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+btn.textContent=run?'暂停':'播放';
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+for(var s=0;s<STEPS.length;s++){(function(n){
+  var b=document.createElement('button');b.className='stepnode';
+  b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+  b.onclick=function(){goStep(n);};stepBar.appendChild(b);
+})(s);}
+CHIPS.forEach(function(c){var s=document.createElement('span');s.className='chip';s.setAttribute('data-k',c.k);s.innerHTML=c.l+' <b>--</b>';document.getElementById('stateChips').appendChild(s);});
+document.querySelectorAll('.part').forEach(function(b){
+  b.onclick=function(){
+    var ids=PARTS[b.getAttribute('data-part')]||[];
+    ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+    document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+    setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+  };
+});
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+  var d=document.createElement('div');d.className='q';
+  var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+  it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+  h+='<div class="exp">'+it.exp+'</div>';d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+  var b=e.target.closest('.opt');if(!b)return;var box2=b.parentElement;if(box2.classList.contains('done'))return;
+  box2.classList.add('done');
+  var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+  box2.querySelectorAll('.opt').forEach(function(x,n){x.classList.add(n===QUIZ[qi].a?'right':'wrong');});
+});
+var BASE=(location.pathname.split('/seata-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/seata/lab';
+document.getElementById('lnkArt').href=BASE+'/seata/tutorial/05-tcc-saga-xa';
+
+requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

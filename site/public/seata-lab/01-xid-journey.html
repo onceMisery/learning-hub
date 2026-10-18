@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>一条 XID 的旅程 · Seata 互动原理实验室 第 1 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:960px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:720px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:600;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:12px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:600;fill:#1F1E1A}
+.tag{font-size:10.5px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:66px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+.modebar{display:flex;align-items:center;gap:8px;margin:6px 4px 0;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.modebar .mlabel{font-weight:600;color:#3B3A34}
+.modebtn{padding:5px 12px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:12.5px;cursor:pointer;font-family:inherit}
+.modebtn:hover{border-color:#888780}
+.modebtn.on{background:#FFF6E8;border-color:#EF9F27;color:#854F0B;font-weight:600}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .outbranch{display:inline-flex;flex-direction:column;align-items:flex-start;gap:6px}
+.flow .outline{display:inline-flex;align-items:center;gap:8px}
+.flow .flownote{font-size:12px;color:#6B695F;font-weight:600;margin-right:4px}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 10px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+#scene [opacity]{transition:opacity .28s ease}
+#sub [opacity]{transition:opacity .28s ease}
+@media (prefers-reduced-motion: reduce){#scene [opacity],#sub [opacity]{transition:none}}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:8px 4px 0;font-size:12px;color:#6B695F}
+.legend i{display:inline-block;width:18px;height:0;border-top:2px solid #C46A0A;vertical-align:middle;margin-right:5px}
+.legend i.g{border-color:#639922}
+.legend i.r{border-color:#E24B4A}
+.legend i.dash{border-top-style:dashed}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：全局事务：一条 XID 从 begin 走到 commit</a>
+  <span class="idx">第 1 / 6 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">SEATA · 全局事务</div>
+<h1>一条 XID 的旅程</h1>
+<p>从 TM 要到 XID，到 RM 挂上分支，再到 TC 异步收尾。这一页先看全景：谁在什么时候等谁。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span>
+<span class="mnode">② 静态分解</span>
+<span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span>
+<span class="mnode">⑤ 环境场景</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 600" role="img" xmlns="http://www.w3.org/2000/svg"><title>一条 XID 的旅程</title><defs><marker id="flw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="flwG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="flwR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="flwB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker></defs><text class="th" x="500" y="26" text-anchor="middle">一条 XID 的旅程</text><text class="ts" x="500" y="47" text-anchor="middle">TM 要一个 XID，RM 在本地提交前挂上分支，TC 记会话与锁；实线同步，虚线异步/响应</text><text x="985" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">橙色：请求 / 数据流</text><text x="985" y="42" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色：锁与持久化</text><g id="scene"><g id="orderBox"><rect x="34" y="76" width="232" height="70" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="48" y="98" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">订单服务（TM + RM）</text><text x="48" y="118" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">RootContext: XID</text><text x="48" y="135" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">本地库 undo_log</text></g><g id="tcBox"><rect x="384" y="76" width="232" height="70" rx="10" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/><text x="398" y="98" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">TC（seata-server）</text><text x="398" y="118" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">GlobalSession / BranchSession</text><text x="398" y="135" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">全局锁 + 超时重试</text></g><g id="stockBox"><rect x="734" y="76" width="232" height="70" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="748" y="98" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">库存服务（RM）</text><text x="748" y="118" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">DataSourceProxy</text><text x="748" y="135" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">本地库 undo_log</text></g><line x1="150" y1="150" x2="150" y2="560" stroke="#D3D1C7" stroke-width="1.2" stroke-dasharray="5 5"/><line x1="500" y1="150" x2="500" y2="560" stroke="#D3D1C7" stroke-width="1.2" stroke-dasharray="5 5"/><line x1="850" y1="150" x2="850" y2="560" stroke="#D3D1C7" stroke-width="1.2" stroke-dasharray="5 5"/><path id="e1" d="M150 180 L500 180" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><text x="325.0" y="172" font-size="11" fill="#6B695F" text-anchor="middle" font-weight="400" class="edgeLabel">① GlobalBegin</text><path id="e2" d="M500 205 L150 205" fill="none" stroke="#2F6FA8" stroke-width="1.6" stroke-dasharray="4 4" marker-end="url(#flwB)"/><text x="325.0" y="197" font-size="11" fill="#6B695F" text-anchor="middle" font-weight="400" class="edgeLabel">② 返回 XID</text><path id="e4" d="M150 300 L500 300" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><text x="325.0" y="292" font-size="11" fill="#6B695F" text-anchor="middle" font-weight="400" class="edgeLabel">④ BranchRegister + 锁键</text><path id="e5" d="M500 325 L150 325" fill="none" stroke="#2F6FA8" stroke-width="1.6" stroke-dasharray="4 4" marker-end="url(#flwB)"/><text x="325.0" y="317" font-size="11" fill="#6B695F" text-anchor="middle" font-weight="400" class="edgeLabel">lock OK</text><path id="e6" d="M150 420 L500 420" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flwG)"/><text x="325.0" y="412" font-size="11" fill="#6B695F" text-anchor="middle" font-weight="400" class="edgeLabel">⑥ PhaseOne_Done</text><path id="e7" d="M150 458 L850 458" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><text x="500.0" y="450" font-size="11" fill="#6B695F" text-anchor="middle" font-weight="400" class="edgeLabel">⑦ 业务 RPC（XID 随行）</text><path id="e8" d="M150 500 L500 500" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><text x="325.0" y="492" font-size="11" fill="#6B695F" text-anchor="middle" font-weight="400" class="edgeLabel">⑧ GlobalCommit</text><path id="e9" d="M500 525 L150 525" fill="none" stroke="#2F6FA8" stroke-width="1.6" stroke-dasharray="4 4" marker-end="url(#flwB)"/><text x="325.0" y="517" font-size="11" fill="#6B695F" text-anchor="middle" font-weight="400" class="edgeLabel">Committed（AsyncCommitting）</text><path id="e10" d="M500 548 L850 548" fill="none" stroke="#639922" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#flwG)"/><text x="675.0" y="540" font-size="11" fill="#6B695F" text-anchor="middle" font-weight="400" class="edgeLabel">⑨ 后台 BranchCommit → 删 undo_log</text><g id="sqlNode"><rect x="34" y="230" width="232" height="44" rx="10" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3" stroke-dasharray="5 4"/><text x="48" y="252" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">③ 订单库：SQL + 镜像</text><text x="48" y="272" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">undo 只入内存，不写库</text></g><g id="commitNode"><rect x="34" y="350" width="232" height="44" rx="10" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3" stroke-dasharray="5 4"/><text x="48" y="372" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">⑤ 写 undo_log → 本地 COMMIT</text><text x="48" y="392" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">数据此时已对别的会话可见</text></g><g id="xidBadge"><rect x="292" y="228" width="180" height="36" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="306" y="250" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="600">XID: ip:port:txId</text><text x="306" y="270" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">全局事务的唯一线索</text></g><g id="lockBadge"><rect x="640" y="286" width="180" height="44" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="654" y="308" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="600">全局锁：stock:100</text><text x="654" y="328" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">只拦 Seata 代理的写</text></g><rect x="34" y="566" width="932" height="26" rx="8" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/><text x="50" y="584" font-size="11" fill="#6B695F" text-anchor="start" font-weight="400">TC 的两本账：GlobalSession/BranchSession + 全局锁；业务数据不在 TC，undo_log 在业务库。</text></g><circle id="tok" cx="-20" cy="-20" r="9" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/></svg>
+<svg id="eng2" viewBox="0 0 1000 180" role="img" xmlns="http://www.w3.org/2000/svg"><text x="40" y="26" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">相位总线：自动与分步共用同一进度</text><text x="960" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">0° → 720°</text><rect id="seg0" x="42.0" y="52" width="98.22222222222223" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="91.11111111111111" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">Begin</text><text x="91.11111111111111" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">0°</text><rect id="seg1" x="144.22222222222223" y="52" width="98.22222222222223" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="193.33333333333334" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">XID</text><text x="193.33333333333334" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">60°</text><rect id="seg2" x="246.44444444444446" y="52" width="98.22222222222223" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="295.55555555555554" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">SQL+镜像</text><text x="295.55555555555554" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">120°</text><rect id="seg3" x="348.6666666666667" y="52" width="98.22222222222223" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="397.7777777777778" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">注册+锁</text><text x="397.7777777777778" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">190°</text><rect id="seg4" x="450.8888888888889" y="52" width="98.22222222222223" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="500.0" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">本地提交</text><text x="500.0" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">260°</text><rect id="seg5" x="553.1111111111111" y="52" width="98.22222222222223" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="602.2222222222222" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">RPC</text><text x="602.2222222222222" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">340°</text><rect id="seg6" x="655.3333333333334" y="52" width="98.22222222222223" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="704.4444444444445" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">全局提交</text><text x="704.4444444444445" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">430°</text><rect id="seg7" x="757.5555555555557" y="52" width="98.22222222222223" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="806.6666666666667" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">异步收尾</text><text x="806.6666666666667" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">500°</text><rect id="seg8" x="859.7777777777778" y="52" width="98.22222222222223" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="908.8888888888889" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">结束</text><text x="908.8888888888889" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">620°</text><line id="subNow" x1="40" y1="44" x2="40" y2="126" stroke="#C46A0A" stroke-width="2"/><text x="500" y="152" font-size="11" fill="#6B695F" text-anchor="middle" font-weight="400">每格是一个可定格的关键时刻；分步时所有视图冻结到同一相位。</text></svg>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 轮 / 7.8 秒</span>
+</div>
+
+<div class="readout">
+<span class="ro">相位 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">锁 / 分支 <b id="roKey">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav">
+<button class="btn" onclick="prevStep()">‹ 上一步</button>
+<button class="btn warn" onclick="nextStep()">下一步 ›</button>
+</span>
+</div>
+<div class="legend"><span><i></i>同步请求 / 数据流</span><span><i class="g"></i>锁 / 持久化</span><span><i class="dash"></i>异步 / 响应</span><span><i class="r"></i>失败 / 回滚</span></div>
+<p class="figcap">进度 0° = TM 发起 begin，720° = 分支清空、全局会话结束；分步定格的是关键时刻，不代表真实耗时。<br>口径：Seata 2.8.0-SNAPSHOT；默认全局超时 60s，提交路径为 AsyncCommitting 异步收尾；异常与重试细节见后续章节。</p>
+</div>
+</div>
+
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：先把它当黑盒</h2></div>
+<p class="sec-sub">不急着拆类，只看它对外表现出什么。</p>
+<div class="quote"><i>先把系统当黑盒：只看输入、输出和边界，不急着解释内部。</i></div>
+
+<p>对一个业务方法来说，Seata 对外只做一件事：<b>进去时开始一笔全局事务，出来时提交或回滚</b>。中间它换了几个线程、注册了几个分支、锁了哪些行，调用方一概不知道。</p>
+<div class="flow">
+<span class="node">@GlobalTransactional</span><span class="arr">→</span>
+<span class="node box">Seata 代理</span>
+<span class="outbranch">
+<span class="outline"><span class="arr">→</span><span class="node">本地事务提交 / 回滚</span></span>
+<span class="outline"><span class="arr">↳</span><span class="node">远程服务（带 XID）</span></span>
+</span>
+</div>
+<p>这个黑盒对外承诺两件事：本地数据要么最终提交，要么能被补偿回去；跨服务的那部分，只要分支挂上了，就会跟着全局决议走。它不承诺「所有服务一定在同一个数据库事务里」。</p>
+<p>先记住一个反直觉的点：<b>XID 有，不等于分支有</b>。XID 只是线，分支是线上挂的钩子。下一节把钩子拆开。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：部件各管什么</h2></div>
+<p class="sec-sub">先把结构钉住，再让时间进来。点下面的部件卡，动画里对应部分会亮起。</p>
+<div class="quote"><i>结构分解要 MECE：同一层只放同一粒度的部件。</i></div>
+<div class="figure"><svg viewBox="0 0 920 230" role="img" xmlns="http://www.w3.org/2000/svg"><text x="460" y="24" font-size="15" fill="#1F1E1A" text-anchor="middle" font-weight="600">三个角色与三本账</text><text x="460" y="44" font-size="11.5" fill="#6B695F" text-anchor="middle" font-weight="400">TM 决定开始/结束，RM 管本地事务与 undo，TC 记会话与锁</text><rect x="20" y="78" width="190" height="82" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="34" y="102" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">① TM（订单）</text><text x="34" y="123" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">GlobalBegin / Commit</text><text x="34" y="139" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">RootContext.bind(XID)</text><rect x="240" y="78" width="200" height="82" rx="10" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/><text x="254" y="102" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">② TC（协调器）</text><text x="254" y="123" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">GlobalSession / BranchSession</text><text x="254" y="139" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">全局锁 + 超时重试</text><rect x="470" y="78" width="200" height="82" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="484" y="102" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">③ RM（库存）</text><text x="484" y="123" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">DataSourceProxy</text><text x="484" y="139" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">before/after 镜像</text><rect x="700" y="78" width="200" height="82" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/><text x="714" y="102" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">④ 业务库</text><text x="714" y="123" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">undo_log</text><text x="714" y="139" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">本地事务</text><path d="M210 119 L236 119" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><path d="M440 119 L466 119" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><path d="M670 119 L696 119" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><text x="460" y="190" font-size="11.5" fill="#C46A0A" text-anchor="middle" font-weight="600">XID 是线，不是事务；分支和 undo_log 才决定能不能回滚。</text><text x="460" y="210" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">只读 SQL 不产生分支；没有代理的数据源即使拿到 XID 也不会注册分支。</text></svg></div>
+<div class="partgroup"><div class="gname">发起与协调</div><div class="parts"><button class="part" data-part="tm"><b>1. TM</b><span>发起 begin/commit/rollback，把 XID 绑到当前线程。</span></button><button class="part" data-part="tc"><b>2. TC</b><span>维护 GlobalSession / BranchSession 与全局锁。</span></button></div></div><div class="partgroup"><div class="gname">参与者与账本</div><div class="parts"><button class="part" data-part="rm"><b>3. RM</b><span>在本地提交前生成镜像、注册分支、上报状态。</span></button><button class="part" data-part="undo"><b>4. undo_log</b><span>同一本地事务里的回滚录像；提交时异步删除。</span></button><button class="part" data-part="lock"><b>5. 全局锁</b><span>TC 侧的 resource/table/pk 锁，只拦 Seata 代理的写。</span></button></div></div><div class="partgroup"><div class="gname">传输</div><div class="parts"><button class="part" data-part="xid"><b>6. XID</b><span>ip:port:transactionId；是关联标识，不是事务本身。</span></button></div></div>
+<p class="hint">静态图与动画共用同一套编号和口径；把动画暂停，它就是一张可打印的结构图。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：一步一停看顺序</h2></div>
+<p class="sec-sub">重点不是记住箭头，而是记住每一步「谁在等谁」。</p>
+<div class="quote"><i>动态分析看三件事：顺序、状态、触发条件。</i></div>
+
+<table class="grid">
+<tr><th>相位</th><th>谁在等谁</th><th>失败会怎样</th></tr>
+<tr><td>Begin</td><td>TM 等 TC 返回 XID</td><td>begin 失败，业务方法不执行</td></tr>
+<tr><td>SQL + 镜像</td><td>RM 等本地库返回镜像</td><td>镜像失败，本地事务回滚</td></tr>
+<tr><td>注册 + 锁</td><td>RM 等 TC 抢锁</td><td>冲突按 30×10ms 重试，超时抛异常</td></tr>
+<tr><td>本地提交</td><td>RM 等本地库 COMMIT</td><td>提交失败，undo 随本地事务回滚</td></tr>
+<tr><td>PhaseOne_Done</td><td>TC 等分支上报</td><td>上报失败，靠超时扫描兜底</td></tr>
+<tr><td>GlobalCommit</td><td>TM 等 TC 改状态</td><td>TC 返回 AsyncCommitting，立即承诺</td></tr>
+<tr><td>AsyncCommitting</td><td>TC 后台等 RM 收尾</td><td>提交幂等，失败可重试</td></tr>
+</table>
+<p>这张表里最值得盯的是「注册 + 锁」和「AsyncCommitting」：前者是业务线程唯一会被阻塞的地方，后者是「提交成功」与「收尾完成」之间的时间差。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件 × 阶段</h2></div>
+<p class="sec-sub">同一部件在不同阶段扮演不同角色，这张矩阵是排障时的索引。</p>
+<div class="quote"><i>把部件放回阶段里，才能看清谁在什么时候接力。</i></div>
+
+<table class="grid">
+<tr><th>部件</th><th>一阶段</th><th>提交</th><th>回滚</th><th>超时</th></tr>
+<tr><td>TM</td><td>begin，绑 XID</td><td>发 GlobalCommit</td><td>发 GlobalRollback</td><td>本地超时改回滚</td></tr>
+<tr><td>TC</td><td>建会话，收分支</td><td>AsyncCommitting</td><td>逆序驱动回滚</td><td>TimeoutRollbacking</td></tr>
+<tr><td>RM</td><td>镜像、锁、undo、本地提交</td><td>异步删 undo</td><td>反向 SQL</td><td>可回滚分支</td></tr>
+<tr><td>全局锁</td><td>注册时拿</td><td>改状态时放</td><td>回滚完成后放</td><td>回滚失败时保留</td></tr>
+<tr><td>undo_log</td><td>同一本地事务写入</td><td>异步删除</td><td>回放后删除</td><td>先到则插墓碑</td></tr>
+</table>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：它依赖什么才能成立</h2></div>
+<p class="sec-sub">拆掉任意一个外部依赖，前面看到的行为都会变。</p>
+<div class="quote"><i>任何机制都有环境前提；拆掉外部依赖，它就不再成立。</i></div>
+<div class="envcards">
+<div class="env"><b>TC 的会话存储</b><span>file / db / redis / raft；决定 TC 挂了之后能不能恢复。</span></div>
+<div class="env"><b>业务库的 undo_log</b><span>每张参与 AT 的表所在库都要建；没有它，回滚没有录像。</span></div>
+<div class="env"><b>数据源代理</b><span>SQL 必须经过 DataSourceProxy；否则 XID 在，分支不在。</span></div>
+<div class="env"><b>RPC 的 XID 传播</b><span>HTTP 传 TX_XID，Dubbo 传 attachment；线程切换要手动带。</span></div>
+<div class="env"><b>主键</b><span>镜像按主键回查，锁键按主键构造；无主键用不了 AT。</span></div>
+</div>
+<p class="figcap">边界：本页画的是 AT 的 happy path；TCC/Saga/XA 的分支时机不同，见第 5 章。实际耗时、网络重试与 TC 选主不在图中。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">四个问题，检查你是否能在边界上做判断。</p>
+<div class="quote"><i>自测不是复述结论，而是检查你能否在边界上做判断。</i></div>
+<div id="quiz"></div>
+</section>
+
+
+<div class="summary">
+<h2>一页带走</h2>
+
+<p class="chant">XID 是线，分支是钩子，undo 是录像。</p>
+<p>· 先看 TC 的会话与锁，再看 RM 的 undo_log；只看日志里的 XID 会把「假在事务里」当成「已参与」。</p>
+<p>· AT 的一阶段已经本地提交；提交路径是状态承诺，回滚路径才是数据操作。</p>
+<p>· 只读、无主键、无代理、SQL 解析失败，都会让分支悄悄消失。</p>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+</div>
+
+<script>
+(function(){
+var PERIOD=7800,PHASE_MAX=720;
+var STEPS=[{"d":0,"t":"Begin","x":"TM 发 GlobalBegin；TC 创建 GlobalSession，返回 XID。"},{"d":60,"t":"XID","x":"TM 把 XID 绑到 RootContext；后续调用都带着它。"},{"d":120,"t":"SQL+镜像","x":"订单库执行 SQL，生成前后镜像；undo 只入内存。"},{"d":190,"t":"注册+锁","x":"本地 commit 前一次性注册分支、抢全局锁。"},{"d":260,"t":"本地提交","x":"写 undo_log → 本地 COMMIT → 数据可见 → 上报 PhaseOne_Done。"},{"d":340,"t":"RPC","x":"库存服务拿到 XID，重复同一套动作。"},{"d":430,"t":"全局提交","x":"TM 发 GlobalCommit；TC 改成 AsyncCommitting，返回 Committed。"},{"d":500,"t":"异步收尾","x":"TC 后台发 BranchCommit；RM 异步删 undo_log。"},{"d":620,"t":"结束","x":"分支清空后会话结束；TM 收到的 Committed 只代表不再回滚。"}];
+var PARTS={"tm":["orderBox","sqlNode"],"tc":["tcBox","lockBadge"],"rm":["stockBox","sqlNode","commitNode"],"undo":["commitNode"],"lock":["lockBadge"],"xid":["e2","xidBadge"]};
+var CHIPS=[{"k":"tm","l":"TM"},{"k":"branch","l":"分支数"},{"k":"lock","l":"全局锁"},{"k":"phase2","l":"二阶段"}];
+var QUIZ=[{"q":"AT 的分支注册发生在什么时候？","opts":["业务 SQL 执行时","本地事务 commit 之前","TC 收到 GlobalCommit 时"],"a":1,"exp":"分支在 ConnectionProxy.processGlobalTransactionCommit() 里注册，顺序是：注册/抢锁 → 写 undo_log → 本地 commit → 上报。SQL 已经执行，但还没提交。"},{"q":"TM 收到 Committed，说明所有分支的二阶段都完成了吗？","opts":["是，提交是同步的","不是，AT 的提交是异步的","只在 TC 单机时是"],"a":1,"exp":"AT 分支 canBeCommittedAsync() 恒为 true，TC 把会话改成 AsyncCommitting 就返回 Committed；分支提交和 undo 删除都由后台线程完成。"},{"q":"一个只读 SQL 会注册分支吗？","opts":["会，只要在全局事务里","不会，因为没有 undo log 和锁键","会，但状态是 RDONLY"],"a":1,"exp":"ConnectionProxy.register() 只在 hasUndoLog() && hasLockKey() 时注册；只读 SQL 两者都没有，所以 TC 分支表里没有它。"},{"q":"XID 到底是什么？","opts":["一个分布式数据库事务 ID","关联全局事务的标识，本身不保证分支存在","TC 的锁表主键"],"a":1,"exp":"XID 是 TM begin 时 TC 生成的字符串。它只负责把调用链关联起来；分支有没有挂上、能不能回滚，要看 RM 的代理与 undo_log。"},{"q":"TC 挂掉后，已经本地提交的数据会自动回滚吗？","opts":["会，TC 一挂全部回滚","不会，取决于会话存储与恢复；回滚要等新 TC 驱动","只会回滚未开始的事务"],"a":1,"exp":"本地数据在 RM 手里，TC 只记会话。file/db/redis/raft 的恢复边界不同；raft 新 leader 会把旧 Begin 保守回滚，但已经终态的会话不会自动反向。"}];
+var WP=[[0,150,180],[55,500,180],[75,500,205],[110,150,205],[125,150,252],[185,150,300],[205,500,300],[235,500,325],[260,150,325],[275,150,372],[330,150,420],[345,500,420],[380,850,458],[430,500,458],[445,500,500],[475,500,525],[490,150,525],[540,500,525],[560,850,548],[640,850,548]];
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,STEP_DUR=650;
+var stepIdx=-1;
+var el={};
+document.querySelectorAll('#eng [id],#eng2 [id]').forEach(function(n){el[n.id]=n;});
+function setOp(id,v){var n=typeof id==='string'?el[id]:id;if(n)n.setAttribute('opacity',v.toFixed(2));}
+function setText(id,s){var n=el[id]||document.getElementById(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setAttr(id,k,v){var n=el[id];if(n)n.setAttribute(k,v);}
+function setChip(k,v){var n=document.querySelector('#stateChips .chip[data-k="'+k+'"]');if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',/^(开|是|已|完成|生效|放行|进行|成功|COMMIT|提交|回滚|有|命中|持有|可选|新 leader|已落定)/.test(v));n.classList.toggle('off',/^(关|否|待命|—|未|无|失败|丢失|释放|默认关|停)/.test(v));}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){return t*t*(3-2*t);}
+function tokenPos(th){
+  if(!WP||WP.length<2)return null;
+  var p=norm(th);var i=0;while(i<WP.length-2&&p>WP[i+1][0])i++;
+  var a=WP[i],b=WP[i+1];var t=(p-a[0])/((b[0]-a[0])||1);t=clamp(t,0,1);
+  return [a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+}
+
+function renderScene(th,pr,si){
+  function band(id,a,b,lo,hi){setOp(id,(pr>=a&&pr<b)?(hi===undefined?1:hi):(lo===undefined?0.18:lo));}
+  band('e1',0,60);band('e2',60,120);band('e4',190,260);band('e5',260,340);
+  band('e6',340,430);band('e7',340,430);band('e8',430,500);band('e9',500,620,0.18,1);
+  band('e10',500,620,0.12,0.95);
+  band('sqlNode',120,340,0.4);band('commitNode',260,430,0.4);
+  band('xidBadge',60,190,0.35);band('lockBadge',190,430,0.25);
+  band('orderBox',0,720,0.75,1);band('tcBox',0,720,0.75,1);band('stockBox',340,720,0.6,1);
+  document.querySelectorAll('.edgeLabel').forEach(function(n){n.style.opacity=(pr>=0?0.95:1);});
+  var key='XID';
+  if(pr>=190)key='锁持有';
+  if(pr>=340)key='2 个分支';
+  if(pr>=430)key='AsyncCommitting';
+  if(pr>=500)key='异步收尾';
+  if(pr>=620)key='会话结束';
+  setText('roKey',key);
+  setChip('tm',pr>=0?'已开始':'待命');
+  setChip('branch',pr>=340?'2':pr>=190?'1':'0');
+  setChip('lock',pr>=190&&pr<430?'持有':pr>=430?'释放':'待命');
+  setChip('phase2',pr>=500&&pr<620?'异步':pr>=620?'完成':'待命');
+}
+
+
+function renderSub(th){
+  var pr=norm(th); var si=0;
+  for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)si=i;}
+  for(var i=0;i<STEPS.length;i++){setOp('seg'+i,i===si?1:0.35);}
+  var x=40+(pr/PHASE_MAX)*920;
+  setAttr('subNow','x1',x.toFixed(1)); setAttr('subNow','x2',x.toFixed(1));
+}
+
+function render(th){
+  var pr=norm(th);
+  setText('roPhase',Math.round(pr)+'°');
+  var si=0;for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)si=i;}
+  if(mode==='step'&&stepIdx>=0)si=stepIdx;
+  setText('roStep',STEPS[si]?STEPS[si].t:'—');
+  var p=tokenPos(th);
+  if(p){setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));setOp('tok',1);}
+  else{setOp('tok',0);}
+  renderScene(th,pr,si);
+  if(typeof renderSub==='function')renderSub(th,pr,si);
+}
+function tick(now){
+  var dt=Math.min(50,now-last);last=now;
+  if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+  if(mode==='step'&&stepTo!==null){
+    stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);
+    var p=stepElapsed/STEP_DUR;var e=smooth(p);
+    phase=stepFrom+(stepTo-stepFrom)*e;
+    if(p>=1){phase=((stepTo%PERIOD)+PERIOD)%PERIOD;stepTo=null;}
+  }
+  render(phase/PERIOD*PHASE_MAX);
+  requestAnimationFrame(tick);
+}
+function setAuto(on){
+  mode='auto';run=on;stepTo=null;btn.textContent=on?'暂停':'播放';
+  if(on){stepIdx=-1;document.querySelectorAll('.stepnode').forEach(function(d){d.classList.remove('on');});
+  stepT.textContent='自动运转模式';stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格。';}
+}
+window.goStep=function(i){
+  stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+  var target=STEPS[stepIdx].d/PHASE_MAX*PERIOD;var delta=target-phase;
+  if(reduced||Math.abs(delta)>PERIOD/3){phase=target;stepTo=null;render(target/PERIOD*PHASE_MAX+0.01);}
+  else{stepFrom=phase;stepTo=phase+delta;stepElapsed=0;render(phase/PERIOD*PHASE_MAX+0.01);}
+  btn.textContent='继续自动运转';
+  document.querySelectorAll('.stepnode').forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+  stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+  stepX.textContent=STEPS[stepIdx].x;
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+btn.textContent=run?'暂停':'播放';
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+for(var s=0;s<STEPS.length;s++){(function(n){
+  var b=document.createElement('button');b.className='stepnode';
+  b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+  b.onclick=function(){goStep(n);};stepBar.appendChild(b);
+})(s);}
+CHIPS.forEach(function(c){var s=document.createElement('span');s.className='chip';s.setAttribute('data-k',c.k);s.innerHTML=c.l+' <b>--</b>';document.getElementById('stateChips').appendChild(s);});
+document.querySelectorAll('.part').forEach(function(b){
+  b.onclick=function(){
+    var ids=PARTS[b.getAttribute('data-part')]||[];
+    ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+    document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+    setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+  };
+});
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+  var d=document.createElement('div');d.className='q';
+  var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+  it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+  h+='<div class="exp">'+it.exp+'</div>';d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+  var b=e.target.closest('.opt');if(!b)return;var box2=b.parentElement;if(box2.classList.contains('done'))return;
+  box2.classList.add('done');
+  var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+  box2.querySelectorAll('.opt').forEach(function(x,n){x.classList.add(n===QUIZ[qi].a?'right':'wrong');});
+});
+var BASE=(location.pathname.split('/seata-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/seata/lab';
+document.getElementById('lnkArt').href=BASE+'/seata/tutorial/01-global-transaction';
+
+requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

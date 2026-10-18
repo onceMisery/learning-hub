@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AT 二阶段：提交与回滚 · Seata 互动原理实验室 第 3 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:960px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:720px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:600;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:12px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:600;fill:#1F1E1A}
+.tag{font-size:10.5px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:66px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+.modebar{display:flex;align-items:center;gap:8px;margin:6px 4px 0;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.modebar .mlabel{font-weight:600;color:#3B3A34}
+.modebtn{padding:5px 12px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:12.5px;cursor:pointer;font-family:inherit}
+.modebtn:hover{border-color:#888780}
+.modebtn.on{background:#FFF6E8;border-color:#EF9F27;color:#854F0B;font-weight:600}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .outbranch{display:inline-flex;flex-direction:column;align-items:flex-start;gap:6px}
+.flow .outline{display:inline-flex;align-items:center;gap:8px}
+.flow .flownote{font-size:12px;color:#6B695F;font-weight:600;margin-right:4px}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 10px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+#scene [opacity]{transition:opacity .28s ease}
+#sub [opacity]{transition:opacity .28s ease}
+@media (prefers-reduced-motion: reduce){#scene [opacity],#sub [opacity]{transition:none}}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:8px 4px 0;font-size:12px;color:#6B695F}
+.legend i{display:inline-block;width:18px;height:0;border-top:2px solid #C46A0A;vertical-align:middle;margin-right:5px}
+.legend i.g{border-color:#639922}
+.legend i.r{border-color:#E24B4A}
+.legend i.dash{border-top-style:dashed}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：AT 二阶段：提交为什么先返回，回滚怎么把数据倒放</a>
+  <span class="idx">第 3 / 6 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">SEATA · AT 二阶段</div>
+<h1>提交与回滚：两条时间线</h1>
+<p>提交可以先返回，因为删 undo 是可重试的清理；回滚必须等数据改完，因为反向 SQL 会碰到锁、约束和脏写。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span>
+<span class="mnode">② 静态分解</span>
+<span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span>
+<span class="mnode">⑤ 环境场景</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 620" role="img" xmlns="http://www.w3.org/2000/svg"><title>提交与回滚：两条时间线</title><defs><marker id="flw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="flwG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="flwR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="flwB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker></defs><text class="th" x="500" y="26" text-anchor="middle">提交与回滚：两条时间线</text><text class="ts" x="500" y="47" text-anchor="middle">提交先给承诺、后做清理；回滚先改数据、后给结果。两者的「成功」不是同一个含义</text><text x="985" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">橙色：决定点</text><text x="985" y="42" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色/红色：提交/回滚</text><g id="scene"><g id="decision"><rect x="30" y="266" width="160" height="70" rx="10" fill="#FBFAF6" stroke="#C46A0A" stroke-width="1.3"/><text x="44" y="288" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">全局决议</text><text x="44" y="308" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">业务异常 / 超时</text><text x="44" y="325" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">或 TM 主动 commit</text></g><text x="250" y="146" font-size="13" fill="#4C7A1A" text-anchor="start" font-weight="600">提交：TC 先返回，RM 后收尾</text><text x="250" y="380" font-size="13" fill="#C0392B" text-anchor="start" font-weight="600">回滚：TC 等数据改完才返回</text><g id="c0"><rect x="250" y="180" width="136" height="58" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="264" y="202" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">TC：AsyncCommitting</text><text x="264" y="222" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">close() 禁新分支</text><text x="264" y="239" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">返回 Committed</text></g><path d="M386 209 L400 209" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flw)"/><g id="c1"><rect x="400" y="180" width="136" height="58" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="414" y="202" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">clean()</text><text x="414" y="222" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">释放全局锁</text><text x="414" y="239" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">不再接受新分支</text></g><path d="M536 209 L550 209" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flw)"/><g id="c2"><rect x="550" y="180" width="136" height="58" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3" stroke-dasharray="5 4"/><text x="564" y="202" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">后台 BranchCommit</text><text x="564" y="222" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">每秒扫描</text><text x="564" y="239" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">逐分支发送</text></g><path d="M686 209 L700 209" fill="none" stroke="#639922" stroke-width="1.6" stroke-dasharray="4 4" marker-end="url(#flw)"/><g id="c3"><rect x="700" y="180" width="136" height="58" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3" stroke-dasharray="5 4"/><text x="714" y="202" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">RM 入队</text><text x="714" y="222" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">AsyncWorker</text><text x="714" y="239" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">立即回 Committed</text></g><path d="M836 209 L850 209" fill="none" stroke="#639922" stroke-width="1.6" stroke-dasharray="4 4" marker-end="url(#flw)"/><g id="c4"><rect x="850" y="180" width="136" height="58" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3" stroke-dasharray="5 4"/><text x="864" y="202" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">异步删 undo_log</text><text x="864" y="222" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">1 秒一轮</text><text x="864" y="239" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">批量 1000 条</text></g><g id="r0"><rect x="250" y="400" width="136" height="58" rx="10" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/><text x="264" y="422" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">TC：Rollbacking</text><text x="264" y="442" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">close() 禁新分支</text><text x="264" y="459" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">状态落库</text></g><path d="M386 429 L400 429" fill="none" stroke="#E24B4A" stroke-width="1.6" marker-end="url(#flw)"/><g id="r1"><rect x="400" y="400" width="136" height="58" rx="10" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/><text x="414" y="422" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">逆序分支</text><text x="414" y="442" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">getReverseSorted</text><text x="414" y="459" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">先撤后做的</text></g><path d="M536 429 L550 429" fill="none" stroke="#E24B4A" stroke-width="1.6" marker-end="url(#flw)"/><g id="r2"><rect x="550" y="400" width="136" height="58" rx="10" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/><text x="564" y="422" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">undo：SELECT</text><text x="564" y="442" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">FOR UPDATE</text><text x="564" y="459" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">锁住 undo_log</text></g><path d="M686 429 L700 429" fill="none" stroke="#E24B4A" stroke-width="1.6" marker-end="url(#flw)"/><g id="r3"><rect x="700" y="400" width="136" height="58" rx="10" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/><text x="714" y="422" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">反向 SQL</text><text x="714" y="442" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">UPDATE/DELETE/INSERT</text><text x="714" y="459" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">before/after 镜像</text></g><path d="M836 429 L850 429" fill="none" stroke="#E24B4A" stroke-width="1.6" marker-end="url(#flw)"/><g id="r4"><rect x="850" y="400" width="136" height="58" rx="10" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/><text x="864" y="422" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">删 undo / 墓碑</text><text x="864" y="442" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">成功：删除</text><text x="864" y="459" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">先到：GlobalFinished</text></g><path d="M190 282 L246 218" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flwG)"/><path d="M190 320 L246 420" fill="none" stroke="#E24B4A" stroke-width="1.6" marker-end="url(#flwR)"/><text x="214" y="300" font-size="10.5" fill="#4C7A1A" text-anchor="middle" font-weight="400">commit</text><text x="214" y="346" font-size="10.5" fill="#C0392B" text-anchor="middle" font-weight="400">rollback</text><rect x="30" y="500" width="440" height="54" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="44" y="522" font-size="11.5" fill="#4C7A1A" text-anchor="start" font-weight="700">提交：状态承诺</text><text x="44" y="542" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="400">返回 Committed 时，分支提交和 undo 删除都还没完成。</text><rect x="490" y="500" width="480" height="54" rx="8" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/><text x="504" y="522" font-size="11.5" fill="#C0392B" text-anchor="start" font-weight="700">回滚：数据操作</text><text x="504" y="542" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="400">反向 SQL 可能撞锁、撞唯一键、遇脏写；脏写不可重试。</text><g id="dirtyBadge"><rect x="690" y="330" width="220" height="46" rx="10" fill="#fff" stroke="#E24B4A" stroke-width="1.3" stroke-dasharray="5 4"/><text x="704" y="352" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="600">afterImage 校验</text><text x="704" y="372" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">current != after 且 != before → 不可重试</text></g></g><circle id="tok" cx="-20" cy="-20" r="9" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/></svg>
+<svg id="eng2" viewBox="0 0 1000 180" role="img" xmlns="http://www.w3.org/2000/svg"><text x="40" y="26" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">相位总线：自动与分步共用同一进度</text><text x="960" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">0° → 720°</text><rect id="seg0" x="42.0" y="52" width="111.0" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="97.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">决议</text><text x="97.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">0°</text><rect id="seg1" x="157.0" y="52" width="111.0" height="58" rx="7" fill="#ffffff" stroke="#639922" stroke-width="1.3"/><text x="212.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">提交返回</text><text x="212.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">80°</text><rect id="seg2" x="272.0" y="52" width="111.0" height="58" rx="7" fill="#ffffff" stroke="#639922" stroke-width="1.3"/><text x="327.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">放锁</text><text x="327.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">160°</text><rect id="seg3" x="387.0" y="52" width="111.0" height="58" rx="7" fill="#ffffff" stroke="#639922" stroke-width="1.3"/><text x="442.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">异步收尾</text><text x="442.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">240°</text><rect id="seg4" x="502.0" y="52" width="111.0" height="58" rx="7" fill="#ffffff" stroke="#E24B4A" stroke-width="1.3"/><text x="557.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">回滚开始</text><text x="557.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">330°</text><rect id="seg5" x="617.0" y="52" width="111.0" height="58" rx="7" fill="#ffffff" stroke="#E24B4A" stroke-width="1.3"/><text x="672.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">逆序</text><text x="672.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">410°</text><rect id="seg6" x="732.0" y="52" width="111.0" height="58" rx="7" fill="#ffffff" stroke="#E24B4A" stroke-width="1.3"/><text x="787.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">undo 回放</text><text x="787.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">490°</text><rect id="seg7" x="847.0" y="52" width="111.0" height="58" rx="7" fill="#ffffff" stroke="#E24B4A" stroke-width="1.3"/><text x="902.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">脏写/删除</text><text x="902.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">570°</text><line id="subNow" x1="40" y1="44" x2="40" y2="126" stroke="#C46A0A" stroke-width="2"/><text x="500" y="152" font-size="11" fill="#6B695F" text-anchor="middle" font-weight="400">每格是一个可定格的关键时刻；分步时所有视图冻结到同一相位。</text></svg>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 轮 / 8.4 秒</span>
+</div>
+
+<div class="readout">
+<span class="ro">相位 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">路径 / 结果 <b id="roKey">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav">
+<button class="btn" onclick="prevStep()">‹ 上一步</button>
+<button class="btn warn" onclick="nextStep()">下一步 ›</button>
+</span>
+</div>
+<div class="legend"><span><i class="g"></i>提交路径</span><span><i class="r"></i>回滚路径</span><span><i class="dash"></i>异步</span><span><i></i>决定点</span></div>
+<p class="figcap">进度 0° = 全局决议，720° = 回滚收尾；动画先走提交路径，再走回滚路径，两条路径不代表同一笔事务的先后。<br>口径：Seata 2.8.0-SNAPSHOT；AT 提交异步，回滚同步等待；回滚重试默认每秒一轮，失败默认不释放全局锁。</p>
+</div>
+</div>
+
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：先把它当黑盒</h2></div>
+<p class="sec-sub">不急着拆类，只看它对外表现出什么。</p>
+<div class="quote"><i>先把系统当黑盒：只看输入、输出和边界，不急着解释内部。</i></div>
+
+<p>从 TM 看，提交和回滚都只有一个返回值。从 RM 看，它们是两条完全不同的事：提交是删日志，回滚是改数据。</p>
+<div class="flow">
+<span class="node">业务异常 / 超时</span><span class="arr">→</span>
+<span class="node box">TC 决议</span>
+<span class="outbranch">
+<span class="outline"><span class="arr">→</span><span class="node">提交：AsyncCommitting → 异步删 undo</span></span>
+<span class="outline"><span class="arr">↳</span><span class="node">回滚：Rollbacking → 反向 SQL</span></span>
+</span>
+</div>
+<p>黑盒视角最容易误判的两句话：<b>「commit 返回了，所以二阶段完成了」</b>和<b>「undo_log 还在，所以提交失败了」</b>。这两句都不成立。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：部件各管什么</h2></div>
+<p class="sec-sub">先把结构钉住，再让时间进来。点下面的部件卡，动画里对应部分会亮起。</p>
+<div class="quote"><i>结构分解要 MECE：同一层只放同一粒度的部件。</i></div>
+<div class="figure"><svg viewBox="0 0 920 240" role="img" xmlns="http://www.w3.org/2000/svg"><text x="460" y="24" font-size="15" fill="#1F1E1A" text-anchor="middle" font-weight="600">同一个决议，两条收尾路径</text><text x="460" y="44" font-size="11.5" fill="#6B695F" text-anchor="middle" font-weight="400">提交是状态变更 + 清理；回滚是反向数据操作 + 状态收尾</text><rect x="20" y="74" width="110" height="64" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="75" y="98" font-size="11.5" fill="#4C7A1A" text-anchor="middle" font-weight="600">TM commit</text><text x="75" y="118" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">进入二阶段</text><rect x="160" y="74" width="126" height="64" rx="8" fill="#fff" stroke="#639922" stroke-width="1.3"/><text x="223" y="100" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">AsyncCommitting</text><text x="223" y="120" font-size="9.5" fill="#6B695F" text-anchor="middle" font-weight="400">提交路径</text><path d="M142 106 L156 106" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flw)"/><rect x="305" y="74" width="126" height="64" rx="8" fill="#fff" stroke="#639922" stroke-width="1.3"/><text x="368" y="100" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">返回 Committed</text><text x="368" y="120" font-size="9.5" fill="#6B695F" text-anchor="middle" font-weight="400">提交路径</text><path d="M287 106 L301 106" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flw)"/><rect x="450" y="74" width="126" height="64" rx="8" fill="#fff" stroke="#639922" stroke-width="1.3"/><text x="513" y="100" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">clean 锁</text><text x="513" y="120" font-size="9.5" fill="#6B695F" text-anchor="middle" font-weight="400">提交路径</text><path d="M432 106 L446 106" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flw)"/><rect x="595" y="74" width="126" height="64" rx="8" fill="#fff" stroke="#639922" stroke-width="1.3" stroke-dasharray="5 4"/><text x="658" y="100" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">异步 BranchCommit</text><text x="658" y="120" font-size="9.5" fill="#6B695F" text-anchor="middle" font-weight="400">提交路径</text><path d="M577 106 L591 106" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flw)"/><rect x="740" y="74" width="126" height="64" rx="8" fill="#fff" stroke="#639922" stroke-width="1.3" stroke-dasharray="5 4"/><text x="803" y="100" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">删 undo</text><text x="803" y="120" font-size="9.5" fill="#6B695F" text-anchor="middle" font-weight="400">提交路径</text><path d="M722 106 L736 106" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flw)"/><rect x="20" y="160" width="110" height="54" rx="8" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/><text x="75" y="182" font-size="11.5" fill="#C0392B" text-anchor="middle" font-weight="600">异常 / 超时</text><text x="75" y="200" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">进入回滚</text><rect x="160" y="160" width="126" height="54" rx="8" fill="#fff" stroke="#E24B4A" stroke-width="1.3"/><text x="223" y="184" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">Rollbacking</text><text x="223" y="202" font-size="9.5" fill="#6B695F" text-anchor="middle" font-weight="400">回滚路径</text><path d="M142 187 L156 187" fill="none" stroke="#E24B4A" stroke-width="1.6" marker-end="url(#flw)"/><rect x="305" y="160" width="126" height="54" rx="8" fill="#fff" stroke="#E24B4A" stroke-width="1.3"/><text x="368" y="184" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">逆序分支</text><text x="368" y="202" font-size="9.5" fill="#6B695F" text-anchor="middle" font-weight="400">回滚路径</text><path d="M287 187 L301 187" fill="none" stroke="#E24B4A" stroke-width="1.6" marker-end="url(#flw)"/><rect x="450" y="160" width="126" height="54" rx="8" fill="#fff" stroke="#E24B4A" stroke-width="1.3"/><text x="513" y="184" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">undo 回放</text><text x="513" y="202" font-size="9.5" fill="#6B695F" text-anchor="middle" font-weight="400">回滚路径</text><path d="M432 187 L446 187" fill="none" stroke="#E24B4A" stroke-width="1.6" marker-end="url(#flw)"/><rect x="595" y="160" width="126" height="54" rx="8" fill="#fff" stroke="#E24B4A" stroke-width="1.3"/><text x="658" y="184" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">反向 SQL</text><text x="658" y="202" font-size="9.5" fill="#6B695F" text-anchor="middle" font-weight="400">回滚路径</text><path d="M577 187 L591 187" fill="none" stroke="#E24B4A" stroke-width="1.6" marker-end="url(#flw)"/><rect x="740" y="160" width="126" height="54" rx="8" fill="#fff" stroke="#E24B4A" stroke-width="1.3"/><text x="803" y="184" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">删 undo</text><text x="803" y="202" font-size="9.5" fill="#6B695F" text-anchor="middle" font-weight="400">回滚路径</text><path d="M722 187 L736 187" fill="none" stroke="#E24B4A" stroke-width="1.6" marker-end="url(#flw)"/></svg></div>
+<div class="partgroup"><div class="gname">提交路径</div><div class="parts"><button class="part" data-part="async"><b>1. AsyncCommitting</b><span>AT 全部可异步时，TC 先改状态并承诺不再回滚。</span></button><button class="part" data-part="worker"><b>2. AsyncWorker</b><span>BranchCommit 入队即返回，undo 删除由定时任务做。</span></button></div></div><div class="partgroup"><div class="gname">回滚路径</div><div class="parts"><button class="part" data-part="reverse"><b>3. 逆序</b><span>分支逆序、分支内 SQLUndoLog 也逆序。</span></button><button class="part" data-part="undo"><b>4. undo 回放</b><span>SELECT FOR UPDATE 取日志，生成反向 SQL。</span></button><button class="part" data-part="dirty"><b>5. 三方对账</b><span>before/after/current 比较；脏写直接不可重试。</span></button></div></div><div class="partgroup"><div class="gname">边界</div><div class="parts"><button class="part" data-part="tomb"><b>6. GlobalFinished</b><span>回滚先到时插墓碑，阻止一阶段后到的本地提交。</span></button></div></div>
+<p class="hint">静态图与动画共用同一套编号和口径；把动画暂停，它就是一张可打印的结构图。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：一步一停看顺序</h2></div>
+<p class="sec-sub">重点不是记住箭头，而是记住每一步「谁在等谁」。</p>
+<div class="quote"><i>动态分析看三件事：顺序、状态、触发条件。</i></div>
+
+<table class="grid">
+<tr><th>路径</th><th>关键动作</th><th>返回时机</th><th>失败处理</th></tr>
+<tr><td>提交</td><td>AsyncCommitting → clean 锁</td><td>改完状态就返回</td><td>分支提交重试；删 undo 重入队</td></tr>
+<tr><td>提交收尾</td><td>BranchCommit → AsyncWorker</td><td>入队即回 PhaseTwo_Committed</td><td>队列满时紧急清队列再入队</td></tr>
+<tr><td>回滚</td><td>Rollbacking → 逆序分支</td><td>等所有分支回滚结果</td><td>可重试失败每秒重试</td></tr>
+<tr><td>回滚校验</td><td>before/after/current 对账</td><td>反向 SQL 之前</td><td>脏写/唯一键冲突不可重试</td></tr>
+<tr><td>墓碑</td><td>undo_log 不存在时插 GlobalFinished</td><td>一阶段后到时撞唯一键</td><td>阻止已决议回滚的分支再提交</td></tr>
+</table>
+<p>把「返回时机」这一列记住：提交是状态承诺，回滚是数据操作。监控上，TC 返回 Committed 之后仍可能有分支在重试；回滚返回 Rollbacked 之前，数据可能已经被改过多次。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件 × 阶段</h2></div>
+<p class="sec-sub">同一部件在不同阶段扮演不同角色，这张矩阵是排障时的索引。</p>
+<div class="quote"><i>把部件放回阶段里，才能看清谁在什么时候接力。</i></div>
+
+<table class="grid">
+<tr><th>阶段</th><th>TC</th><th>RM</th><th>undo_log</th><th>全局锁</th></tr>
+<tr><td>提交决议</td><td>AsyncCommitting</td><td>等 BranchCommit</td><td>未动</td><td>clean 释放</td></tr>
+<tr><td>提交收尾</td><td>每秒扫描</td><td>入队、批量删</td><td>异步删除</td><td>已释放</td></tr>
+<tr><td>回滚决议</td><td>Rollbacking，close</td><td>等 BranchRollback</td><td>待回放</td><td>保留</td></tr>
+<tr><td>回滚执行</td><td>逆序驱动</td><td>反向 SQL</td><td>SELECT FOR UPDATE</td><td>回滚完成才放</td></tr>
+<tr><td>回滚校验</td><td>收 BranchStatus</td><td>三方对账</td><td>删除/墓碑</td><td>失败默认保留</td></tr>
+</table>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：它依赖什么才能成立</h2></div>
+<p class="sec-sub">拆掉任意一个外部依赖，前面看到的行为都会变。</p>
+<div class="quote"><i>任何机制都有环境前提；拆掉外部依赖，它就不再成立。</i></div>
+<div class="envcards">
+<div class="env"><b>异步提交队列</b><span>client.rm.asyncCommitBufferLimit 默认 10000；满了会拖慢 BranchCommit 线程。</span></div>
+<div class="env"><b>undo 数据校验</b><span>client.undo.dataValidation 默认 true；关掉就没有脏写拦截。</span></div>
+<div class="env"><b>重试上限</b><span>maxCommit/RollbackRetryTimeout 默认 -1；无限重试会长期占锁。</span></div>
+<div class="env"><b>TC 会话存储</b><span>回滚状态要落库；TC 重启后靠它继续驱动。</span></div>
+<div class="env"><b>数据库约束</b><span>反向 INSERT 可能撞唯一键，Seata 会判为不可重试。</span></div>
+</div>
+<p class="figcap">边界：本页默认单 TC、AT 分支；XA 的 prepare/commit 与 TCC/Saga 的二阶段不走这套 undo 回放。批量删除与队列容量只给默认量级。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">四个问题，检查你是否能在边界上做判断。</p>
+<div class="quote"><i>自测不是复述结论，而是检查你能否在边界上做判断。</i></div>
+<div id="quiz"></div>
+</section>
+
+
+<div class="summary">
+<h2>一页带走</h2>
+
+<p class="chant">提交先承诺，回滚先改数据。</p>
+<p>· 不要把「TC 返回 Committed」当成「所有分支收尾完成」；也不要用 undo_log 是否存在判断提交成败。</p>
+<p>· 回滚是逆序的：分支逆序、分支内 SQL 也逆序；脏写校验只看镜像抓到的列。</p>
+<p>· 回滚失败默认不释放全局锁；手工清理之前先校准数据。</p>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+</div>
+
+<script>
+(function(){
+var PERIOD=8400,PHASE_MAX=720;
+var STEPS=[{"d":0,"t":"决议","x":"业务异常或 TM commit，决定走提交还是回滚。"},{"d":80,"t":"提交返回","x":"TC 置 AsyncCommitting，释放全局锁，向 TM 返回 Committed。"},{"d":160,"t":"异步收尾","x":"后台每秒发 BranchCommit；RM 入队后立即回 PhaseTwo_Committed。"},{"d":240,"t":"删 undo","x":"RM 的 AsyncWorker 每秒批量删除 undo_log，失败重入队。"},{"d":330,"t":"回滚开始","x":"TC 置 Rollbacking，关闭会话，阻止新分支注册。"},{"d":410,"t":"逆序","x":"分支逆序，分支内 SQLUndoLog 也逆序。"},{"d":490,"t":"undo 回放","x":"SELECT undo_log FOR UPDATE；按 before/after 生成反向 SQL。"},{"d":570,"t":"脏写/删除","x":"三方对账；成功删 undo，一阶段没写则插 GlobalFinished 墓碑。"}];
+var PARTS={"async":["c0","c1"],"worker":["c2","c3","c4"],"reverse":["r1"],"undo":["r2","r3"],"dirty":["dirtyBadge","r4"],"tomb":["r4"]};
+var CHIPS=[{"k":"path","l":"路径"},{"k":"lock","l":"全局锁"},{"k":"undo","l":"undo_log"},{"k":"dirty","l":"脏写校验"}];
+var QUIZ=[{"q":"AT 提交对 TM 返回 Committed 时，分支提交完成了吗？","opts":["完成了","没有；TC 只是把会话改成 AsyncCommitting","只在没有分支时完成"],"a":1,"exp":"DefaultCore.commit() 在 AT 全部可异步时置 AsyncCommitting 并返回 Committed；真正的 BranchCommit 由后台线程每秒发送。"},{"q":"回滚时为什么要先 SELECT undo_log ... FOR UPDATE？","opts":["提升查询速度","防止两个线程同时回滚同一分支","为了拿全局锁"],"a":1,"exp":"undo 在一个本地事务里执行，SELECT FOR UPDATE 锁住这条 undo_log，保证同一分支不会被并发回放。"},{"q":"什么情况下回滚会直接判为不可重试？","opts":["数据库连接断开","锁等待超时","脏写或反向 SQL 撞唯一键"],"a":2,"exp":"SQLUndoDirtyException 和 SQLIntegrityConstraintViolationException 会映射成 BranchRollbackFailed_Unretriable；连接和锁冲突通常可重试。"},{"q":"回滚先到、一阶段还没写 undo_log，Seata 怎么处理？","opts":["什么都不做","插入一条 GlobalFinished 墓碑，之后一阶段写 undo 会撞唯一键","直接提交一阶段"],"a":1,"exp":"undo() 查不到日志时插入 log_status=GlobalFinished 的墓碑；一阶段后到的 INSERT 撞唯一键，本地事务失败，避免已决议回滚的分支再提交。"},{"q":"「undo_log 还在」能说明提交失败吗？","opts":["能","不能；AT 提交的 undo 删除是异步的","只在 file 模式能"],"a":1,"exp":"提交路径的 undo 删除由 AsyncWorker 异步做，返回 Committed 时日志可能还在。判断提交是否完成要看分支状态和 TC 会话，不是看 undo_log 表。"}];
+var WP=[[0,110,300],[70,318,209],[150,468,209],[230,618,209],[300,768,209],[340,918,209],[390,318,429],[470,468,429],[550,618,429],[620,768,429],[680,918,429]];
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,STEP_DUR=650;
+var stepIdx=-1;
+var el={};
+document.querySelectorAll('#eng [id],#eng2 [id]').forEach(function(n){el[n.id]=n;});
+function setOp(id,v){var n=typeof id==='string'?el[id]:id;if(n)n.setAttribute('opacity',v.toFixed(2));}
+function setText(id,s){var n=el[id]||document.getElementById(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setAttr(id,k,v){var n=el[id];if(n)n.setAttribute(k,v);}
+function setChip(k,v){var n=document.querySelector('#stateChips .chip[data-k="'+k+'"]');if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',/^(开|是|已|完成|生效|放行|进行|成功|COMMIT|提交|回滚|有|命中|持有|可选|新 leader|已落定)/.test(v));n.classList.toggle('off',/^(关|否|待命|—|未|无|失败|丢失|释放|默认关|停)/.test(v));}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){return t*t*(3-2*t);}
+function tokenPos(th){
+  if(!WP||WP.length<2)return null;
+  var p=norm(th);var i=0;while(i<WP.length-2&&p>WP[i+1][0])i++;
+  var a=WP[i],b=WP[i+1];var t=(p-a[0])/((b[0]-a[0])||1);t=clamp(t,0,1);
+  return [a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+}
+
+function renderScene(th,pr,si){
+  function band(id,a,b,lo,hi){setOp(id,(pr>=a&&pr<b)?(hi===undefined?1:hi):(lo===undefined?0.2:lo));}
+  band('decision',0,80,0.6);
+  var cb=[[0,80],[80,160],[160,240],[240,330],[330,420]];
+  for(var i=0;i<5;i++){band('c'+i,cb[i][0],cb[i][1],0.3);}
+  var rb=[[330,410],[410,490],[490,570],[570,650],[650,720]];
+  for(var j=0;j<5;j++){band('r'+j,rb[j][0],rb[j][1],0.3);}
+  band('dirtyBadge',570,720,0.25);
+  var key='决议';
+  if(pr>=80&&pr<330)key='提交：异步收尾';
+  if(pr>=330&&pr<570)key='回滚：反向 SQL';
+  if(pr>=570)key='脏写校验/清理';
+  setText('roKey',key);
+  setChip('path',pr<330?'提交':'回滚');
+  setChip('lock',pr>=80&&pr<330?'已释放':pr>=330?'回滚中':'持有');
+  setChip('undo',pr>=240&&pr<330?'删除中':pr>=570?'回放/删除':'未动');
+  setChip('dirty',pr>=570?'校验':'—');
+}
+
+
+function renderSub(th){
+  var pr=norm(th); var si=0;
+  for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)si=i;}
+  for(var i=0;i<STEPS.length;i++){setOp('seg'+i,i===si?1:0.35);}
+  var x=40+(pr/PHASE_MAX)*920;
+  setAttr('subNow','x1',x.toFixed(1)); setAttr('subNow','x2',x.toFixed(1));
+}
+
+function render(th){
+  var pr=norm(th);
+  setText('roPhase',Math.round(pr)+'°');
+  var si=0;for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)si=i;}
+  if(mode==='step'&&stepIdx>=0)si=stepIdx;
+  setText('roStep',STEPS[si]?STEPS[si].t:'—');
+  var p=tokenPos(th);
+  if(p){setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));setOp('tok',1);}
+  else{setOp('tok',0);}
+  renderScene(th,pr,si);
+  if(typeof renderSub==='function')renderSub(th,pr,si);
+}
+function tick(now){
+  var dt=Math.min(50,now-last);last=now;
+  if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+  if(mode==='step'&&stepTo!==null){
+    stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);
+    var p=stepElapsed/STEP_DUR;var e=smooth(p);
+    phase=stepFrom+(stepTo-stepFrom)*e;
+    if(p>=1){phase=((stepTo%PERIOD)+PERIOD)%PERIOD;stepTo=null;}
+  }
+  render(phase/PERIOD*PHASE_MAX);
+  requestAnimationFrame(tick);
+}
+function setAuto(on){
+  mode='auto';run=on;stepTo=null;btn.textContent=on?'暂停':'播放';
+  if(on){stepIdx=-1;document.querySelectorAll('.stepnode').forEach(function(d){d.classList.remove('on');});
+  stepT.textContent='自动运转模式';stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格。';}
+}
+window.goStep=function(i){
+  stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+  var target=STEPS[stepIdx].d/PHASE_MAX*PERIOD;var delta=target-phase;
+  if(reduced||Math.abs(delta)>PERIOD/3){phase=target;stepTo=null;render(target/PERIOD*PHASE_MAX+0.01);}
+  else{stepFrom=phase;stepTo=phase+delta;stepElapsed=0;render(phase/PERIOD*PHASE_MAX+0.01);}
+  btn.textContent='继续自动运转';
+  document.querySelectorAll('.stepnode').forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+  stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+  stepX.textContent=STEPS[stepIdx].x;
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+btn.textContent=run?'暂停':'播放';
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+for(var s=0;s<STEPS.length;s++){(function(n){
+  var b=document.createElement('button');b.className='stepnode';
+  b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+  b.onclick=function(){goStep(n);};stepBar.appendChild(b);
+})(s);}
+CHIPS.forEach(function(c){var s=document.createElement('span');s.className='chip';s.setAttribute('data-k',c.k);s.innerHTML=c.l+' <b>--</b>';document.getElementById('stateChips').appendChild(s);});
+document.querySelectorAll('.part').forEach(function(b){
+  b.onclick=function(){
+    var ids=PARTS[b.getAttribute('data-part')]||[];
+    ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+    document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+    setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+  };
+});
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+  var d=document.createElement('div');d.className='q';
+  var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+  it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+  h+='<div class="exp">'+it.exp+'</div>';d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+  var b=e.target.closest('.opt');if(!b)return;var box2=b.parentElement;if(box2.classList.contains('done'))return;
+  box2.classList.add('done');
+  var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+  box2.querySelectorAll('.opt').forEach(function(x,n){x.classList.add(n===QUIZ[qi].a?'right':'wrong');});
+});
+var BASE=(location.pathname.split('/seata-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/seata/lab';
+document.getElementById('lnkArt').href=BASE+'/seata/tutorial/03-at-phase-two';
+
+requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
