@@ -51,6 +51,10 @@ AutoConfiguration.imports
 
 `GlobalTransactionScanner` 本身是一个 `AbstractAutoProxyCreator`。它在 `afterPropertiesSet()` 里先初始化 TM 客户端，再初始化 RM 客户端；两个客户端都会启动 Netty 连接和定时重连。初始化失败，应用启动就会失败——这是好事，别等到第一笔事务才发现 TC 连不上。
 
+初始化失败，应用启动就会失败——这是好事，别等到第一笔事务才发现 TC 连不上。
+
+![图 1：Spring Boot 启动链路](../../assets/11-SpringBoot启动链路.svg)
+
 ---
 
 ## 三、属性：`seata.*` 和 `registry.conf` 谁优先

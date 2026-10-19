@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>从 Spring Boot 到 TC · Seata 互动原理实验室 第 11 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:960px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:720px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:600;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:12px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:600;fill:#1F1E1A}
+.tag{font-size:10.5px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:66px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+.modebar{display:flex;align-items:center;gap:8px;margin:6px 4px 0;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.modebar .mlabel{font-weight:600;color:#3B3A34}
+.modebtn{padding:5px 12px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:12.5px;cursor:pointer;font-family:inherit}
+.modebtn:hover{border-color:#888780}
+.modebtn.on{background:#FFF6E8;border-color:#EF9F27;color:#854F0B;font-weight:600}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .outbranch{display:inline-flex;flex-direction:column;align-items:flex-start;gap:6px}
+.flow .outline{display:inline-flex;align-items:center;gap:8px}
+.flow .flownote{font-size:12px;color:#6B695F;font-weight:600;margin-right:4px}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 10px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+#scene [opacity]{transition:opacity .28s ease}
+#sub [opacity]{transition:opacity .28s ease}
+@media (prefers-reduced-motion: reduce){#scene [opacity],#sub [opacity]{transition:none}}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:8px 4px 0;font-size:12px;color:#6B695F}
+.legend i{display:inline-block;width:18px;height:0;border-top:2px solid #C46A0A;vertical-align:middle;margin-right:5px}
+.legend i.g{border-color:#639922}
+.legend i.r{border-color:#E24B4A}
+.legend i.dash{border-top-style:dashed}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：Spring Boot 集成</a>
+  <span class="idx">第 11 / 12 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">SEATA · 集成与扩展</div>
+<h1>从 Spring Boot 到 TC</h1>
+<p>一个 starter 背后有三条链：启动自动配置、数据源代理、配置与 TC 地址发现。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span>
+<span class="mnode">② 静态分解</span>
+<span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span>
+<span class="mnode">⑤ 环境场景</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 600" role="img" xmlns="http://www.w3.org/2000/svg"><title>Spring Boot 到 TC：接入链路</title><defs><marker id="flw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="flwG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="flwR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="flwB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker></defs><text class="th" x="500" y="26" text-anchor="middle">Spring Boot 到 TC：接入链路</text><text class="ts" x="500" y="47" text-anchor="middle">自动配置初始化 TM/RM，数据源被代理；配置中心给配置，注册中心给 TC 地址</text><text x="985" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">橙色：启动 / 配置</text><text x="985" y="42" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色：代理 / 发现</text><g id="scene"><text x="30" y="92" font-size="11" fill="#C46A0A" text-anchor="start" font-weight="600">① 启动</text><text x="30" y="222" font-size="11" fill="#4C7A1A" text-anchor="start" font-weight="600">② 数据源代理</text><text x="30" y="352" font-size="11" fill="#2F6FA8" text-anchor="start" font-weight="600">③ 配置与发现</text><g id="i0"><rect x="130" y="96" width="150" height="50" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="144" y="118" font-size="9.5" fill="#1F1E1A" text-anchor="start" font-weight="600">AutoConfig imports</text><text x="144" y="138" font-size="8.5" fill="#6B695F" text-anchor="start" font-weight="400">starter</text></g><path d="M280 121 L296 121" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><g id="i1"><rect x="300" y="96" width="150" height="50" rx="10" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/><text x="314" y="118" font-size="9.5" fill="#1F1E1A" text-anchor="start" font-weight="600">CoreAutoConfiguration</text><text x="314" y="138" font-size="8.5" fill="#6B695F" text-anchor="start" font-weight="400">属性 + Environment</text></g><path d="M450 121 L466 121" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><g id="i2"><rect x="470" y="96" width="150" height="50" rx="10" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/><text x="484" y="118" font-size="9.5" fill="#1F1E1A" text-anchor="start" font-weight="600">SeataAutoConfiguration</text><text x="484" y="138" font-size="8.5" fill="#6B695F" text-anchor="start" font-weight="400">GlobalTransactionScanner</text></g><path d="M620 121 L636 121" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><g id="i3"><rect x="640" y="96" width="150" height="50" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="654" y="118" font-size="9.5" fill="#1F1E1A" text-anchor="start" font-weight="600">GlobalTransactionScanner</text><text x="654" y="138" font-size="8.5" fill="#6B695F" text-anchor="start" font-weight="400">wrapIfNecessary</text></g><path d="M790 121 L806 121" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><g id="i4"><rect x="810" y="96" width="150" height="50" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="824" y="118" font-size="9.5" fill="#1F1E1A" text-anchor="start" font-weight="600">TM / RM 客户端</text><text x="824" y="138" font-size="8.5" fill="#6B695F" text-anchor="start" font-weight="400">Netty + 重连</text></g><g id="d0"><rect x="240" y="220" width="150" height="50" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="254" y="242" font-size="9.5" fill="#1F1E1A" text-anchor="start" font-weight="600">DataSourceAutoConfig</text><text x="254" y="262" font-size="8.5" fill="#6B695F" text-anchor="start" font-weight="400">条件：存在 DataSource</text></g><path d="M390 245 L406 245" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flwG)"/><g id="d1"><rect x="420" y="220" width="150" height="50" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="434" y="242" font-size="9.5" fill="#1F1E1A" text-anchor="start" font-weight="600">ProxyCreator</text><text x="434" y="262" font-size="8.5" fill="#6B695F" text-anchor="start" font-weight="400">AT / XA 模式</text></g><path d="M570 245 L586 245" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flwG)"/><g id="d2"><rect x="600" y="220" width="150" height="50" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="614" y="242" font-size="9.5" fill="#1F1E1A" text-anchor="start" font-weight="600">DataSourceProxyHolder</text><text x="614" y="262" font-size="8.5" fill="#6B695F" text-anchor="start" font-weight="400">原始 → 代理</text></g><path d="M750 245 L766 245" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flwG)"/><g id="d3"><rect x="780" y="220" width="150" height="50" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="794" y="242" font-size="9.5" fill="#1F1E1A" text-anchor="start" font-weight="600">DataSourceProxy</text><text x="794" y="262" font-size="8.5" fill="#6B695F" text-anchor="start" font-weight="400">真代理</text></g><g id="c0"><rect x="130" y="350" width="150" height="50" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="144" y="372" font-size="9.5" fill="#1F1E1A" text-anchor="start" font-weight="600">registry.conf / yml</text><text x="144" y="392" font-size="8.5" fill="#6B695F" text-anchor="start" font-weight="400">config.type</text></g><path d="M280 375 L296 375" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><g id="c1"><rect x="300" y="350" width="150" height="50" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="314" y="372" font-size="9.5" fill="#1F1E1A" text-anchor="start" font-weight="600">ConfigurationFactory</text><text x="314" y="392" font-size="8.5" fill="#6B695F" text-anchor="start" font-weight="400">Spring 桥</text></g><path d="M450 375 L466 375" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><g id="c2"><rect x="470" y="350" width="150" height="50" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="484" y="372" font-size="9.5" fill="#1F1E1A" text-anchor="start" font-weight="600">Configuration</text><text x="484" y="392" font-size="8.5" fill="#6B695F" text-anchor="start" font-weight="400">file / nacos</text></g><path d="M620 375 L636 375" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><g id="r0"><rect x="640" y="350" width="150" height="50" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="654" y="372" font-size="9.5" fill="#1F1E1A" text-anchor="start" font-weight="600">vgroup mapping</text><text x="654" y="392" font-size="8.5" fill="#6B695F" text-anchor="start" font-weight="400">组名 → cluster</text></g><path d="M790 375 L806 375" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flwG)"/><g id="r1"><rect x="810" y="350" width="150" height="50" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="824" y="372" font-size="9.5" fill="#1F1E1A" text-anchor="start" font-weight="600">RegistryFactory → TC</text><text x="824" y="392" font-size="8.5" fill="#6B695F" text-anchor="start" font-weight="400">lookup + 重连</text></g><path d="M330 146 L330 216" fill="none" stroke="#2F6FA8" stroke-width="1.6" stroke-dasharray="4 4" marker-end="url(#flw)"/><path d="M470 146 L470 216" fill="none" stroke="#639922" stroke-width="1.6" stroke-dasharray="4 4" marker-end="url(#flw)"/><path d="M150 350 L310 146" fill="none" stroke="#2F6FA8" stroke-width="1.6" stroke-dasharray="4 4" marker-end="url(#flw)"/><rect x="30" y="440" width="940" height="100" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/><text x="46" y="464" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">记住三条</text><text x="46" y="488" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="400">① 容器里的 DataSource 是 AOP 代理，真 DataSourceProxy 在 holder 里。</text><text x="46" y="508" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="400">② application.yml 覆盖 registry.conf；但 config.type=nacos 后 vgroup-mapping 不从 yml 读。</text><text x="46" y="528" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">③ 配置和发现是两套 SPI：config.type 给键值，registry.type 给 TC 地址。</text></g><circle id="tok" cx="-20" cy="-20" r="9" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/></svg>
+<svg id="eng2" viewBox="0 0 1000 180" role="img" xmlns="http://www.w3.org/2000/svg"><text x="40" y="26" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">相位总线：自动与分步共用同一进度</text><text x="960" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">0° → 720°</text><rect id="seg0" x="42.0" y="52" width="111.0" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="97.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">自动配置</text><text x="97.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">0°</text><rect id="seg1" x="157.0" y="52" width="111.0" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="212.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">Scanner</text><text x="212.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">90°</text><rect id="seg2" x="272.0" y="52" width="111.0" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="327.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">TM/RM</text><text x="327.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">180°</text><rect id="seg3" x="387.0" y="52" width="111.0" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="442.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">数据源代理</text><text x="442.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">270°</text><rect id="seg4" x="502.0" y="52" width="111.0" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="557.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">配置加载</text><text x="557.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">360°</text><rect id="seg5" x="617.0" y="52" width="111.0" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="672.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">注册发现</text><text x="672.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">450°</text><rect id="seg6" x="732.0" y="52" width="111.0" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="787.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">lookup</text><text x="787.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">540°</text><rect id="seg7" x="847.0" y="52" width="111.0" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="902.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">重连</text><text x="902.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">630°</text><line id="subNow" x1="40" y1="44" x2="40" y2="126" stroke="#C46A0A" stroke-width="2"/><text x="500" y="152" font-size="11" fill="#6B695F" text-anchor="middle" font-weight="400">每格是一个可定格的关键时刻；分步时所有视图冻结到同一相位。</text></svg>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 轮 / 8.4 秒</span>
+</div>
+
+<div class="readout">
+<span class="ro">相位 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">阶段 / 链路 <b id="roKey">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav">
+<button class="btn" onclick="prevStep()">‹ 上一步</button>
+<button class="btn warn" onclick="nextStep()">下一步 ›</button>
+</span>
+</div>
+<div class="legend"><span><i></i>启动 / 配置</span><span><i class="g"></i>代理 / 发现</span><span><i class="dash"></i>异步</span></div>
+<p class="figcap">进度 0° = 自动配置，720° = 客户端开始重连；三条链共用同一相位，分步时一起冻结。<br>口径：Seata 2.8.0-SNAPSHOT；Boot 2.7.18 基线，Boot 3 通过 imports 适配；具体属性优先级以版本为准。</p>
+</div>
+</div>
+
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：先把它当黑盒</h2></div>
+<p class="sec-sub">不急着拆类，只看它对外表现出什么。</p>
+<div class="quote"><i>先把系统当黑盒：只看输入、输出和边界，不急着解释内部。</i></div>
+
+<p>Spring Boot 接入 Seata，表面是引 starter、配 `seata.*`、加注解；实际启动时有三条链同时展开：自动配置、数据源代理、配置与 TC 地址发现。</p>
+<div class="flow"><span class="node">starter</span><span class="arr">→</span><span class="node box">自动配置</span><span class="arr">→</span><span class="node">TM/RM + DataSourceProxy</span><span class="arr">→</span><span class="node">配置 / 注册中心</span></div>
+<p>三条链任何一条断了，表现都不同：注解不生效、SQL 不进代理、或者连不上 TC。排障先分清是哪条。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：部件各管什么</h2></div>
+<p class="sec-sub">先把结构钉住，再让时间进来。点下面的部件卡，动画里对应部分会亮起。</p>
+<div class="quote"><i>结构分解要 MECE：同一层只放同一粒度的部件。</i></div>
+<div class="figure"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 620" width="1000" height="620" font-family="Microsoft YaHei, sans-serif">
+<defs>
+<marker id="flw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="flwG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="flwR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="flwB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<rect x="0" y="0" width="1000" height="620" fill="#ffffff"/>
+<text x="500" y="34" font-size="20" fill="#1F1E1A" text-anchor="middle" font-weight="600">Spring Boot 启动链路</text>
+<text x="500" y="56" font-size="12" fill="#6B695F" text-anchor="middle" font-weight="400">自动配置先初始化 TM/RM 客户端，再包数据源；@GlobalTransactional 由 scanner 织入 AOP</text>
+<text x="960" y="28" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">橙色：启动</text>
+<text x="960" y="44" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色：代理</text>
+<rect x="40" y="120" width="160" height="54" rx="9" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="120" y="144" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">AutoConfiguration</text>
+<text x="120" y="162" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">.imports</text>
+<rect x="240" y="120" width="180" height="54" rx="9" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="330" y="144" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">SeataCoreAutoConfiguration</text>
+<text x="330" y="162" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">属性 + Environment</text>
+<rect x="460" y="120" width="170" height="54" rx="9" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="545" y="144" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">SeataAutoConfiguration</text>
+<text x="545" y="162" font-size="9.5" fill="#6B695F" text-anchor="middle" font-weight="400">GlobalTransactionScanner</text>
+<rect x="670" y="120" width="130" height="54" rx="9" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="735" y="144" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">TM / RM 客户端</text>
+<text x="735" y="162" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">Netty + 重连</text>
+<path d="M200 147 L236 147" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/>
+<path d="M420 147 L456 147" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/>
+<path d="M630 147 L666 147" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/>
+<rect x="240" y="300" width="190" height="54" rx="9" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="335" y="324" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">SeataDataSource</text>
+<text x="335" y="342" font-size="9.5" fill="#6B695F" text-anchor="middle" font-weight="400">AutoConfiguration</text>
+<rect x="470" y="300" width="190" height="54" rx="9" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="565" y="324" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">SeataAutoDataSource</text>
+<text x="565" y="342" font-size="9.5" fill="#6B695F" text-anchor="middle" font-weight="400">ProxyCreator</text>
+<rect x="700" y="300" width="150" height="54" rx="9" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="775" y="324" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">DataSourceProxy</text>
+<text x="775" y="342" font-size="9.5" fill="#6B695F" text-anchor="middle" font-weight="400">Holder 里的真代理</text>
+<path d="M430 327 L466 327" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flwG)"/>
+<path d="M660 327 L696 327" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flwG)"/>
+<path d="M545 174 L545 296" fill="none" stroke="#2F6FA8" stroke-width="1.6" stroke-dasharray="4 4" marker-end="url(#flw)"/>
+<path d="M330 174 L330 296" fill="none" stroke="#2F6FA8" stroke-width="1.6" stroke-dasharray="4 4" marker-end="url(#flw)"/>
+<rect x="40" y="440" width="900" height="100" rx="9" fill="#fff" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="56" y="464" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">两个容易误解的地方</text>
+<text x="56" y="488" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="400">① 容器里的 DataSource 不是 DataSourceProxy，而是附加了 SeataProxy 的 AOP 代理；真代理在静态 holder 里。</text>
+<text x="56" y="508" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="400">② application.yml 的优先级高于 registry.conf；但 config.type=nacos 后，vgroup-mapping 不再从 yml 读。</text>
+<text x="56" y="528" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">③ 自调用、私有方法、final 方法绕过 AOP，注解不会生效。</text>
+</svg><br><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 620" width="1000" height="620" font-family="Microsoft YaHei, sans-serif">
+<defs>
+<marker id="flw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="flwG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="flwR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="flwB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<rect x="0" y="0" width="1000" height="620" fill="#ffffff"/>
+<text x="500" y="34" font-size="20" fill="#1F1E1A" text-anchor="middle" font-weight="600">配置加载与 TC 地址发现</text>
+<text x="500" y="56" font-size="12" fill="#6B695F" text-anchor="middle" font-weight="400">配置中心和注册中心是两套 SPI：一个给键值，一个给地址</text>
+<text x="960" y="28" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">橙色：配置</text>
+<text x="960" y="44" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色：服务发现</text>
+<text x="40" y="92" font-size="12" fill="#C46A0A" text-anchor="start" font-weight="600">配置：config.type 与 Spring 覆盖</text>
+<rect x="40" y="110" width="150" height="46" rx="9" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="115" y="130" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">registry.conf</text>
+<text x="115" y="146" font-size="9" fill="#6B695F" text-anchor="middle" font-weight="400">config.type / registry.type</text>
+<rect x="240" y="110" width="180" height="46" rx="9" fill="#fff" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="330" y="130" font-size="9.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">SpringBootConfigurationProvider</text>
+<text x="330" y="146" font-size="9" fill="#6B695F" text-anchor="middle" font-weight="400">seata.* 前缀 + kebab</text>
+<rect x="240" y="176" width="180" height="40" rx="9" fill="#fff" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="330" y="198" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">application.yml</text>
+<rect x="470" y="110" width="120" height="46" rx="9" fill="#fff" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="530" y="130" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">config.type</text>
+<text x="530" y="146" font-size="9" fill="#6B695F" text-anchor="middle" font-weight="400">file / nacos / zk</text>
+<rect x="640" y="110" width="140" height="46" rx="9" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="710" y="130" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">Configuration</text>
+<text x="710" y="146" font-size="9" fill="#6B695F" text-anchor="middle" font-weight="400">ConfigurationCache</text>
+<path d="M190 133 L236 133" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/>
+<path d="M420 133 L466 133" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/>
+<path d="M590 133 L636 133" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/>
+<path d="M330 176 L330 160" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/>
+<text x="40" y="300" font-size="12" fill="#4C7A1A" text-anchor="start" font-weight="600">发现：tx-service-group → vgroup → TC 地址</text>
+<rect x="40" y="320" width="150" height="46" rx="9" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="115" y="340" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">tx-service-group</text>
+<text x="115" y="356" font-size="9" fill="#6B695F" text-anchor="middle" font-weight="400">逻辑组名</text>
+<rect x="240" y="320" width="180" height="46" rx="9" fill="#fff" stroke="#639922" stroke-width="1.3"/>
+<text x="330" y="340" font-size="10" fill="#1F1E1A" text-anchor="middle" font-weight="600">service.vgroupMapping</text>
+<text x="330" y="356" font-size="9" fill="#6B695F" text-anchor="middle" font-weight="400">组名 → cluster</text>
+<rect x="470" y="320" width="130" height="46" rx="9" fill="#fff" stroke="#639922" stroke-width="1.3"/>
+<text x="535" y="340" font-size="10" fill="#1F1E1A" text-anchor="middle" font-weight="600">RegistryService</text>
+<text x="535" y="356" font-size="9" fill="#6B695F" text-anchor="middle" font-weight="400">lookup(cluster)</text>
+<rect x="650" y="320" width="140" height="46" rx="9" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="720" y="340" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">TC 地址列表</text>
+<text x="720" y="356" font-size="9" fill="#6B695F" text-anchor="middle" font-weight="400">leader / 多节点</text>
+<rect x="830" y="320" width="130" height="46" rx="9" fill="#fff" stroke="#639922" stroke-width="1.3"/>
+<text x="895" y="340" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">Netty 连接</text>
+<text x="895" y="356" font-size="9" fill="#6B695F" text-anchor="middle" font-weight="400">每 10s 重连</text>
+<path d="M190 343 L236 343" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flwG)"/>
+<path d="M420 343 L466 343" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flwG)"/>
+<path d="M600 343 L646 343" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flwG)"/>
+<path d="M790 343 L826 343" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flwG)"/>
+<rect x="40" y="430" width="920" height="120" rx="9" fill="#fff" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="56" y="454" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">最容易混的三点</text>
+<text x="56" y="478" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="400">① file 注册中心不是注册中心：没有 register/subscribe，只读 grouplist。</text>
+<text x="56" y="498" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="400">② namingserver 只服务 Seata TC；raft 模式按 LEADER/term 过滤，follower 不返回。</text>
+<text x="56" y="518" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">③ config.type 与 registry.type 可以不同：配置用 Nacos、注册用 namingserver 是合法的。</text>
+<text x="56" y="538" font-size="10.5" fill="#C46A0A" text-anchor="start" font-weight="400">边界：配置改了不一定马上生效（file 1s 轮询），注册地址改了要等客户端重连或重新 lookup。</text>
+</svg></div>
+<div class="partgroup"><div class="gname">启动</div><div class="parts"><button class="part" data-part="starter"><b>1. starter</b><span>AutoConfiguration.imports + 四个自动配置类。</span></button><button class="part" data-part="scanner"><b>2. GlobalTransactionScanner</b><span>初始化 TM/RM，织入 @GlobalTransactional。</span></button></div></div><div class="partgroup"><div class="gname">代理与配置</div><div class="parts"><button class="part" data-part="proxy"><b>3. DataSourceProxy</b><span>AOP 代理 + holder；只在全局事务内转发。</span></button><button class="part" data-part="config"><b>4. ConfigurationFactory</b><span>registry.conf / application.yml / config.type。</span></button><button class="part" data-part="discovery"><b>5. RegistryFactory</b><span>vgroup → cluster → TC 地址。</span></button><button class="part" data-part="netty"><b>6. Netty 重连</b><span>启动 60s 后每 10s 复核。</span></button></div></div>
+<p class="hint">静态图与动画共用同一套编号和口径；把动画暂停，它就是一张可打印的结构图。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：一步一停看顺序</h2></div>
+<p class="sec-sub">重点不是记住箭头，而是记住每一步「谁在等谁」。</p>
+<div class="quote"><i>动态分析看三件事：顺序、状态、触发条件。</i></div>
+
+<table class="grid">
+<tr><th>链路</th><th>关键类</th><th>失败表现</th></tr>
+<tr><td>自动配置</td><td>SeataAutoConfiguration</td><td>@GlobalTransactional 完全没反应</td></tr>
+<tr><td>客户端初始化</td><td>GlobalTransactionScanner</td><td>启动失败，或 TM/RM 连不上</td></tr>
+<tr><td>数据源代理</td><td>SeataDataSourceAutoConfiguration</td><td>XID 有，SQL 不进代理</td></tr>
+<tr><td>配置</td><td>ConfigurationFactory</td><td>vgroup/存储/超时配置读错</td></tr>
+<tr><td>注册发现</td><td>RegistryFactory</td><td>lookup 不到 TC 地址</td></tr>
+</table>
+<p>「注解不生效」和「连不上 TC」不是一类问题；前者看代理，后者看配置与注册中心。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件 × 阶段</h2></div>
+<p class="sec-sub">同一部件在不同阶段扮演不同角色，这张矩阵是排障时的索引。</p>
+<div class="quote"><i>把部件放回阶段里，才能看清谁在什么时候接力。</i></div>
+
+<table class="grid">
+<tr><th>组件</th><th>启动时做什么</th><th>运行时做什么</th></tr>
+<tr><td>GlobalTransactionScanner</td><td>初始化 TM/RM</td><td>织入方法代理</td></tr>
+<tr><td>DataSourceProxy</td><td>注册到 holder</td><td>拦截 SQL、镜像、undo</td></tr>
+<tr><td>ConfigurationFactory</td><td>加载配置</td><td>监听变更</td></tr>
+<tr><td>RegistryFactory</td><td>选择注册实现</td><td>lookup / 重连</td></tr>
+<tr><td>Netty client</td><td>建立连接</td><td>发请求、心跳、重连</td></tr>
+</table>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：它依赖什么才能成立</h2></div>
+<p class="sec-sub">拆掉任意一个外部依赖，前面看到的行为都会变。</p>
+<div class="quote"><i>任何机制都有环境前提；拆掉外部依赖，它就不再成立。</i></div>
+<div class="envcards">
+<div class="env"><b>application.yml</b><span>seata.* 属性；优先级高于 registry.conf。</span></div>
+<div class="env"><b>registry.conf / file.conf</b><span>传统配置入口；file 模式仍常用。</span></div>
+<div class="env"><b>配置中心</b><span>Nacos/ZK/Apollo/Consul/Etcd3；不是注册中心。</span></div>
+<div class="env"><b>注册中心</b><span>file/Nacos/Eureka/Redis/ZK/Consul/Etcd3/namingserver。</span></div>
+<div class="env"><b>数据源</b><span>必须是 DataSourceProxy；路由数据源要手动包。</span></div>
+</div>
+<p class="figcap">边界：本页只画 AT 数据源代理；XA 模式替换为 DataSourceProxyXA。Boot 版本差异、属性默认值和注册中心细节见对应文章。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">四个问题，检查你是否能在边界上做判断。</p>
+<div class="quote"><i>自测不是复述结论，而是检查你能否在边界上做判断。</i></div>
+<div id="quiz"></div>
+</section>
+
+
+<div class="summary">
+<h2>一页带走</h2>
+
+<p class="chant">starter 启动三件事：自动配置、代理数据源、找 TC。</p>
+<p>· 注解不生效先看 scanner/proxy；连不上 TC 先看 config/registry。</p>
+<p>· application.yml 覆盖 registry.conf（file 模式）。</p>
+<p>· 数据源是 AOP 代理，真代理在 holder；没有代理就没有分支。</p>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+</div>
+
+<script>
+(function(){
+var PERIOD=8400,PHASE_MAX=720;
+var STEPS=[{"d":0,"t":"自动配置","x":"AutoConfiguration.imports 载入四个自动配置类。"},{"d":90,"t":"Scanner","x":"SeataAutoConfiguration 注册 GlobalTransactionScanner。"},{"d":180,"t":"TM/RM","x":"scanner 初始化 TM/RM 客户端；启动 Netty 与定时重连。"},{"d":270,"t":"数据源代理","x":"SeataDataSourceAutoConfiguration 注册 ProxyCreator，holder 保存真代理。"},{"d":360,"t":"配置加载","x":"ConfigurationFactory 读 registry.conf / application.yml，选定 config.type。"},{"d":450,"t":"注册发现","x":"tx-service-group → vgroup mapping → RegistryFactory。"},{"d":540,"t":"lookup","x":"注册中心返回 TC 地址列表；raft 模式只返回 leader。"},{"d":630,"t":"重连","x":"Netty 建立连接；60s 后每 10s 复核并刷新地址。"}];
+var PARTS={"starter":["i0","i1"],"scanner":["i2","i3"],"proxy":["d0","d1","d2","d3"],"config":["c0","c1","c2"],"discovery":["r0","r1"],"netty":["i4","r1"]};
+var CHIPS=[{"k":"auto","l":"自动配置"},{"k":"proxy","l":"代理"},{"k":"config","l":"配置"},{"k":"discover","l":"发现"}];
+var QUIZ=[{"q":"容器里的 DataSource 是 DataSourceProxy 吗？","opts":["是","不是，是附加 SeataProxy 的 AOP 代理","只在 file 模式是"],"a":1,"exp":"真代理在 DataSourceProxyHolder，调用时按全局事务上下文转发。"},{"q":"application.yml 和 registry.conf 谁优先？","opts":["registry.conf","application.yml","看 config.type"],"a":1,"exp":"SeataPropertiesLoader 用 addLast 放入旧配置，Spring Environment 优先。"},{"q":"config.type=nacos 后，vgroup-mapping 从哪读？","opts":["application.yml","Nacos 的 Configuration","registry.conf"],"a":1,"exp":"Spring 桥只包 file Configuration；远端实现读自己的配置。"},{"q":"tx-service-group 直接是 TC 地址吗？","opts":["是","不是，要先经 vgroup mapping","只在 raft 模式是"],"a":1,"exp":"RegistryService.getServiceGroup 读 service.vgroupMapping.* 得到 cluster。"},{"q":"数据源代理没生效，XID 还有用吗？","opts":["有用，SQL 仍在事务里","没用，RM 不会注册分支","能自动补分支"],"a":1,"exp":"没有 DataSourceProxy 就没有 ConnectionProxy、undo 和 branchRegister。"}];
+var WP=[[0,130,160],[90,300,160],[180,470,160],[270,640,160],[320,810,160],[380,240,280],[450,420,280],[520,600,280],[560,780,280],[600,130,420],[660,300,420],[720,470,420],[780,640,420],[830,810,420]];
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,STEP_DUR=650;
+var stepIdx=-1;
+var el={};
+document.querySelectorAll('#eng [id],#eng2 [id]').forEach(function(n){el[n.id]=n;});
+function setOp(id,v){var n=typeof id==='string'?el[id]:id;if(n)n.setAttribute('opacity',v.toFixed(2));}
+function setText(id,s){var n=el[id]||document.getElementById(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setAttr(id,k,v){var n=el[id];if(n)n.setAttribute(k,v);}
+function setChip(k,v){var n=document.querySelector('#stateChips .chip[data-k="'+k+'"]');if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',/^(开|是|已|完成|生效|放行|进行|成功|COMMIT|提交|回滚|有|命中|持有|可选|新 leader|已落定)/.test(v));n.classList.toggle('off',/^(关|否|待命|—|未|无|失败|丢失|释放|默认关|停)/.test(v));}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){return t*t*(3-2*t);}
+function tokenPos(th){
+  if(!WP||WP.length<2)return null;
+  var p=norm(th);var i=0;while(i<WP.length-2&&p>WP[i+1][0])i++;
+  var a=WP[i],b=WP[i+1];var t=(p-a[0])/((b[0]-a[0])||1);t=clamp(t,0,1);
+  return [a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+}
+
+function renderScene(th,pr,si){
+  function band(id,a,b,lo){setOp(id,(pr>=a&&pr<b)?1:(lo===undefined?0.3:lo));}
+  var row1=[[0,90],[90,180],[180,270],[270,360],[360,450]];
+  for(var i=0;i<5;i++)band('i'+i,row1[i][0],row1[i][1],0.35);
+  var row2=[[360,450],[450,540],[540,630],[630,720]];
+  for(var j=0;j<4;j++)band('d'+j,row2[j][0],row2[j][1],0.35);
+  band('c0',540,630,0.35);band('c1',540,630,0.35);band('c2',540,630,0.35);
+  band('r0',630,720,0.45);band('r1',630,720,0.45);
+  var key='自动配置';
+  if(pr>=360)key='数据源代理';
+  if(pr>=540)key='配置与发现';
+  if(pr>=630)key='lookup / 重连';
+  setText('roKey',key);
+  setChip('auto',pr>=0?'已加载':'待命');
+  setChip('proxy',pr>=360?'已注册':'待命');
+  setChip('config',pr>=540?'已加载':'待命');
+  setChip('discover',pr>=630?'lookup':'待命');
+}
+
+
+function renderSub(th){
+  var pr=norm(th); var si=0;
+  for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)si=i;}
+  for(var i=0;i<STEPS.length;i++){setOp('seg'+i,i===si?1:0.35);}
+  var x=40+(pr/PHASE_MAX)*920;
+  setAttr('subNow','x1',x.toFixed(1)); setAttr('subNow','x2',x.toFixed(1));
+}
+
+function render(th){
+  var pr=norm(th);
+  setText('roPhase',Math.round(pr)+'°');
+  var si=0;for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)si=i;}
+  if(mode==='step'&&stepIdx>=0)si=stepIdx;
+  setText('roStep',STEPS[si]?STEPS[si].t:'—');
+  var p=tokenPos(th);
+  if(p){setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));setOp('tok',1);}
+  else{setOp('tok',0);}
+  renderScene(th,pr,si);
+  if(typeof renderSub==='function')renderSub(th,pr,si);
+}
+function tick(now){
+  var dt=Math.min(50,now-last);last=now;
+  if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+  if(mode==='step'&&stepTo!==null){
+    stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);
+    var p=stepElapsed/STEP_DUR;var e=smooth(p);
+    phase=stepFrom+(stepTo-stepFrom)*e;
+    if(p>=1){phase=((stepTo%PERIOD)+PERIOD)%PERIOD;stepTo=null;}
+  }
+  render(phase/PERIOD*PHASE_MAX);
+  requestAnimationFrame(tick);
+}
+function setAuto(on){
+  mode='auto';run=on;stepTo=null;btn.textContent=on?'暂停':'播放';
+  if(on){stepIdx=-1;document.querySelectorAll('.stepnode').forEach(function(d){d.classList.remove('on');});
+  stepT.textContent='自动运转模式';stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格。';}
+}
+window.goStep=function(i){
+  stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+  var target=STEPS[stepIdx].d/PHASE_MAX*PERIOD;var delta=target-phase;
+  if(reduced||Math.abs(delta)>PERIOD/3){phase=target;stepTo=null;render(target/PERIOD*PHASE_MAX+0.01);}
+  else{stepFrom=phase;stepTo=phase+delta;stepElapsed=0;render(phase/PERIOD*PHASE_MAX+0.01);}
+  btn.textContent='继续自动运转';
+  document.querySelectorAll('.stepnode').forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+  stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+  stepX.textContent=STEPS[stepIdx].x;
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+btn.textContent=run?'暂停':'播放';
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+for(var s=0;s<STEPS.length;s++){(function(n){
+  var b=document.createElement('button');b.className='stepnode';
+  b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+  b.onclick=function(){goStep(n);};stepBar.appendChild(b);
+})(s);}
+CHIPS.forEach(function(c){var s=document.createElement('span');s.className='chip';s.setAttribute('data-k',c.k);s.innerHTML=c.l+' <b>--</b>';document.getElementById('stateChips').appendChild(s);});
+document.querySelectorAll('.part').forEach(function(b){
+  b.onclick=function(){
+    var ids=PARTS[b.getAttribute('data-part')]||[];
+    ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+    document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+    setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+  };
+});
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+  var d=document.createElement('div');d.className='q';
+  var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+  it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+  h+='<div class="exp">'+it.exp+'</div>';d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+  var b=e.target.closest('.opt');if(!b)return;var box2=b.parentElement;if(box2.classList.contains('done'))return;
+  box2.classList.add('done');
+  var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+  box2.querySelectorAll('.opt').forEach(function(x,n){x.classList.add(n===QUIZ[qi].a?'right':'wrong');});
+});
+var BASE=(location.pathname.split('/seata-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/seata/lab';
+document.getElementById('lnkArt').href=BASE+'/seata/integration/01-spring-boot';
+
+requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

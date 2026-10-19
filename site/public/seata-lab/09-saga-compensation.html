@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Saga 的状态机与补偿链 · Seata 互动原理实验室 第 9 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:960px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:720px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:600;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:12px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:600;fill:#1F1E1A}
+.tag{font-size:10.5px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:66px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+.modebar{display:flex;align-items:center;gap:8px;margin:6px 4px 0;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.modebar .mlabel{font-weight:600;color:#3B3A34}
+.modebtn{padding:5px 12px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:12.5px;cursor:pointer;font-family:inherit}
+.modebtn:hover{border-color:#888780}
+.modebtn.on{background:#FFF6E8;border-color:#EF9F27;color:#854F0B;font-weight:600}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .outbranch{display:inline-flex;flex-direction:column;align-items:flex-start;gap:6px}
+.flow .outline{display:inline-flex;align-items:center;gap:8px}
+.flow .flownote{font-size:12px;color:#6B695F;font-weight:600;margin-right:4px}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 10px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+#scene [opacity]{transition:opacity .28s ease}
+#sub [opacity]{transition:opacity .28s ease}
+@media (prefers-reduced-motion: reduce){#scene [opacity],#sub [opacity]{transition:none}}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:8px 4px 0;font-size:12px;color:#6B695F}
+.legend i{display:inline-block;width:18px;height:0;border-top:2px solid #C46A0A;vertical-align:middle;margin-right:5px}
+.legend i.g{border-color:#639922}
+.legend i.r{border-color:#E24B4A}
+.legend i.dash{border-top-style:dashed}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：Saga 模式：长事务</a>
+  <span class="idx">第 9 / 12 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">SEATA · Saga</div>
+<h1>正向状态链，反向补偿链</h1>
+<p>Saga 不是长事务，是一串短事务。失败时不是数据库回滚，而是按已成功状态栈逆序调用补偿。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span>
+<span class="mnode">② 静态分解</span>
+<span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span>
+<span class="mnode">⑤ 环境场景</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 600" role="img" xmlns="http://www.w3.org/2000/svg"><title>Saga：正向状态链与补偿链</title><defs><marker id="flw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="flwG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="flwR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="flwB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker></defs><text class="th" x="500" y="26" text-anchor="middle">Saga：正向状态链与补偿链</text><text class="ts" x="500" y="47" text-anchor="middle">每个 state 是一个本地事务；失败后由 CompensationTrigger 触发，按已成功状态栈逆序补偿</text><text x="985" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色：正向</text><text x="985" y="42" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">红色：补偿</text><g id="scene"><text x="50" y="92" font-size="12" fill="#4C7A1A" text-anchor="start" font-weight="600">正向</text><text x="50" y="330" font-size="12" fill="#C0392B" text-anchor="start" font-weight="600">补偿</text><g id="f0"><rect x="60" y="140" width="160" height="56" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="74" y="162" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">CreateOrder</text><text x="74" y="182" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">创建订单</text></g><path d="M220 168 L246 168" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flwG)"/><g id="f1"><rect x="250" y="140" width="160" height="56" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="264" y="162" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">DeductStock</text><text x="264" y="182" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">扣库存</text></g><path d="M410 168 L436 168" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flwG)"/><g id="f2"><rect x="440" y="140" width="160" height="56" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="454" y="162" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">CreateDelivery</text><text x="454" y="182" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">创建履约</text></g><path d="M600 168 L626 168" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flwG)"/><g id="f3"><rect x="630" y="140" width="160" height="56" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="644" y="162" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">Succeed</text><text x="644" y="182" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">结束</text></g><g id="c0"><rect x="60" y="380" width="160" height="56" rx="10" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/><text x="74" y="402" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">CancelOrder</text><text x="74" y="422" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">取消订单</text></g><g id="c1"><rect x="250" y="380" width="160" height="56" rx="10" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/><text x="264" y="402" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">RestoreStock</text><text x="264" y="422" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">还库存</text></g><path d="M244 408 L224 408" fill="none" stroke="#E24B4A" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#flwR)"/><g id="c2"><rect x="440" y="380" width="160" height="56" rx="10" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/><text x="454" y="402" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">CancelDelivery</text><text x="454" y="422" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">取消履约</text></g><path d="M434 408 L414 408" fill="none" stroke="#E24B4A" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#flwR)"/><path d="M140 200 L140 376" fill="none" stroke="#E24B4A" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#flwR)"/><path d="M330 200 L330 376" fill="none" stroke="#E24B4A" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#flwR)"/><path d="M520 200 L520 376" fill="none" stroke="#E24B4A" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#flwR)"/><g id="failBadge"><rect x="430" y="260" width="180" height="48" rx="10" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/><text x="444" y="282" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="600">CreateDelivery 失败</text><text x="444" y="302" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">Catch → CompensationTrigger</text></g><path d="M520 256 L520 200" fill="none" stroke="#E24B4A" stroke-width="1.6" marker-end="url(#flwR)"/><rect x="770" y="360" width="190" height="120" rx="10" fill="#fff" stroke="#E24B4A" stroke-width="1.3"/><text x="786" y="384" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">已成功状态栈</text><text x="786" y="408" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">CreateOrder</text><text x="786" y="428" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">DeductStock</text><text x="786" y="452" font-size="10.5" fill="#C0392B" text-anchor="start" font-weight="600">失败：逆序弹出</text><text x="786" y="470" font-size="9.5" fill="#C0392B" text-anchor="start" font-weight="400">RestoreStock → CancelOrder</text><rect x="24" y="508" width="940" height="64" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/><text x="40" y="532" font-size="12" fill="#C46A0A" text-anchor="start" font-weight="600">TC 视角</text><text x="110" y="532" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="400">Saga 默认只有一个 branchId=-1 的虚拟分支；TC 的 commit 可能只是 engine.forward()。</text><text x="110" y="552" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">回滚时 TC 发 BranchRollback，RM 调 engine.compensate()；真正的状态推进在引擎本地。</text></g><circle id="tok" cx="-20" cy="-20" r="9" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/></svg>
+<svg id="eng2" viewBox="0 0 1000 180" role="img" xmlns="http://www.w3.org/2000/svg"><text x="40" y="26" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">补偿栈：从已成功状态逆序弹出</text><text x="960" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">同一相位总线</text><g id="stack0"><rect x="40" y="48" width="210" height="74" rx="9" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="54" y="74" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">CreateOrder</text><text x="54" y="96" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">已成功</text></g><g id="stack1"><rect x="270" y="48" width="210" height="74" rx="9" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="284" y="74" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">DeductStock</text><text x="284" y="96" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">已成功</text></g><g id="stack2"><rect x="500" y="48" width="210" height="74" rx="9" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/><text x="514" y="74" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">CreateDelivery</text><text x="514" y="96" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">失败点</text></g><g id="stack3"><rect x="730" y="48" width="210" height="74" rx="9" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="744" y="74" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">CompensationTrigger</text><text x="744" y="96" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">开始回滚</text></g><line id="subNow" x1="40" y1="44" x2="40" y2="126" stroke="#C46A0A" stroke-width="2"/></svg>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 轮 / 8 秒</span>
+</div>
+
+<div class="readout">
+<span class="ro">相位 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">状态 / 补偿 <b id="roKey">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav">
+<button class="btn" onclick="prevStep()">‹ 上一步</button>
+<button class="btn warn" onclick="nextStep()">下一步 ›</button>
+</span>
+</div>
+<div class="legend"><span><i class="g"></i>正向状态</span><span><i class="r"></i>补偿链</span><span><i class="dash"></i>失败触发</span></div>
+<p class="figcap">进度 0° = CreateOrder，720° = 补偿完成；失败点之后进入逆序补偿，分步时一起冻结。<br>口径：Seata 2.8.0-SNAPSHOT；Saga 默认不逐 state 注册分支；补偿失败会重试或人工处理。</p>
+</div>
+</div>
+
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：先把它当黑盒</h2></div>
+<p class="sec-sub">不急着拆类，只看它对外表现出什么。</p>
+<div class="quote"><i>先把系统当黑盒：只看输入、输出和边界，不急着解释内部。</i></div>
+
+<p>Saga 把一个长流程拆成很多本地事务：创建订单、扣库存、创建履约。每一步都提交，整个流程没有全局锁。</p>
+<div class="flow"><span class="node">state 1</span><span class="arr">→</span><span class="node">state 2</span><span class="arr">→</span><span class="node box">失败</span><span class="arr">↺</span><span class="node">补偿链</span></div>
+<p>失败时不是数据库回滚，而是按业务语义撤销。补偿方法可能失败，也可能不幂等，所以 Saga 的难点在补偿设计。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：部件各管什么</h2></div>
+<p class="sec-sub">先把结构钉住，再让时间进来。点下面的部件卡，动画里对应部分会亮起。</p>
+<div class="quote"><i>结构分解要 MECE：同一层只放同一粒度的部件。</i></div>
+<div class="figure"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 620" width="1000" height="620" font-family="Microsoft YaHei, sans-serif">
+<defs>
+<marker id="flw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="flwG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="flwR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="flwB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<rect x="0" y="0" width="1000" height="620" fill="#ffffff"/>
+<text x="500" y="34" font-size="20" fill="#1F1E1A" text-anchor="middle" font-weight="600">Saga 的状态链与补偿链</text>
+<text x="500" y="56" font-size="12" fill="#6B695F" text-anchor="middle" font-weight="400">正向是本地事务链，失败后从已完成状态栈逆序弹出补偿；补偿是业务语义，不是数据库回滚</text>
+<text x="960" y="28" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色：正向</text>
+<text x="960" y="44" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">红色：补偿</text>
+<rect x="100" y="130" width="160" height="56" rx="9" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="180" y="154" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">CreateOrder</text>
+<text x="180" y="174" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">本地事务</text>
+<rect x="300" y="130" width="160" height="56" rx="9" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="380" y="154" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">DeductStock</text>
+<text x="380" y="174" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">本地事务</text>
+<rect x="500" y="130" width="160" height="56" rx="9" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="580" y="154" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">CreateDelivery</text>
+<text x="580" y="174" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">本地事务</text>
+<rect x="700" y="130" width="160" height="56" rx="9" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="780" y="154" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">Succeed</text>
+<text x="780" y="174" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">本地事务</text>
+<path d="M260 158 L296 158" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flwG)"/>
+<path d="M460 158 L496 158" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flwG)"/>
+<path d="M660 158 L696 158" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flwG)"/>
+<rect x="100" y="340" width="160" height="56" rx="9" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/>
+<text x="180" y="364" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">CancelOrder</text>
+<text x="180" y="384" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">补偿服务</text>
+<rect x="300" y="340" width="160" height="56" rx="9" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/>
+<text x="380" y="364" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">RestoreStock</text>
+<text x="380" y="384" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">补偿服务</text>
+<rect x="500" y="340" width="160" height="56" rx="9" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/>
+<text x="580" y="364" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">CancelDelivery</text>
+<text x="580" y="384" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">补偿服务</text>
+<path d="M260 368 L296 368" fill="none" stroke="#E24B4A" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#flwR)"/>
+<path d="M460 368 L496 368" fill="none" stroke="#E24B4A" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#flwR)"/>
+<path d="M180 186 L180 336" fill="none" stroke="#E24B4A" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#flwR)"/>
+<path d="M380 186 L380 336" fill="none" stroke="#E24B4A" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#flwR)"/>
+<path d="M580 186 L580 336" fill="none" stroke="#E24B4A" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#flwR)"/>
+<rect x="760" y="310" width="200" height="130" rx="10" fill="#fff" stroke="#E24B4A" stroke-width="1.3"/>
+<text x="776" y="334" font-size="12" fill="#C0392B" text-anchor="start" font-weight="600">失败时</text>
+<text x="776" y="356" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">已成功栈：</text>
+<text x="776" y="374" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="400">CreateOrder、DeductStock</text>
+<text x="776" y="396" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">逆序弹出：</text>
+<text x="776" y="414" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="400">RestoreStock、CancelOrder</text>
+<rect x="100" y="250" width="500" height="34" rx="9" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/>
+<text x="114" y="272" font-size="10.5" fill="#C0392B" text-anchor="start" font-weight="400">CreateDelivery 失败 → Catch.Next 指向 CompensationTrigger 才会补偿</text>
+<rect x="24" y="510" width="940" height="66" rx="9" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="40" y="534" font-size="12" fill="#C46A0A" text-anchor="start" font-weight="600">TC 视角</text>
+<text x="112" y="534" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="400">Saga 默认只有一个 branchId=-1 的虚拟分支；TC 的 commit 可能只是 engine.forward()。</text>
+<text x="112" y="554" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">回滚时 TC 发 BranchRollback，RM 调 engine.compensate()；状态推进和补偿都在引擎本地完成。</text>
+</svg></div>
+<div class="partgroup"><div class="gname">状态机</div><div class="parts"><button class="part" data-part="machine"><b>1. StateMachine</b><span>JSON 定义 StartState、States、Next。</span></button><button class="part" data-part="task"><b>2. ServiceTask</b><span>一次本地服务调用，可配 Retry/Catch。</span></button><button class="part" data-part="compstate"><b>3. CompensateState</b><span>每个正向 state 对应的补偿 state。</span></button></div></div><div class="partgroup"><div class="gname">失败处理</div><div class="parts"><button class="part" data-part="trigger"><b>4. CompensationTrigger</b><span>显式路由；不配它不会自动补偿。</span></button><button class="part" data-part="stack"><b>5. 状态栈</b><span>已成功状态逆序弹出，逐个补偿。</span></button><button class="part" data-part="forward"><b>6. forward / compensate</b><span>TC commit 可能 forward；rollback 调 compensate。</span></button></div></div>
+<p class="hint">静态图与动画共用同一套编号和口径；把动画暂停，它就是一张可打印的结构图。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：一步一停看顺序</h2></div>
+<p class="sec-sub">重点不是记住箭头，而是记住每一步「谁在等谁」。</p>
+<div class="quote"><i>动态分析看三件事：顺序、状态、触发条件。</i></div>
+
+<table class="grid">
+<tr><th>阶段</th><th>状态机</th><th>TC</th><th>数据可见性</th></tr>
+<tr><td>正向</td><td>逐个 ServiceTask</td><td>全局生命周期</td><td>每个本地事务后可见</td></tr>
+<tr><td>失败</td><td>Catch 匹配</td><td>等结果</td><td>中间态保留</td></tr>
+<tr><td>补偿</td><td>CompensationTrigger → 逆序补偿</td><td>BranchRollback → engine.compensate</td><td>补偿服务改业务状态</td></tr>
+<tr><td>提交</td><td>TC commit 可能 forward</td><td>BranchCommit → engine.forward</td><td>继续执行剩余 state</td></tr>
+</table>
+<p>Saga 的 TC 会话通常只有一个虚拟分支，真正的状态推进和补偿都在引擎本地；不要用分支数判断进度。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件 × 阶段</h2></div>
+<p class="sec-sub">同一部件在不同阶段扮演不同角色，这张矩阵是排障时的索引。</p>
+<div class="quote"><i>把部件放回阶段里，才能看清谁在什么时候接力。</i></div>
+
+<table class="grid">
+<tr><th>部件</th><th>正向</th><th>失败</th><th>补偿</th></tr>
+<tr><td>ServiceTask</td><td>执行本地服务</td><td>抛异常</td><td>被逆序调用</td></tr>
+<tr><td>Catch</td><td>正常路由</td><td>匹配异常</td><td>路由到 Trigger</td></tr>
+<tr><td>CompensateState</td><td>不执行</td><td>—</td><td>业务撤销</td></tr>
+<tr><td>TC 虚拟分支</td><td>begin</td><td>—</td><td>compensate</td></tr>
+</table>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：它依赖什么才能成立</h2></div>
+<p class="sec-sub">拆掉任意一个外部依赖，前面看到的行为都会变。</p>
+<div class="quote"><i>任何机制都有环境前提；拆掉外部依赖，它就不再成立。</i></div>
+<div class="envcards">
+<div class="env"><b>状态机定义</b><span>JSON DSL 要版本化、校验、持久化。</span></div>
+<div class="env"><b>状态日志存储</b><span>Saga 引擎要能 reload 状态机实例。</span></div>
+<div class="env"><b>补偿服务</b><span>必须幂等，能承受 TC/引擎重试。</span></div>
+<div class="env"><b>中间态</b><span>每个本地事务提交后可见，查询侧要处理。</span></div>
+<div class="env"><b>TC</b><span>只维护全局生命周期；默认不逐 state 注册分支。</span></div>
+</div>
+<p class="figcap">边界：本页以简单线性状态机为例；分支、子状态机、重试配置和 RecoverStrategy=Forward 未展开。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">四个问题，检查你是否能在边界上做判断。</p>
+<div class="quote"><i>自测不是复述结论，而是检查你能否在边界上做判断。</i></div>
+<div id="quiz"></div>
+</section>
+
+
+<div class="summary">
+<h2>一页带走</h2>
+
+<p class="chant">正向短事务，失败逆序补偿。</p>
+<p>· 补偿不是自动的，需要 Catch.Next 或显式 compensate。</p>
+<p>· 中间态可见；补偿方法要幂等。</p>
+<p>· TC 的 commit 可能是 forward，rollback 才是 compensate。</p>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+</div>
+
+<script>
+(function(){
+var PERIOD=8000,PHASE_MAX=720;
+var STEPS=[{"d":0,"t":"创建订单","x":"CreateOrder 本地事务提交，状态入成功栈。"},{"d":80,"t":"扣库存","x":"DeductStock 提交；中间态立即可见。"},{"d":160,"t":"创建履约","x":"CreateDelivery 失败；异常交给 Catch 匹配。"},{"d":220,"t":"触发补偿","x":"Catch.Next 指向 CompensationTrigger，开始收集已成功状态。"},{"d":300,"t":"撤销履约","x":"从栈顶弹出，调用 CancelDelivery。"},{"d":380,"t":"还库存","x":"RestoreStock；补偿是业务语义，不是数据库倒带。"},{"d":460,"t":"取消订单","x":"CancelOrder；补偿失败会重试或人工处理。"},{"d":560,"t":"完成","x":"TC 的 rollback 结果来自 engine.compensate()。"}];
+var PARTS={"machine":["f0","f1","f2"],"task":["f0","f1","f2"],"compstate":["c0","c1","c2"],"trigger":["failBadge"],"stack":["c2","c1","c0"],"forward":["f3","c0"]};
+var CHIPS=[{"k":"forward","l":"正向"},{"k":"comp","l":"补偿"},{"k":"stack","l":"状态栈"},{"k":"tc","l":"TC"}];
+var QUIZ=[{"q":"Saga 的每个 state 是全局事务吗？","opts":["是","不是，每个 state 是本地事务","只有最后一个 state 是"],"a":1,"exp":"Saga 把长流程拆成多个本地事务，各自提交。"},{"q":"状态失败后会自动补偿吗？","opts":["会","不会，需要 Catch.Next 指向 CompensationTrigger","只在超时时会"],"a":1,"exp":"EngineUtils 只匹配 Catch；没有补偿路由就进入失败。"},{"q":"Saga 的 TC commit 一定是结束流程吗？","opts":["一定","不一定，可能是 engine.forward() 继续执行","只在没有补偿时"],"a":1,"exp":"SagaResourceManager.branchCommit 调 engine.forward。"},{"q":"补偿和数据库回滚是一回事吗？","opts":["是","不是，补偿是业务语义上的撤销","只在 XA 下是"],"a":1,"exp":"补偿方法可能改状态、写记录，不是物理倒带。"},{"q":"Saga 默认会给每个 state 注册分支吗？","opts":["会","不会，默认只有一个虚拟分支","只在成功时注册"],"a":1,"exp":"client.saga.branchRegisterEnable 默认 false。"}];
+var WP=[[0,140,230],[80,320,230],[160,500,230],[220,700,230],[250,520,270],[300,520,270],[340,520,350],[420,320,350],[500,140,350],[560,140,350]];
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,STEP_DUR=650;
+var stepIdx=-1;
+var el={};
+document.querySelectorAll('#eng [id],#eng2 [id]').forEach(function(n){el[n.id]=n;});
+function setOp(id,v){var n=typeof id==='string'?el[id]:id;if(n)n.setAttribute('opacity',v.toFixed(2));}
+function setText(id,s){var n=el[id]||document.getElementById(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setAttr(id,k,v){var n=el[id];if(n)n.setAttribute(k,v);}
+function setChip(k,v){var n=document.querySelector('#stateChips .chip[data-k="'+k+'"]');if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',/^(开|是|已|完成|生效|放行|进行|成功|COMMIT|提交|回滚|有|命中|持有|可选|新 leader|已落定)/.test(v));n.classList.toggle('off',/^(关|否|待命|—|未|无|失败|丢失|释放|默认关|停)/.test(v));}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){return t*t*(3-2*t);}
+function tokenPos(th){
+  if(!WP||WP.length<2)return null;
+  var p=norm(th);var i=0;while(i<WP.length-2&&p>WP[i+1][0])i++;
+  var a=WP[i],b=WP[i+1];var t=(p-a[0])/((b[0]-a[0])||1);t=clamp(t,0,1);
+  return [a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+}
+
+function renderScene(th,pr,si){
+  function band(id,a,b,lo){setOp(id,(pr>=a&&pr<b)?1:(lo===undefined?0.3:lo));}
+  band('f0',0,80);band('f1',80,160);band('f2',160,220);band('f3',220,260,0.5);
+  band('failBadge',220,300,0.4);band('c2',300,380);band('c1',380,460);band('c0',460,560);
+  var key='创建订单';
+  if(pr>=80)key='扣库存';
+  if(pr>=160)key='创建履约';
+  if(pr>=220)key='失败，触发补偿';
+  if(pr>=300)key='逆序补偿';
+  if(pr>=560)key='补偿完成';
+  setText('roKey',key);
+  setChip('forward',pr<220?'进行':'停止');
+  setChip('comp',pr>=300&&pr<560?'进行':pr>=560?'完成':'待命');
+  setChip('stack',pr>=300?'弹出':'保留');
+  setChip('tc',pr<220?'正常':'虚拟分支');
+}
+
+
+function renderSub(th,pr,si){
+  var active=pr<220?0:pr<300?2:pr<420?2:pr<520?1:0;
+  var ids=['stack0','stack1','stack2','stack3'];
+  for(var i=0;i<4;i++)setOp(ids[i],i===active?1:0.45);
+  var pos={0:[40,44],1:[270,44],2:[500,44],3:[730,44]};
+  setAttr('subNow','x1',pos[active][0]);setAttr('subNow','y1',pos[active][1]);
+  setAttr('subNow','x2',pos[active][0]);setAttr('subNow','y2',pos[active][1]+82);
+}
+
+function render(th){
+  var pr=norm(th);
+  setText('roPhase',Math.round(pr)+'°');
+  var si=0;for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)si=i;}
+  if(mode==='step'&&stepIdx>=0)si=stepIdx;
+  setText('roStep',STEPS[si]?STEPS[si].t:'—');
+  var p=tokenPos(th);
+  if(p){setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));setOp('tok',1);}
+  else{setOp('tok',0);}
+  renderScene(th,pr,si);
+  if(typeof renderSub==='function')renderSub(th,pr,si);
+}
+function tick(now){
+  var dt=Math.min(50,now-last);last=now;
+  if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+  if(mode==='step'&&stepTo!==null){
+    stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);
+    var p=stepElapsed/STEP_DUR;var e=smooth(p);
+    phase=stepFrom+(stepTo-stepFrom)*e;
+    if(p>=1){phase=((stepTo%PERIOD)+PERIOD)%PERIOD;stepTo=null;}
+  }
+  render(phase/PERIOD*PHASE_MAX);
+  requestAnimationFrame(tick);
+}
+function setAuto(on){
+  mode='auto';run=on;stepTo=null;btn.textContent=on?'暂停':'播放';
+  if(on){stepIdx=-1;document.querySelectorAll('.stepnode').forEach(function(d){d.classList.remove('on');});
+  stepT.textContent='自动运转模式';stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格。';}
+}
+window.goStep=function(i){
+  stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+  var target=STEPS[stepIdx].d/PHASE_MAX*PERIOD;var delta=target-phase;
+  if(reduced||Math.abs(delta)>PERIOD/3){phase=target;stepTo=null;render(target/PERIOD*PHASE_MAX+0.01);}
+  else{stepFrom=phase;stepTo=phase+delta;stepElapsed=0;render(phase/PERIOD*PHASE_MAX+0.01);}
+  btn.textContent='继续自动运转';
+  document.querySelectorAll('.stepnode').forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+  stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+  stepX.textContent=STEPS[stepIdx].x;
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+btn.textContent=run?'暂停':'播放';
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+for(var s=0;s<STEPS.length;s++){(function(n){
+  var b=document.createElement('button');b.className='stepnode';
+  b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+  b.onclick=function(){goStep(n);};stepBar.appendChild(b);
+})(s);}
+CHIPS.forEach(function(c){var s=document.createElement('span');s.className='chip';s.setAttribute('data-k',c.k);s.innerHTML=c.l+' <b>--</b>';document.getElementById('stateChips').appendChild(s);});
+document.querySelectorAll('.part').forEach(function(b){
+  b.onclick=function(){
+    var ids=PARTS[b.getAttribute('data-part')]||[];
+    ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+    document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+    setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+  };
+});
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+  var d=document.createElement('div');d.className='q';
+  var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+  it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+  h+='<div class="exp">'+it.exp+'</div>';d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+  var b=e.target.closest('.opt');if(!b)return;var box2=b.parentElement;if(box2.classList.contains('done'))return;
+  box2.classList.add('done');
+  var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+  box2.querySelectorAll('.opt').forEach(function(x,n){x.classList.add(n===QUIZ[qi].a?'right':'wrong');});
+});
+var BASE=(location.pathname.split('/seata-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/seata/lab';
+document.getElementById('lnkArt').href=BASE+'/seata/modes/03-saga';
+
+requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

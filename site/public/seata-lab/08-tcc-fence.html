@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TCC 的三种坑 · Seata 互动原理实验室 第 8 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:960px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:720px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:600;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:12px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:600;fill:#1F1E1A}
+.tag{font-size:10.5px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:66px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+.modebar{display:flex;align-items:center;gap:8px;margin:6px 4px 0;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.modebar .mlabel{font-weight:600;color:#3B3A34}
+.modebtn{padding:5px 12px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:12.5px;cursor:pointer;font-family:inherit}
+.modebtn:hover{border-color:#888780}
+.modebtn.on{background:#FFF6E8;border-color:#EF9F27;color:#854F0B;font-weight:600}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .outbranch{display:inline-flex;flex-direction:column;align-items:flex-start;gap:6px}
+.flow .outline{display:inline-flex;align-items:center;gap:8px}
+.flow .flownote{font-size:12px;color:#6B695F;font-weight:600;margin-right:4px}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 10px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+#scene [opacity]{transition:opacity .28s ease}
+#sub [opacity]{transition:opacity .28s ease}
+@media (prefers-reduced-motion: reduce){#scene [opacity],#sub [opacity]{transition:none}}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:8px 4px 0;font-size:12px;color:#6B695F}
+.legend i{display:inline-block;width:18px;height:0;border-top:2px solid #C46A0A;vertical-align:middle;margin-right:5px}
+.legend i.g{border-color:#639922}
+.legend i.r{border-color:#E24B4A}
+.legend i.dash{border-top-style:dashed}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：TCC 模式：尝试-确认-取消</a>
+  <span class="idx">第 8 / 12 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">SEATA · TCC</div>
+<h1>空回滚、幂等与悬挂</h1>
+<p>TCC 只负责调 confirm/cancel，不保证它们只被调一次、按顺序调。三种坑都要业务或 fence 自己兜。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span>
+<span class="mnode">② 静态分解</span>
+<span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span>
+<span class="mnode">⑤ 环境场景</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 600" role="img" xmlns="http://www.w3.org/2000/svg"><title>TCC 的三种坑与 fence 四态</title><defs><marker id="flw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="flwG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="flwR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="flwB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker></defs><text class="th" x="500" y="26" text-anchor="middle">TCC 的三种坑与 fence 四态</text><text class="ts" x="500" y="47" text-anchor="middle">空回滚、幂等、悬挂不是框架默认处理的；fence 用 TRIED / COMMITTED / ROLLBACKED / SUSPENDED 一张表收掉</text><text x="985" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">橙色：TCC 动作</text><text x="985" y="42" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">红色：异常 / 悬挂</text><g id="scene"><rect x="24" y="120" width="120" height="64" rx="9" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="38" y="146" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">1. 空回滚</text><text x="38" y="166" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">场景</text><g id="r0c0"><rect x="170" y="128" width="128" height="48" rx="10" fill="#fff" stroke="#C46A0A" stroke-width="1.3"/><text x="184" y="150" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="600">cancel 先到</text><text x="184" y="170" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">→</text></g><path d="M298 152 L316 152" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><g id="r0c1"><rect x="320" y="128" width="128" height="48" rx="10" fill="#fff" stroke="#C46A0A" stroke-width="1.3"/><text x="334" y="150" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="600">查无记录</text><text x="334" y="170" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">→</text></g><path d="M448 152 L466 152" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><g id="r0c2"><rect x="470" y="128" width="128" height="48" rx="10" fill="#fff" stroke="#C46A0A" stroke-width="1.3"/><text x="484" y="150" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="600">插 SUSPENDED</text><text x="484" y="170" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">→</text></g><path d="M598 152 L616 152" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><g id="r0c3"><rect x="620" y="128" width="128" height="48" rx="10" fill="#fff" stroke="#C46A0A" stroke-width="1.3"/><text x="634" y="150" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="600">返回 true</text><text x="634" y="170" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">结果</text></g><rect x="24" y="260" width="120" height="64" rx="9" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="38" y="286" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">2. 幂等</text><text x="38" y="306" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">场景</text><g id="r1c0"><rect x="170" y="268" width="128" height="48" rx="10" fill="#fff" stroke="#C46A0A" stroke-width="1.3"/><text x="184" y="290" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="600">confirm 重复</text><text x="184" y="310" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">→</text></g><path d="M298 292 L316 292" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><g id="r1c1"><rect x="320" y="268" width="128" height="48" rx="10" fill="#fff" stroke="#C46A0A" stroke-width="1.3"/><text x="334" y="290" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="600">看到 COMMITTED</text><text x="334" y="310" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">→</text></g><path d="M448 292 L466 292" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><g id="r1c2"><rect x="470" y="268" width="128" height="48" rx="10" fill="#fff" stroke="#C46A0A" stroke-width="1.3"/><text x="484" y="290" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="600">不再执行</text><text x="484" y="310" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">→</text></g><path d="M598 292 L616 292" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><g id="r1c3"><rect x="620" y="268" width="128" height="48" rx="10" fill="#fff" stroke="#C46A0A" stroke-width="1.3"/><text x="634" y="290" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="600">返回 true</text><text x="634" y="310" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">结果</text></g><rect x="24" y="400" width="120" height="64" rx="9" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/><text x="38" y="426" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">3. 悬挂</text><text x="38" y="446" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">场景</text><g id="r2c0"><rect x="170" y="408" width="128" height="48" rx="10" fill="#fff" stroke="#C46A0A" stroke-width="1.3"/><text x="184" y="430" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="600">cancel 先到</text><text x="184" y="450" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">→</text></g><path d="M298 432 L316 432" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><g id="r2c1"><rect x="320" y="408" width="128" height="48" rx="10" fill="#fff" stroke="#C46A0A" stroke-width="1.3"/><text x="334" y="430" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="600">留下 SUSPENDED</text><text x="334" y="450" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">→</text></g><path d="M448 432 L466 432" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><g id="r2c2"><rect x="470" y="408" width="128" height="48" rx="10" fill="#fff" stroke="#E24B4A" stroke-width="1.3"/><text x="484" y="430" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="600">try 后到</text><text x="484" y="450" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">→</text></g><path d="M598 432 L616 432" fill="none" stroke="#E24B4A" stroke-width="1.6" marker-end="url(#flw)"/><g id="r2c3"><rect x="620" y="408" width="128" height="48" rx="10" fill="#fff" stroke="#E24B4A" stroke-width="1.3"/><text x="634" y="430" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="600">撞唯一键，失败</text><text x="634" y="450" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">结果</text></g><rect x="780" y="96" width="196" height="390" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/><text x="796" y="120" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">fence 四态</text><g id="fsTried"><rect x="810" y="150" width="128" height="48" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="824" y="172" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="600">TRIED</text><text x="824" y="192" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">预留成功</text></g><g id="fsCommitted"><rect x="810" y="220" width="128" height="48" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="824" y="242" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="600">COMMITTED</text><text x="824" y="262" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">confirm 成功</text></g><g id="fsRollbacked"><rect x="810" y="290" width="128" height="48" rx="10" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/><text x="824" y="312" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="600">ROLLBACKED</text><text x="824" y="332" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">cancel 成功</text></g><g id="fsSuspended"><rect x="810" y="360" width="128" height="48" rx="10" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/><text x="824" y="382" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="600">SUSPENDED</text><text x="824" y="402" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">cancel 先到</text></g><path d="M874 198 L874 216" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flwG)"/><path d="M874 268 L874 286" fill="none" stroke="#E24B4A" stroke-width="1.6" marker-end="url(#flwR)"/><path d="M874 198 L874 356" fill="none" stroke="#E24B4A" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#flwR)"/><rect x="24" y="510" width="950" height="62" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/><text x="40" y="534" font-size="12" fill="#C46A0A" text-anchor="start" font-weight="600">fence 的边界</text><text x="130" y="534" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="400">useTCCFence 默认 false；开启后要有 tcc_fence_log、同库本地事务和清理任务。</text><text x="130" y="554" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">它挡的是重复和悬挂，不改变 try/confirm/cancel 的业务语义。</text></g><circle id="tok" cx="-20" cy="-20" r="9" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/></svg>
+<svg id="eng2" viewBox="0 0 1000 180" role="img" xmlns="http://www.w3.org/2000/svg"><text x="40" y="26" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">fence 状态板：当前相位对应哪一格</text><text x="960" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">同一相位总线</text><g id="sqTried"><rect x="40" y="48" width="210" height="74" rx="9" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="54" y="74" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">TRIED</text><text x="54" y="96" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">预留成功</text></g><g id="sqCommitted"><rect x="270" y="48" width="210" height="74" rx="9" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="284" y="74" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">COMMITTED</text><text x="284" y="96" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">confirm 成功</text></g><g id="sqRollbacked"><rect x="500" y="48" width="210" height="74" rx="9" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/><text x="514" y="74" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">ROLLBACKED</text><text x="514" y="96" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">cancel 成功</text></g><g id="sqSuspended"><rect x="730" y="48" width="210" height="74" rx="9" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/><text x="744" y="74" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">SUSPENDED</text><text x="744" y="96" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">cancel 先到</text></g><line id="subNow" x1="40" y1="44" x2="40" y2="126" stroke="#C46A0A" stroke-width="2"/></svg>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 轮 / 8 秒</span>
+</div>
+
+<div class="readout">
+<span class="ro">相位 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">场景 / fence <b id="roKey">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav">
+<button class="btn" onclick="prevStep()">‹ 上一步</button>
+<button class="btn warn" onclick="nextStep()">下一步 ›</button>
+</span>
+</div>
+<div class="legend"><span><i></i>TCC 动作</span><span><i class="r"></i>异常 / 悬挂</span><span><i class="dash"></i>fence 状态</span></div>
+<p class="figcap">进度 0° = 空回滚，720° = fence 四态；三条场景共用同一相位，分步时一起冻结。<br>口径：Seata 2.8.0-SNAPSHOT；useTCCFence 默认 false；fence 需要 tcc_fence_log 和同库本地事务。</p>
+</div>
+</div>
+
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：先把它当黑盒</h2></div>
+<p class="sec-sub">不急着拆类，只看它对外表现出什么。</p>
+<div class="quote"><i>先把系统当黑盒：只看输入、输出和边界，不急着解释内部。</i></div>
+
+<p>TCC 的三个方法看起来很清楚：try 预留、confirm 确认、cancel 撤销。真正难的是「网络和调度不保证顺序」：cancel 可能比 try 先到，confirm 可能来两次。</p>
+<div class="flow"><span class="node">try</span><span class="arr">→</span><span class="node box">confirm / cancel</span><span class="arr">↺</span><span class="node">可能重复、乱序</span></div>
+<p>框架默认只负责调方法；幂等、空回滚、悬挂要业务自己兜，或者打开 fence 用一张状态表兜。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：部件各管什么</h2></div>
+<p class="sec-sub">先把结构钉住，再让时间进来。点下面的部件卡，动画里对应部分会亮起。</p>
+<div class="quote"><i>结构分解要 MECE：同一层只放同一粒度的部件。</i></div>
+<div class="figure"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 620" width="1000" height="620" font-family="Microsoft YaHei, sans-serif">
+<defs>
+<marker id="flw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="flwG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="flwR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="flwB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<rect x="0" y="0" width="1000" height="620" fill="#ffffff"/>
+<text x="500" y="34" font-size="20" fill="#1F1E1A" text-anchor="middle" font-weight="600">TCC fence 的四个状态</text>
+<text x="500" y="56" font-size="12" fill="#6B695F" text-anchor="middle" font-weight="400">TRIED 表示预留成功；COMMITTED / ROLLBACKED 是终态；SUSPENDED 是 cancel 先到的墓碑</text>
+<text x="960" y="28" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色：正常推进</text>
+<text x="960" y="44" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">红色：幂等 / 悬挂</text>
+<rect x="60" y="150" width="150" height="54" rx="9" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="135" y="174" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">（无记录）</text>
+<text x="135" y="194" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">try 之前</text>
+<rect x="280" y="150" width="150" height="54" rx="9" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="355" y="174" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">TRIED</text>
+<text x="355" y="194" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">预留成功</text>
+<rect x="520" y="100" width="160" height="54" rx="9" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="600" y="124" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">COMMITTED</text>
+<text x="600" y="144" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">confirm 成功</text>
+<rect x="520" y="230" width="160" height="54" rx="9" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/>
+<text x="600" y="254" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">ROLLBACKED</text>
+<text x="600" y="274" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">cancel 成功</text>
+<rect x="280" y="330" width="180" height="54" rx="9" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/>
+<text x="370" y="354" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">SUSPENDED</text>
+<text x="370" y="374" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">cancel 先到，空回滚</text>
+<path d="M210 177 L276 177" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/>
+<path d="M430 177 L516 127" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flwG)"/>
+<path d="M430 177 L516 257" fill="none" stroke="#E24B4A" stroke-width="1.6" marker-end="url(#flwR)"/>
+<path d="M355 204 L355 326" fill="none" stroke="#E24B4A" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#flwR)"/>
+<path d="M460 357 L516 357" fill="none" stroke="#E24B4A" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#flwR)"/>
+<text x="243" y="168" font-size="10" fill="#C46A0A" text-anchor="middle" font-weight="600">try</text>
+<text x="472" y="140" font-size="10" fill="#639922" text-anchor="middle" font-weight="600">confirm</text>
+<text x="472" y="262" font-size="10" fill="#E24B4A" text-anchor="middle" font-weight="600">cancel</text>
+<text x="365" y="300" font-size="10" fill="#E24B4A" text-anchor="start" font-weight="400">cancel 先到</text>
+<text x="488" y="350" font-size="10" fill="#E24B4A" text-anchor="start" font-weight="400">try 撞唯一键</text>
+<rect x="710" y="100" width="260" height="284" rx="9" fill="#fff" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="726" y="124" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">三个坑与 fence 的答案</text>
+<text x="726" y="150" font-size="10.5" fill="#C46A0A" text-anchor="start" font-weight="600">try 重复</text>
+<text x="726" y="167" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">TRIED 唯一键冲突</text>
+<text x="726" y="194" font-size="10.5" fill="#C46A0A" text-anchor="start" font-weight="600">confirm 重复</text>
+<text x="726" y="211" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">COMMITTED 直接成功</text>
+<text x="726" y="238" font-size="10.5" fill="#C46A0A" text-anchor="start" font-weight="600">cancel 重复</text>
+<text x="726" y="255" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">ROLLBACKED 直接成功</text>
+<text x="726" y="282" font-size="10.5" fill="#C46A0A" text-anchor="start" font-weight="600">cancel 先到</text>
+<text x="726" y="299" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">插 SUSPENDED，空回滚</text>
+<text x="726" y="326" font-size="10.5" fill="#C46A0A" text-anchor="start" font-weight="600">try 后到</text>
+<text x="726" y="343" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">撞 SUSPENDED，反悬挂</text>
+<rect x="24" y="520" width="940" height="58" rx="9" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="40" y="544" font-size="12" fill="#C46A0A" text-anchor="start" font-weight="600">边界</text>
+<text x="100" y="544" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="400">fence 默认关闭（useTCCFence=false）；开启后需要 tcc_fence_log 表和清理任务。</text>
+<text x="100" y="564" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">它把幂等、空回滚、反悬挂收进一张表，但不改变 try/confirm/cancel 的业务语义。</text>
+</svg></div>
+<div class="partgroup"><div class="gname">TCC</div><div class="parts"><button class="part" data-part="action"><b>1. try / confirm / cancel</b><span>三个业务方法；框架只负责调用。</span></button><button class="part" data-part="fence"><b>2. tcc_fence_log</b><span>以 (xid, branch_id) 为唯一键的状态表。</span></button></div></div><div class="partgroup"><div class="gname">状态</div><div class="parts"><button class="part" data-part="tried"><b>3. TRIED</b><span>try 预留成功，等待二阶段。</span></button><button class="part" data-part="committed"><b>4. COMMITTED</b><span>confirm 成功；重复 confirm 直接返回。</span></button><button class="part" data-part="rollbacked"><b>5. ROLLBACKED</b><span>cancel 成功；重复 cancel 直接返回。</span></button><button class="part" data-part="suspended"><b>6. SUSPENDED</b><span>cancel 先到的墓碑；try 后到会撞唯一键。</span></button></div></div>
+<p class="hint">静态图与动画共用同一套编号和口径；把动画暂停，它就是一张可打印的结构图。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：一步一停看顺序</h2></div>
+<p class="sec-sub">重点不是记住箭头，而是记住每一步「谁在等谁」。</p>
+<div class="quote"><i>动态分析看三件事：顺序、状态、触发条件。</i></div>
+
+<table class="grid">
+<tr><th>场景</th><th>表里状态</th><th>动作</th></tr>
+<tr><td>try 第一次</td><td>无</td><td>插 TRIED，执行业务</td></tr>
+<tr><td>try 重复</td><td>TRIED</td><td>唯一键冲突，阻止重复预留</td></tr>
+<tr><td>confirm 重复</td><td>COMMITTED</td><td>直接返回 true</td></tr>
+<tr><td>cancel 重复</td><td>ROLLBACKED / SUSPENDED</td><td>直接返回 true</td></tr>
+<tr><td>cancel 先到</td><td>无</td><td>插 SUSPENDED，空回滚</td></tr>
+<tr><td>try 后到</td><td>SUSPENDED</td><td>插 TRIED 撞唯一键，try 失败</td></tr>
+</table>
+<p>fence 不是事务锁，它是一张幂等/悬挂的对账表。它只处理「方法被重复或乱序调用」，不替业务做资源预留。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件 × 阶段</h2></div>
+<p class="sec-sub">同一部件在不同阶段扮演不同角色，这张矩阵是排障时的索引。</p>
+<div class="quote"><i>把部件放回阶段里，才能看清谁在什么时候接力。</i></div>
+
+<table class="grid">
+<tr><th>问题</th><th>无 fence</th><th>有 fence</th></tr>
+<tr><td>空回滚</td><td>cancel 自己判断资源是否存在</td><td>插 SUSPENDED，直接返回</td></tr>
+<tr><td>幂等</td><td>业务状态机/唯一约束</td><td>终态直接返回</td></tr>
+<tr><td>悬挂</td><td>try 检查 cancel 标记</td><td>SUSPENDED 唯一键挡住 try</td></tr>
+<tr><td>代价</td><td>每个接口重复写</td><td>多一张表、多一次本地事务</td></tr>
+</table>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：它依赖什么才能成立</h2></div>
+<p class="sec-sub">拆掉任意一个外部依赖，前面看到的行为都会变。</p>
+<div class="quote"><i>任何机制都有环境前提；拆掉外部依赖，它就不再成立。</i></div>
+<div class="envcards">
+<div class="env"><b>tcc_fence_log</b><span>和业务表同库；唯一键 (xid, branch_id)。</span></div>
+<div class="env"><b>Spring 事务模板</b><span>fence 依赖本地事务；不是所有接入方式都能用。</span></div>
+<div class="env"><b>清理任务</b><span>SUSPENDED/ROLLBACKED 记录不会自动消失。</span></div>
+<div class="env"><b>actionName</b><span>TCC 的 resourceId；同名不同 bean 会启动失败。</span></div>
+<div class="env"><b>业务幂等</b><span>即使有 fence，confirm/cancel 内部的远程调用仍可能重复。</span></div>
+</div>
+<p class="figcap">边界：fence 默认关闭；本页不展开 confirm/cancel 的远程调用重试，也不讨论 TCC 资源的业务预留设计。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">四个问题，检查你是否能在边界上做判断。</p>
+<div class="quote"><i>自测不是复述结论，而是检查你能否在边界上做判断。</i></div>
+<div id="quiz"></div>
+</section>
+
+
+<div class="summary">
+<h2>一页带走</h2>
+
+<p class="chant">try 预留，confirm 确认，cancel 撤销；顺序和重复由 fence 或业务兜。</p>
+<p>· 空回滚、幂等、悬挂是三个独立问题，不要用一个状态字段硬凑。</p>
+<p>· fence 默认关闭；开启后需要表、事务和清理任务。</p>
+<p>· TCC 没有 TC 全局锁，资源锁在业务自己的预留设计里。</p>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+</div>
+
+<script>
+(function(){
+var PERIOD=8000,PHASE_MAX=720;
+var STEPS=[{"d":0,"t":"空回滚","x":"try 还没执行，cancel 先到；没有记录就直接返回成功。"},{"d":120,"t":"空回滚墓碑","x":"fence 在无记录时插 SUSPENDED，挡住之后才到的 try。"},{"d":240,"t":"幂等","x":"confirm 重复执行；看到 COMMITTED 就不再执行。"},{"d":360,"t":"幂等 cancel","x":"cancel 重复；看到 ROLLBACKED/SUSPENDED 直接返回 true。"},{"d":480,"t":"悬挂","x":"cancel 先完成，try 后到；SUSPENDED 的唯一键让 try 失败。"},{"d":600,"t":"fence 四态","x":"TRIED / COMMITTED / ROLLBACKED / SUSPENDED 覆盖三种坑。"},{"d":700,"t":"边界","x":"useTCCFence 默认 false；开启需要建表和清理任务。"}];
+var PARTS={"action":["r0c0","r1c0","r2c0"],"fence":["fsTried","fsSuspended"],"tried":["fsTried"],"committed":["fsCommitted"],"rollbacked":["fsRollbacked"],"suspended":["fsSuspended"]};
+var CHIPS=[{"k":"tcc","l":"TCC"},{"k":"fence","l":"fence 状态"},{"k":"empty","l":"空回滚"},{"k":"susp","l":"悬挂"}];
+var QUIZ=[{"q":"TCC 默认会处理空回滚吗？","opts":["会","不会，useTCCFence 默认 false","只在 Spring 下会"],"a":1,"exp":"默认 TCCResourceManager 直接反射调用 cancel，不查状态表。"},{"q":"cancel 先到、try 后到，fence 靠什么挡住 try？","opts":["SUSPENDED 记录的唯一键","TC 的全局锁","数据库行锁"],"a":0,"exp":"cancel 先到插 SUSPENDED；try 再插 TRIED 撞 (xid, branch_id) 唯一键。"},{"q":"confirm 重复执行时，fence 会怎么做？","opts":["再执行一次","看到 COMMITTED 直接返回 true","抛异常"],"a":1,"exp":"commitFence 看到 COMMITTED/ROLLBACKED/SUSPENDED 会按幂等规则返回。"},{"q":"fence 能替代业务资源预留吗？","opts":["能","不能，它只处理幂等/悬挂","只在 XA 下能"],"a":1,"exp":"fence 是一张状态表，不负责 try 的资源设计。"},{"q":"开启 fence 的额外成本是什么？","opts":["不需要任何表","多一张 tcc_fence_log 和本地事务","只能单机"],"a":1,"exp":"每次 try/confirm/cancel 都要读写状态表；还需要清理任务。"}];
+var WP=[[0,200,196],[120,360,196],[240,200,336],[360,360,336],[480,200,476],[600,360,476],[700,874,480],[720,874,480]];
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,STEP_DUR=650;
+var stepIdx=-1;
+var el={};
+document.querySelectorAll('#eng [id],#eng2 [id]').forEach(function(n){el[n.id]=n;});
+function setOp(id,v){var n=typeof id==='string'?el[id]:id;if(n)n.setAttribute('opacity',v.toFixed(2));}
+function setText(id,s){var n=el[id]||document.getElementById(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setAttr(id,k,v){var n=el[id];if(n)n.setAttribute(k,v);}
+function setChip(k,v){var n=document.querySelector('#stateChips .chip[data-k="'+k+'"]');if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',/^(开|是|已|完成|生效|放行|进行|成功|COMMIT|提交|回滚|有|命中|持有|可选|新 leader|已落定)/.test(v));n.classList.toggle('off',/^(关|否|待命|—|未|无|失败|丢失|释放|默认关|停)/.test(v));}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){return t*t*(3-2*t);}
+function tokenPos(th){
+  if(!WP||WP.length<2)return null;
+  var p=norm(th);var i=0;while(i<WP.length-2&&p>WP[i+1][0])i++;
+  var a=WP[i],b=WP[i+1];var t=(p-a[0])/((b[0]-a[0])||1);t=clamp(t,0,1);
+  return [a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+}
+
+function renderScene(th,pr,si){
+  function band(id,a,b,lo){setOp(id,(pr>=a&&pr<b)?1:(lo===undefined?0.3:lo));}
+  var row=pr<240?0:pr<480?1:2;
+  for(var r=0;r<3;r++)for(var c=0;c<4;c++)band('r'+r+'c'+c, r*240, (r+1)*240, 0.35);
+  band('fsTried',0,720,0.7);band('fsCommitted',240,480,0.45);band('fsRollbacked',480,720,0.45);band('fsSuspended',480,720,0.45);
+  var key=['空回滚','幂等','悬挂'][row];
+  if(pr>=720)key='fence';
+  setText('roKey',key);
+  setChip('tcc',pr<720?'try/confirm/cancel':'结束');
+  setChip('fence',pr>=480?'SUSPENDED':pr>=240?'COMMITTED':'TRIED');
+  setChip('empty',pr<240?'是':'—');
+  setChip('susp',pr>=480?'是':'—');
+}
+
+
+function renderSub(th,pr,si){
+  var active=pr<240?0:pr<480?1:pr<720?3:3;
+  var ids=['sqTried','sqCommitted','sqRollbacked','sqSuspended'];
+  for(var i=0;i<4;i++)setOp(ids[i],i===active?1:0.45);
+  var pos={0:[40,44],1:[270,44],2:[500,44],3:[730,44]};
+  setAttr('subNow','x1',pos[active][0]);setAttr('subNow','y1',pos[active][1]);
+  setAttr('subNow','x2',pos[active][0]);setAttr('subNow','y2',pos[active][1]+82);
+}
+
+function render(th){
+  var pr=norm(th);
+  setText('roPhase',Math.round(pr)+'°');
+  var si=0;for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)si=i;}
+  if(mode==='step'&&stepIdx>=0)si=stepIdx;
+  setText('roStep',STEPS[si]?STEPS[si].t:'—');
+  var p=tokenPos(th);
+  if(p){setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));setOp('tok',1);}
+  else{setOp('tok',0);}
+  renderScene(th,pr,si);
+  if(typeof renderSub==='function')renderSub(th,pr,si);
+}
+function tick(now){
+  var dt=Math.min(50,now-last);last=now;
+  if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+  if(mode==='step'&&stepTo!==null){
+    stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);
+    var p=stepElapsed/STEP_DUR;var e=smooth(p);
+    phase=stepFrom+(stepTo-stepFrom)*e;
+    if(p>=1){phase=((stepTo%PERIOD)+PERIOD)%PERIOD;stepTo=null;}
+  }
+  render(phase/PERIOD*PHASE_MAX);
+  requestAnimationFrame(tick);
+}
+function setAuto(on){
+  mode='auto';run=on;stepTo=null;btn.textContent=on?'暂停':'播放';
+  if(on){stepIdx=-1;document.querySelectorAll('.stepnode').forEach(function(d){d.classList.remove('on');});
+  stepT.textContent='自动运转模式';stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格。';}
+}
+window.goStep=function(i){
+  stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+  var target=STEPS[stepIdx].d/PHASE_MAX*PERIOD;var delta=target-phase;
+  if(reduced||Math.abs(delta)>PERIOD/3){phase=target;stepTo=null;render(target/PERIOD*PHASE_MAX+0.01);}
+  else{stepFrom=phase;stepTo=phase+delta;stepElapsed=0;render(phase/PERIOD*PHASE_MAX+0.01);}
+  btn.textContent='继续自动运转';
+  document.querySelectorAll('.stepnode').forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+  stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+  stepX.textContent=STEPS[stepIdx].x;
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+btn.textContent=run?'暂停':'播放';
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+for(var s=0;s<STEPS.length;s++){(function(n){
+  var b=document.createElement('button');b.className='stepnode';
+  b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+  b.onclick=function(){goStep(n);};stepBar.appendChild(b);
+})(s);}
+CHIPS.forEach(function(c){var s=document.createElement('span');s.className='chip';s.setAttribute('data-k',c.k);s.innerHTML=c.l+' <b>--</b>';document.getElementById('stateChips').appendChild(s);});
+document.querySelectorAll('.part').forEach(function(b){
+  b.onclick=function(){
+    var ids=PARTS[b.getAttribute('data-part')]||[];
+    ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+    document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+    setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+  };
+});
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+  var d=document.createElement('div');d.className='q';
+  var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+  it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+  h+='<div class="exp">'+it.exp+'</div>';d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+  var b=e.target.closest('.opt');if(!b)return;var box2=b.parentElement;if(box2.classList.contains('done'))return;
+  box2.classList.add('done');
+  var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+  box2.querySelectorAll('.opt').forEach(function(x,n){x.classList.add(n===QUIZ[qi].a?'right':'wrong');});
+});
+var BASE=(location.pathname.split('/seata-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/seata/lab';
+document.getElementById('lnkArt').href=BASE+'/seata/modes/02-tcc';
+
+requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

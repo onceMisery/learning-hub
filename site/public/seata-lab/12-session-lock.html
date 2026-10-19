@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>会话与锁的生命周期 · Seata 互动原理实验室 第 12 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:960px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:720px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:600;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:12px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:600;fill:#1F1E1A}
+.tag{font-size:10.5px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:66px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+.modebar{display:flex;align-items:center;gap:8px;margin:6px 4px 0;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.modebar .mlabel{font-weight:600;color:#3B3A34}
+.modebtn{padding:5px 12px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:12.5px;cursor:pointer;font-family:inherit}
+.modebtn:hover{border-color:#888780}
+.modebtn.on{background:#FFF6E8;border-color:#EF9F27;color:#854F0B;font-weight:600}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .outbranch{display:inline-flex;flex-direction:column;align-items:flex-start;gap:6px}
+.flow .outline{display:inline-flex;align-items:center;gap:8px}
+.flow .flownote{font-size:12px;color:#6B695F;font-weight:600;margin-right:4px}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 10px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+#scene [opacity]{transition:opacity .28s ease}
+#sub [opacity]{transition:opacity .28s ease}
+@media (prefers-reduced-motion: reduce){#scene [opacity],#sub [opacity]{transition:none}}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:8px 4px 0;font-size:12px;color:#6B695F}
+.legend i{display:inline-block;width:18px;height:0;border-top:2px solid #C46A0A;vertical-align:middle;margin-right:5px}
+.legend i.g{border-color:#639922}
+.legend i.r{border-color:#E24B4A}
+.legend i.dash{border-top-style:dashed}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：会话与锁管理</a>
+  <span class="idx">第 12 / 12 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">SEATA · 服务端机制</div>
+<h1>会话与锁：什么时候放</h1>
+<p>会话锁保护同一个 XID，全局行锁保护同一行。AT 提交时提前放行锁，回滚失败则默认保留。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span>
+<span class="mnode">② 静态分解</span>
+<span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span>
+<span class="mnode">⑤ 环境场景</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 600" role="img" xmlns="http://www.w3.org/2000/svg"><title>会话与锁：什么时候放</title><defs><marker id="flw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="flwG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="flwR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="flwB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker></defs><text class="th" x="500" y="26" text-anchor="middle">会话与锁：什么时候放</text><text class="ts" x="500" y="47" text-anchor="middle">会话锁保护同一个 XID 的会话修改；全局行锁保护 resource/table/pk。两者释放时机不同</text><text x="985" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">蓝色：会话状态</text><text x="985" y="42" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色：提交 / 红色：回滚</text><g id="scene"><g id="sBegin"><rect x="60" y="100" width="150" height="50" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="74" y="122" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="600">Begin</text><text x="74" y="142" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">可接分支</text></g><g id="sAsync"><rect x="260" y="100" width="150" height="50" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="274" y="122" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="600">AsyncCommitting</text><text x="274" y="142" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">clean 释放锁</text></g><g id="sCommit"><rect x="470" y="100" width="150" height="50" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="484" y="122" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="600">Committed</text><text x="484" y="142" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">终态</text></g><g id="sRoll"><rect x="260" y="200" width="150" height="50" rx="10" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/><text x="274" y="222" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="600">Rollbacking</text><text x="274" y="242" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">逆序回滚</text></g><g id="sRolled"><rect x="470" y="200" width="150" height="50" rx="10" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/><text x="484" y="222" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="600">Rollbacked</text><text x="484" y="242" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">终态</text></g><path d="M210 125 L256 125" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flwG)"/><path d="M410 125 L466 125" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flwG)"/><path d="M135 150 L260 200" fill="none" stroke="#E24B4A" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#flwR)"/><path d="M410 225 L466 225" fill="none" stroke="#E24B4A" stroke-width="1.6" marker-end="url(#flwR)"/><text x="60" y="310" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">锁的时间窗</text><line x1="60" y1="360" x2="940" y2="360" stroke="#D3D1C7" stroke-width="2"/><circle cx="120" cy="360" r="7" fill="#fff" stroke="#C46A0A" stroke-width="2"/><text x="120" y="388" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">Begin</text><circle cx="300" cy="360" r="7" fill="#fff" stroke="#C46A0A" stroke-width="2"/><text x="300" y="388" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">Register</text><circle cx="480" cy="360" r="7" fill="#fff" stroke="#C46A0A" stroke-width="2"/><text x="480" y="388" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">LocalCommit</text><circle cx="660" cy="360" r="7" fill="#fff" stroke="#C46A0A" stroke-width="2"/><text x="660" y="388" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">GlobalCommit</text><circle cx="820" cy="360" r="7" fill="#fff" stroke="#C46A0A" stroke-width="2"/><text x="820" y="388" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">Rollback</text><circle cx="920" cy="360" r="7" fill="#fff" stroke="#C46A0A" stroke-width="2"/><text x="920" y="388" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">End</text><rect x="120" y="410" width="800" height="24" rx="6" fill="#fff" stroke="#639922" stroke-width="1.3"/><text x="132" y="427" font-size="10.5" fill="#4C7A1A" text-anchor="start" font-weight="400">会话锁：lockAndExecute 期间持有，每次请求结束释放</text><rect x="300" y="446" width="360" height="24" rx="6" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="312" y="463" font-size="10.5" fill="#C46A0A" text-anchor="start" font-weight="400">AT 全局行锁：Register → GlobalCommit 受理时释放</text><rect x="820" y="482" width="100" height="24" rx="6" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/><text x="832" y="499" font-size="10" fill="#C0392B" text-anchor="start" font-weight="400">回滚失败：默认保留</text><rect x="30" y="520" width="940" height="54" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/><text x="46" y="542" font-size="11.5" fill="#C46A0A" text-anchor="start" font-weight="600">两个锁不是一回事</text><text x="180" y="542" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="400">会话锁只在 TC 进程内串行化同一个 XID；全局行锁跨 TM/RM，拦不同 XID 改同一行。</text><text x="180" y="562" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">AT 提交在 commit 受理时提前放锁；回滚失败默认不放锁。</text></g><circle id="tok" cx="-20" cy="-20" r="9" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/></svg>
+<svg id="eng2" viewBox="0 0 1000 180" role="img" xmlns="http://www.w3.org/2000/svg"><text x="40" y="26" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">两把锁：当前相位在释放谁</text><text x="960" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">同一相位总线</text><g id="lk0"><rect x="40" y="48" width="210" height="74" rx="9" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="54" y="74" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">会话锁</text><text x="54" y="96" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">lockAndExecute 期间</text></g><g id="lk1"><rect x="270" y="48" width="210" height="74" rx="9" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="284" y="74" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">全局行锁</text><text x="284" y="96" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">Register → commit</text></g><g id="lk2"><rect x="500" y="48" width="210" height="74" rx="9" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="514" y="74" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">提前释放</text><text x="514" y="96" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">AT commit 受理</text></g><g id="lk3"><rect x="730" y="48" width="210" height="74" rx="9" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/><text x="744" y="74" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">回滚失败</text><text x="744" y="96" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">默认保留</text></g><line id="subNow" x1="40" y1="44" x2="40" y2="126" stroke="#C46A0A" stroke-width="2"/></svg>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 轮 / 8 秒</span>
+</div>
+
+<div class="readout">
+<span class="ro">相位 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">状态 / 锁 <b id="roKey">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav">
+<button class="btn" onclick="prevStep()">‹ 上一步</button>
+<button class="btn warn" onclick="nextStep()">下一步 ›</button>
+</span>
+</div>
+<div class="legend"><span><i></i>会话状态</span><span><i class="g"></i>提交 / 释放</span><span><i class="r"></i>回滚 / 保留</span></div>
+<p class="figcap">进度 0° = Begin，720° = 回滚成功或失败；主图状态与会话/行锁时间窗共用同一相位。<br>口径：Seata 2.8.0-SNAPSHOT；AT 提交在 commit 受理时释放全局锁；rollbackFailedUnlockEnable 默认 false。</p>
+</div>
+</div>
+
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：先把它当黑盒</h2></div>
+<p class="sec-sub">不急着拆类，只看它对外表现出什么。</p>
+<div class="quote"><i>先把系统当黑盒：只看输入、输出和边界，不急着解释内部。</i></div>
+
+<p>TC 的账本有两层：一层是事务状态，一层是哪一行被谁占着。前者是会话，后者是锁。</p>
+<div class="flow"><span class="node">GlobalSession</span><span class="arr">→</span><span class="node box">LockManager</span><span class="arr">→</span><span class="node">file / db / redis / raft</span></div>
+<p>最容易讲错的是释放时机：AT 提交在 commit 受理时就放全局锁，不等二阶段完成；回滚失败则默认保留。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：部件各管什么</h2></div>
+<p class="sec-sub">先把结构钉住，再让时间进来。点下面的部件卡，动画里对应部分会亮起。</p>
+<div class="quote"><i>结构分解要 MECE：同一层只放同一粒度的部件。</i></div>
+<div class="figure"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 620" width="1000" height="620" font-family="Microsoft YaHei, sans-serif">
+<defs>
+<marker id="flw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="flwG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="flwR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="flwB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<rect x="0" y="0" width="1000" height="620" fill="#ffffff"/>
+<text x="500" y="34" font-size="20" fill="#1F1E1A" text-anchor="middle" font-weight="600">会话与锁的生命周期</text>
+<text x="500" y="56" font-size="12" fill="#6B695F" text-anchor="middle" font-weight="400">会话锁保护同一个 XID 的会话修改；全局行锁保护 resource/table/pk。两者释放时机不同</text>
+<text x="960" y="28" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">蓝色：会话状态</text>
+<text x="960" y="44" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色/红色：提交/回滚</text>
+<rect x="60" y="96" width="140" height="48" rx="9" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="130" y="118" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">Begin</text>
+<text x="130" y="134" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">可接分支</text>
+<rect x="280" y="96" width="170" height="48" rx="9" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="365" y="118" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">AsyncCommitting</text>
+<text x="365" y="134" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">clean 释放锁</text>
+<rect x="530" y="96" width="130" height="48" rx="9" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="595" y="118" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">Committed</text>
+<text x="595" y="134" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">终态</text>
+<rect x="280" y="190" width="150" height="48" rx="9" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/>
+<text x="355" y="212" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">Rollbacking</text>
+<text x="355" y="228" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">逆序回滚</text>
+<rect x="530" y="190" width="130" height="48" rx="9" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/>
+<text x="595" y="212" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">Rollbacked</text>
+<text x="595" y="228" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">终态</text>
+<path d="M200 120 L276 120" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flwG)"/>
+<path d="M450 120 L526 120" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flwG)"/>
+<path d="M130 144 L280 190" fill="none" stroke="#E24B4A" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#flwR)"/>
+<path d="M430 214 L526 214" fill="none" stroke="#E24B4A" stroke-width="1.6" marker-end="url(#flwR)"/>
+<text x="60" y="320" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">锁的时间窗</text>
+<line x1="70" y1="370" x2="930" y2="370" stroke="#D3D1C7" stroke-width="2"/>
+<circle cx="120" cy="370" r="7" fill="#fff" stroke="#C46A0A" stroke-width="2"/>
+<text x="120" y="398" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">Begin</text>
+<circle cx="300" cy="370" r="7" fill="#fff" stroke="#C46A0A" stroke-width="2"/>
+<text x="300" y="398" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">Register</text>
+<circle cx="480" cy="370" r="7" fill="#fff" stroke="#C46A0A" stroke-width="2"/>
+<text x="480" y="398" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">LocalCommit</text>
+<circle cx="650" cy="370" r="7" fill="#fff" stroke="#C46A0A" stroke-width="2"/>
+<text x="650" y="398" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">GlobalCommit</text>
+<circle cx="820" cy="370" r="7" fill="#fff" stroke="#C46A0A" stroke-width="2"/>
+<text x="820" y="398" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">Rollback</text>
+<circle cx="920" cy="370" r="7" fill="#fff" stroke="#C46A0A" stroke-width="2"/>
+<text x="920" y="398" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">End</text>
+<rect x="120" y="420" width="800" height="24" rx="6" fill="#fff" stroke="#639922" stroke-width="1.3"/>
+<text x="132" y="437" font-size="10.5" fill="#4C7A1A" text-anchor="start" font-weight="400">会话锁：lockAndExecute 期间持有；每次请求结束释放</text>
+<rect x="300" y="456" width="350" height="24" rx="6" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="312" y="473" font-size="10.5" fill="#C46A0A" text-anchor="start" font-weight="400">AT 全局行锁：Register → GlobalCommit 受理时释放</text>
+<rect x="820" y="492" width="100" height="24" rx="6" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/>
+<text x="832" y="509" font-size="10" fill="#C0392B" text-anchor="start" font-weight="400">回滚失败：默认保留</text>
+<rect x="24" y="540" width="940" height="54" rx="9" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="40" y="562" font-size="11.5" fill="#C46A0A" text-anchor="start" font-weight="600">两个锁不是一回事</text>
+<text x="160" y="562" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="400">会话锁只在 TC 进程内串行化同一个 XID；全局行锁跨 TM/RM，拦的是不同 XID 改同一行。</text>
+<text x="160" y="580" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">AT 提交在 commit 受理时提前放行锁；回滚失败默认不放锁，避免数据没回滚干净时被新事务覆盖。</text>
+</svg></div>
+<div class="partgroup"><div class="gname">会话</div><div class="parts"><button class="part" data-part="gs"><b>1. GlobalSession</b><span>全局状态和分支列表；内部 ReentrantLock。</span></button><button class="part" data-part="bs"><b>2. BranchSession</b><span>分支状态、lockKey、lockHolder。</span></button></div></div><div class="partgroup"><div class="gname">锁</div><div class="parts"><button class="part" data-part="lock"><b>3. LockManager</b><span>acquire/release/isLockable；file/db/redis/raft。</span></button><button class="part" data-part="file"><b>4. FileLocker</b><span>resource→table→128 bucket→pk→BranchSession。</span></button><button class="part" data-part="release"><b>5. 释放时机</b><span>AT commit 提前释放；回滚成功释放。</span></button><button class="part" data-part="fail"><b>6. 回滚失败</b><span>默认保留锁，避免未回滚数据被覆盖。</span></button></div></div>
+<p class="hint">静态图与动画共用同一套编号和口径；把动画暂停，它就是一张可打印的结构图。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：一步一停看顺序</h2></div>
+<p class="sec-sub">重点不是记住箭头，而是记住每一步「谁在等谁」。</p>
+<div class="quote"><i>动态分析看三件事：顺序、状态、触发条件。</i></div>
+
+<table class="grid">
+<tr><th>时点</th><th>会话</th><th>全局行锁</th><th>说明</th></tr>
+<tr><td>Begin</td><td>可接分支</td><td>未持有</td><td>只有会话锁</td></tr>
+<tr><td>Register</td><td>分支加入</td><td>逐行抢</td><td>冲突整批释放</td></tr>
+<tr><td>本地提交</td><td>PhaseOne_Done</td><td>持有</td><td>数据已可见</td></tr>
+<tr><td>GlobalCommit</td><td>AsyncCommitting</td><td>clean 释放</td><td>提前放锁</td></tr>
+<tr><td>Rollback</td><td>Rollbacking</td><td>保留</td><td>成功后释放</td></tr>
+<tr><td>回滚失败</td><td>RollbackFailed</td><td>默认保留</td><td>防脏写</td></tr>
+</table>
+<p>「commit 返回了」和「锁放了吗」在 AT 里可以同时成立；「undo 还在」也不能说明锁没放。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件 × 阶段</h2></div>
+<p class="sec-sub">同一部件在不同阶段扮演不同角色，这张矩阵是排障时的索引。</p>
+<div class="quote"><i>把部件放回阶段里，才能看清谁在什么时候接力。</i></div>
+
+<table class="grid">
+<tr><th>锁</th><th>作用域</th><th>保护什么</th><th>释放</th></tr>
+<tr><td>会话锁</td><td>TC 进程内</td><td>同一 XID 的并发修改</td><td>lockAndExecute 结束</td></tr>
+<tr><td>全局行锁</td><td>TC 集群</td><td>resource/table/pk</td><td>commit 受理 / 回滚成功</td></tr>
+<tr><td>业务行锁</td><td>数据库</td><td>本地事务修改</td><td>本地 commit/rollback</td></tr>
+</table>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：它依赖什么才能成立</h2></div>
+<p class="sec-sub">拆掉任意一个外部依赖，前面看到的行为都会变。</p>
+<div class="quote"><i>任何机制都有环境前提；拆掉外部依赖，它就不再成立。</i></div>
+<div class="envcards">
+<div class="env"><b>store.session.mode</b><span>file/db/redis/raft；决定会话和锁的存储。</span></div>
+<div class="env"><b>rollbackFailedUnlockEnable</b><span>默认 false；回滚失败不释放锁。</span></div>
+<div class="env"><b>锁键</b><span>table:pk；复合主键用 _ 连接。</span></div>
+<div class="env"><b>多 TC</b><span>file 模式锁不共享；db/redis/raft 才有多节点语义。</span></div>
+<div class="env"><b>会话锁超时</b><span>GlobalSession 内部锁有等待超时，不是永久阻塞。</span></div>
+</div>
+<p class="figcap">边界：本页不展开 db/redis/raft 三种锁的具体存储结构；只讲释放时机和两把锁的区别。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">四个问题，检查你是否能在边界上做判断。</p>
+<div class="quote"><i>自测不是复述结论，而是检查你能否在边界上做判断。</i></div>
+<div id="quiz"></div>
+</section>
+
+
+<div class="summary">
+<h2>一页带走</h2>
+
+<p class="chant">会话锁管同一 XID，全局行锁管同一行。</p>
+<p>· AT 提交在 commit 受理时提前放全局锁，不等二阶段完成。</p>
+<p>· 回滚失败默认保留锁；这是保护，不是泄漏。</p>
+<p>· file 锁不跨机；db/redis/raft 才有集群语义。</p>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+</div>
+
+<script>
+(function(){
+var PERIOD=8000,PHASE_MAX=720;
+var STEPS=[{"d":0,"t":"Begin","x":"GlobalSession 可接分支；会话锁只在请求处理期间持有。"},{"d":80,"t":"Register","x":"RM 注册分支并抢全局行锁；分支开始持有 lockKeys。"},{"d":160,"t":"本地提交","x":"RM 写 undo、本地提交；行锁仍由 TC 持有到全局决议。"},{"d":240,"t":"GlobalCommit","x":"TC 改 AsyncCommitting，clean() 释放全局行锁。"},{"d":360,"t":"异步收尾","x":"分支提交、undo 删除；锁已经提前释放。"},{"d":520,"t":"回滚","x":"异常/超时走 Rollbacking；全局锁保留到回滚成功。"},{"d":640,"t":"回滚完成","x":"回滚成功释放；失败默认保留，防止新事务覆盖。"},{"d":720,"t":"结束","x":"会话进入终态；锁的最终状态取决于回滚结果。"}];
+var PARTS={"gs":["sBegin","sAsync"],"bs":["sRoll"],"lock":["lk1"],"file":["lk1"],"release":["lk2"],"fail":["lk3"]};
+var CHIPS=[{"k":"session","l":"会话锁"},{"k":"row","l":"行锁"},{"k":"fail","l":"回滚失败"},{"k":"state","l":"状态"}];
+var QUIZ=[{"q":"AT 的全局行锁什么时候释放？","opts":["二阶段完成后","commit 受理时 clean()","回滚完成后才释放"],"a":1,"exp":"DefaultCore.commit 在 AsyncCommitting 后立刻 clean 释放锁。"},{"q":"回滚失败默认会释放全局锁吗？","opts":["会","不会，rollbackFailedUnlockEnable 默认 false","只在 file 模式会"],"a":1,"exp":"默认保留，防止未回滚数据被新事务覆盖。"},{"q":"会话锁和全局行锁是一回事吗？","opts":["是","不是，一个在 TC 进程内，一个跨 TM/RM","只在 raft 下是"],"a":1,"exp":"会话锁串行化同一 XID 的请求；全局行锁拦不同 XID 改同一行。"},{"q":"file 模式多 TC 能共享全局行锁吗？","opts":["能","不能，锁在本机内存","只要共享目录就能"],"a":1,"exp":"FileLocker 的 LOCK_MAP 在进程内，file 模式不适合多 TC 高可用。"},{"q":"锁键冲突时 FileLocker 会只失败一行吗？","opts":["是","不是，会把本分支已拿到的锁整批释放","会等待不释放"],"a":1,"exp":"整批释放避免半个分支持锁、半个分支不持锁。"}];
+var WP=[[0,135,170],[160,335,170],[320,545,170],[520,300,300],[720,840,500]];
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,STEP_DUR=650;
+var stepIdx=-1;
+var el={};
+document.querySelectorAll('#eng [id],#eng2 [id]').forEach(function(n){el[n.id]=n;});
+function setOp(id,v){var n=typeof id==='string'?el[id]:id;if(n)n.setAttribute('opacity',v.toFixed(2));}
+function setText(id,s){var n=el[id]||document.getElementById(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setAttr(id,k,v){var n=el[id];if(n)n.setAttribute(k,v);}
+function setChip(k,v){var n=document.querySelector('#stateChips .chip[data-k="'+k+'"]');if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',/^(开|是|已|完成|生效|放行|进行|成功|COMMIT|提交|回滚|有|命中|持有|可选|新 leader|已落定)/.test(v));n.classList.toggle('off',/^(关|否|待命|—|未|无|失败|丢失|释放|默认关|停)/.test(v));}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){return t*t*(3-2*t);}
+function tokenPos(th){
+  if(!WP||WP.length<2)return null;
+  var p=norm(th);var i=0;while(i<WP.length-2&&p>WP[i+1][0])i++;
+  var a=WP[i],b=WP[i+1];var t=(p-a[0])/((b[0]-a[0])||1);t=clamp(t,0,1);
+  return [a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+}
+
+function renderScene(th,pr,si){
+  function band(id,a,b,lo){setOp(id,(pr>=a&&pr<b)?1:(lo===undefined?0.3:lo));}
+  band('sBegin',0,160);band('sAsync',160,520);band('sCommit',520,720,0.6);
+  band('sRoll',520,720,0.45);band('sRolled',520,720,0.45);
+  var key='Begin';
+  if(pr>=160)key='AsyncCommitting / 锁释放';
+  if(pr>=520)key='回滚路径';
+  if(pr>=640)key='回滚完成 / 失败';
+  setText('roKey',key);
+  setChip('session',pr>=0?'持有':'—');
+  setChip('row',pr>=160&&pr<520?'提前释放':pr>=520?'回滚中':'待命');
+  setChip('fail',pr>=640?'保留':'—');
+  setChip('state',pr>=640?'终态':'进行中');
+}
+
+
+function renderSub(th,pr,si){
+  var active=pr<160?0:pr<520?1:pr<640?2:3;
+  var ids=['lk0','lk1','lk2','lk3'];
+  for(var i=0;i<4;i++)setOp(ids[i],i===active?1:0.45);
+  var pos={0:[40,44],1:[270,44],2:[500,44],3:[730,44]};
+  setAttr('subNow','x1',pos[active][0]);setAttr('subNow','y1',pos[active][1]);
+  setAttr('subNow','x2',pos[active][0]);setAttr('subNow','y2',pos[active][1]+82);
+}
+
+function render(th){
+  var pr=norm(th);
+  setText('roPhase',Math.round(pr)+'°');
+  var si=0;for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)si=i;}
+  if(mode==='step'&&stepIdx>=0)si=stepIdx;
+  setText('roStep',STEPS[si]?STEPS[si].t:'—');
+  var p=tokenPos(th);
+  if(p){setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));setOp('tok',1);}
+  else{setOp('tok',0);}
+  renderScene(th,pr,si);
+  if(typeof renderSub==='function')renderSub(th,pr,si);
+}
+function tick(now){
+  var dt=Math.min(50,now-last);last=now;
+  if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+  if(mode==='step'&&stepTo!==null){
+    stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);
+    var p=stepElapsed/STEP_DUR;var e=smooth(p);
+    phase=stepFrom+(stepTo-stepFrom)*e;
+    if(p>=1){phase=((stepTo%PERIOD)+PERIOD)%PERIOD;stepTo=null;}
+  }
+  render(phase/PERIOD*PHASE_MAX);
+  requestAnimationFrame(tick);
+}
+function setAuto(on){
+  mode='auto';run=on;stepTo=null;btn.textContent=on?'暂停':'播放';
+  if(on){stepIdx=-1;document.querySelectorAll('.stepnode').forEach(function(d){d.classList.remove('on');});
+  stepT.textContent='自动运转模式';stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格。';}
+}
+window.goStep=function(i){
+  stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+  var target=STEPS[stepIdx].d/PHASE_MAX*PERIOD;var delta=target-phase;
+  if(reduced||Math.abs(delta)>PERIOD/3){phase=target;stepTo=null;render(target/PERIOD*PHASE_MAX+0.01);}
+  else{stepFrom=phase;stepTo=phase+delta;stepElapsed=0;render(phase/PERIOD*PHASE_MAX+0.01);}
+  btn.textContent='继续自动运转';
+  document.querySelectorAll('.stepnode').forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+  stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+  stepX.textContent=STEPS[stepIdx].x;
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+btn.textContent=run?'暂停':'播放';
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+for(var s=0;s<STEPS.length;s++){(function(n){
+  var b=document.createElement('button');b.className='stepnode';
+  b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+  b.onclick=function(){goStep(n);};stepBar.appendChild(b);
+})(s);}
+CHIPS.forEach(function(c){var s=document.createElement('span');s.className='chip';s.setAttribute('data-k',c.k);s.innerHTML=c.l+' <b>--</b>';document.getElementById('stateChips').appendChild(s);});
+document.querySelectorAll('.part').forEach(function(b){
+  b.onclick=function(){
+    var ids=PARTS[b.getAttribute('data-part')]||[];
+    ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+    document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+    setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+  };
+});
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+  var d=document.createElement('div');d.className='q';
+  var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+  it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+  h+='<div class="exp">'+it.exp+'</div>';d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+  var b=e.target.closest('.opt');if(!b)return;var box2=b.parentElement;if(box2.classList.contains('done'))return;
+  box2.classList.add('done');
+  var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+  box2.querySelectorAll('.opt').forEach(function(x,n){x.classList.add(n===QUIZ[qi].a?'right':'wrong');});
+});
+var BASE=(location.pathname.split('/seata-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/seata/lab';
+document.getElementById('lnkArt').href=BASE+'/seata/server/01-session-lock';
+
+requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

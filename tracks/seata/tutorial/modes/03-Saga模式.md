@@ -50,6 +50,10 @@ Saga 用一张状态机定义描述流程。一个最简单的下单 Saga：
 
 每个 `ServiceTask` 都是一次本地服务调用。`ServiceTaskStateHandler` 调 `ServiceInvoker`，异常写入 `VAR_NAME_CURRENT_EXCEPTION`，再交给 `EngineUtils.handleException()` 匹配 `Catch`。
 
+每个 `ServiceTask` 都是一次本地服务调用。`ServiceTaskStateHandler` 调 `ServiceInvoker`，异常写入 `VAR_NAME_CURRENT_EXCEPTION`，再交给 `EngineUtils.handleException()` 匹配 `Catch`。
+
+![图 1：Saga 的正向状态链与补偿链](../../assets/09-Saga状态机与补偿.svg)
+
 ---
 
 ## 二、执行：每个 state 各自提交

@@ -64,6 +64,10 @@ if (!RootContext.requireGlobalLock() && BranchType.AT != RootContext.getBranchTy
 
 DDL 在全局事务里会被原样执行，不产生 undo、不注册分支。**在全局事务里做 DDL，Seata 管不了。**
 
+DDL 在全局事务里会被原样执行，不产生 undo、不注册分支。**在全局事务里做 DDL，Seata 管不了。**
+
+![图 1：SQL 解析、镜像与 undo 改写](../../assets/13-SQL解析与undo改写.svg)
+
 ---
 
 ## 四、镜像：哪些列会被抓
