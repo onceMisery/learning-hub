@@ -114,6 +114,9 @@ table.grid td.act{background:#FAEEDA}
 .chip.off{background:#F5F4EF}
 .subview{margin:8px 0 4px;background:#ffffff;border:1px dashed #D3D1C7;border-radius:10px;padding:8px 10px}
 .subview .viewtitle{font-size:12px;font-weight:600;color:#854F0B;margin-bottom:4px}
+#flow{width:100%;display:block;cursor:crosshair}
+.flowcap{font-size:12px;color:#6B695F;margin:6px 2px 0;line-height:1.6}
+.flowcap b{color:#3B3A34;font-weight:600}
 </style>
 </head>
 <body>
@@ -169,6 +172,15 @@ table.grid td.act{background:#FAEEDA}
 <title>控制面与数据面时间轴</title>
 <g id="scene2"></g>
 </svg>
+</div>
+
+<div class="subview">
+<div class="viewtitle">第三视图 · 两条线一台仿真机（canvas，点实例挂掉 / 点 worker 重平衡 / 点幂等门开关）</div>
+<canvas id="flow" width="1000" height="580"></canvas>
+<div class="readout"><span class="ro">控制面在做什么 <b id="froCtl">--</b></span><span class="ro">实例存活 <b id="froInst">--</b></span><span class="ro">本轮 读/写/失败 <b id="froFlow">--</b></span><span class="ro">输入游标 <b id="froMdp">--</b></span><span class="ro">未 ack / 待重投 <b id="froUnack">--</b></span><span class="ro">输出重复 <b id="froDup">--</b></span></div>
+<div class="chips" id="flowChips"></div>
+<p class="flowcap" id="flowSel">点任意一条实例行把它点挂：控制面立刻出手——心跳变红、未 ack 到点重投、兄弟实例接手、输出多写几条当场见数。点 worker 框让 leader 挪一个实例过去（StateStore 不跟着搬）；点右侧幂等门可关去重，看重复怎么写进 output topic。鼠标停在部件上看职责。</p>
+<p class="figcap"><b>读法：</b>上下两层是两条不同的线。上层控制面：提交 → metadata topic → SchedulerManager（leader，RoundRobin 按实例数摊平）→ assignment topic → RuntimeManager → RuntimeSpawner；随主图每轮走一遍提交序列，其余时间只剩心跳，实例挂 / 挪实例才有额外动作。下层数据面：左侧竖列是输入 topic 进场流（暗=已 ack，亮=未 ack，红环=超时待重投，橙环=重试中的毒消息），竖列边的尺从 0 到 60 是积压刻度；底部 x 尺上的绿针 = 游标（连续已 ack 位），琥珀区 = 还没过账的积压。三条实例行各跑 readInput→process→handleResult，通道上的琥珀点走到哪儿处理到哪儿；成功后才写输出（行右 → 幂等门 → out topic），写完才 ack，绿色回点沿底部 ack 回路飞回游标那格、游标才推进——游标只认连续前缀：队头一条在重投或重试，后面的全过不来。行尾「读/写/败/未」是这一轮的账；行首绿字「E37 接手」标出重投落到谁家；行中「state N」= 这家实例的 StateStore 计数，重启或被挪走就清零。<br><span class="figsrc">口径：Pulsar 5.1.0-SNAPSHOT。parallelism=3、2 个 worker、输入 12 条/轮、process 0.12 轮、ackTimeout≈0.4 轮、maxMessageRetries=2、挂 1.2 轮后拉起、重平衡一次挪 1 个实例（真实里存活检查按周期跑、rebalance 由 leader 定期执行、重启可更快，这里为演示放宽），全为演示值；assignment 是追加日志、需 compaction；默认语义 ATLEAST_ONCE，EFFECTIVELY_ONCE 要把输出与 ack 收进同一事务；分区 topic 每分区各有游标，这里画一个订阅一套游标；「幂等门」是把业务幂等键画成一道门，生产上得自己做。</span></p>
 </div>
 
 <div class="ctrl">
@@ -445,6 +457,7 @@ var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),
 var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
 var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
 var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var absPhase=PERIOD;
 var stepFrom=0,stepTo=null,stepElapsed=0,STEP_DUR=900;
 var dots=[];
 for(var s=0;s<STEPS.length;s++){
@@ -479,6 +492,7 @@ stepIdx=(i+STEPS.length)%STEPS.length;
 mode='step';run=false;
 var target=STEPS[stepIdx].d/PHASE_MAX*PERIOD,delta=target-phase;
 if(reduced||Math.abs(delta)>PERIOD/4){
+absPhase+=delta;
 phase=target;stepTo=null;render(target/PERIOD*PHASE_MAX+0.01);
 }else{
 stepFrom=phase;stepTo=phase+delta;stepElapsed=0;render(phase/PERIOD*PHASE_MAX+0.01);
@@ -527,7 +541,561 @@ setOp('v4_ctl',th<320?1:0.45);
 setOp('v4_data',th>=320?1:0.45);
 
 }
+(function(){
+/* ---------- FlowStage：canvas 视图的尺寸 / 层缓存 / 命中高亮 / 探针 ---------- */
+function FlowStage(o){
+var W=o.W,H=o.H,el=document.getElementById(o.el);
+var ctx=(el&&window.CanvasRenderingContext2D)?el.getContext('2d'):null;
+var dpr=window.devicePixelRatio||1,sc=1,size='0x0';
+var g=null,cur=null,own='',toks=[],layers={},order=[],frameFn=null;
+var regions=o.regions||[],hover=null,pin=null,capEl=document.getElementById(o.cap||'flowSel'),capTxt='',tapFn=null;
+var chipEl={},chipBox=document.getElementById(o.chips||'flowChips');
+function meas(s,px,bold){
+if(ctx){ctx.font=(bold?'600 ':'')+px+'px "Microsoft YaHei",sans-serif';return ctx.measureText(s).width;}
+var w=0;for(var i=0;i<s.length;i++)w+=(s.charCodeAt(i)>255?px:px*0.62);
+return w*(bold?1.04:1);
+}
+function rr(x,y,w,h,r){
+if(!g)return;
+r=Math.min(r,w/2,h/2);g.beginPath();
+g.moveTo(x+r,y);g.lineTo(x+w-r,y);g.quadraticCurveTo(x+w,y,x+w,y+r);
+g.lineTo(x+w,y+h-r);g.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+g.lineTo(x+r,y+h);g.quadraticCurveTo(x,y+h,x,y+h-r);g.lineTo(x,y+r);
+g.quadraticCurveTo(x,y,x+r,y);g.closePath();
+}
+function fit(){
+if(!el)return;
+var cw=el.clientWidth||W,ch=Math.round(cw*H/W),s=Math.min(dpr,2000/cw);
+var bw=Math.round(cw*s),bh=Math.round(ch*s);
+if(ctx){
+if(el.width!==bw||el.height!==bh){el.width=bw;el.height=bh;el.style.height=ch+'px';}
+ctx.setTransform(bw/W,0,0,bw/W,0,0);
+}
+if(bw+'x'+bh!==size){size=bw+'x'+bh;for(var k in layers)layers[k].key=null;}
+sc=bw/W;
+}
+function layer(name,keyFn,fn){
+var L=layers[name];
+if(!L){L={cv:null,cx:null,key:null,labels:[]};layers[name]=L;order.push(name);}
+var key=String(keyFn===undefined?size:size+'|'+keyFn());
+if(L.key===key)return L;
+L.key=key;L.labels.length=0;
+if(ctx){
+if(!L.cv){L.cv=document.createElement('canvas');L.cx=L.cv.getContext('2d');}
+if(L.cv.width!==ctx.canvas.width||L.cv.height!==ctx.canvas.height){L.cv.width=ctx.canvas.width;L.cv.height=ctx.canvas.height;}
+L.cx.setTransform(sc,0,0,sc,0,0);
+L.cx.clearRect(0,0,W,H);
+g=L.cx;
+}
+cur=L.labels;
+fn();
+g=ctx;cur=null;
+return L;
+}
+function blit(L){
+if(ctx&&L.cv)ctx.drawImage(L.cv,0,0,W,H);
+}
+function keyAt(x,y){
+for(var i=regions.length-1;i>=0;i--){var b=regions[i];if(x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h)return b.k;}
+return null;
+}
+function syncSel(){
+var k=pin||hover,b=null;
+for(var i=0;i<regions.length;i++)if(regions[i].k===k)b=regions[i];
+var s=b?'<b>'+b.n+(pin?'（已钉住）':'')+'</b> · '+b.d:(o.hint||'');
+if(s!==capTxt&&capEl){capTxt=s;capEl.innerHTML=s;}
+}
+if(el){
+el.addEventListener('mousemove',function(ev){
+var rc=el.getBoundingClientRect();
+hover=keyAt((ev.clientX-rc.left)/rc.width*W,(ev.clientY-rc.top)/rc.height*H);
+});
+el.addEventListener('mouseleave',function(){hover=null;});
+el.addEventListener('click',function(ev){
+var rc=el.getBoundingClientRect();
+var k=keyAt((ev.clientX-rc.left)/rc.width*W,(ev.clientY-rc.top)/rc.height*H);
+pin=(pin===k?null:k);
+if(tapFn)tapFn((ev.clientX-rc.left)/rc.width*W,(ev.clientY-rc.top)/rc.height*H,k);
+});
+}
+if(chipBox&&(o.chips2||[]).length){
+o.chips2.forEach(function(c){
+var s=document.createElement('span');s.className='chip';
+s.innerHTML=c.l+' <b>--</b>';chipBox.appendChild(s);chipEl[c.k]=s;
+});
+}
+var S={
+W:W,H:H,size:function(){return size;},
+owner:function(k){own=k;return S;},
+text:function(s,x,y,px,col,al,bold){
+if(g){g.font=(bold?'600 ':'')+px+'px "Microsoft YaHei",sans-serif';g.fillStyle=col;g.textAlign=al||'left';g.textBaseline='middle';g.fillText(s,x,y);}
+var w=meas(s,px,bold);
+if(cur)cur.push({t:s,x:(al==='center'?x-w/2:al==='right'?x-w:x),y:y-px*0.63,w:w,h:px*1.26,own:own});
+return S;
+},
+rect:function(x,y,w,h,fill,stroke,dash,r,lw){
+if(!g)return S;
+rr(x,y,w,h,r===undefined?10:r);
+if(fill){g.fillStyle=fill;g.fill();}
+if(stroke){g.setLineDash(dash||[]);g.strokeStyle=stroke;g.lineWidth=lw||1.4;g.stroke();g.setLineDash([]);}
+return S;
+},
+shade:function(x,y,w,h,col){
+if(!g||w<=0)return S;
+rr(x,y,w,h,4);g.fillStyle=col;g.fill();return S;
+},
+line:function(x1,y1,x2,y2,col,w,dash,alpha){
+if(!g)return S;
+g.save();if(alpha!==undefined)g.globalAlpha=alpha;
+g.beginPath();g.setLineDash(dash||[]);g.strokeStyle=col;g.lineWidth=w||1.4;
+g.moveTo(x1,y1);g.lineTo(x2,y2);g.stroke();g.setLineDash([]);g.restore();return S;
+},
+dot:function(x,y,r,fill,stroke,alpha){
+if(!g)return S;
+g.save();if(alpha!==undefined)g.globalAlpha=alpha;
+g.beginPath();g.arc(x,y,r,0,6.2832);
+if(fill){g.fillStyle=fill;g.fill();}
+if(stroke){g.strokeStyle=stroke;g.lineWidth=1.4;g.stroke();}
+g.restore();return S;
+},
+tri:function(x,y,up,col){
+if(!g)return S;
+g.save();g.fillStyle=col;g.beginPath();
+if(up){g.moveTo(x,y-6);g.lineTo(x+6,y+5);g.lineTo(x-6,y+5);}
+else{g.moveTo(x,y+6);g.lineTo(x+6,y-5);g.lineTo(x-6,y-5);}
+g.closePath();g.fill();g.restore();return S;
+},
+token:function(x,y,r){toks.push({x:x,y:y,r:r});return S;},
+path:function(nodes){
+return function(u){
+if(u<=0)return[nodes[0][1],nodes[0][2]];
+if(u>=1)return[nodes[nodes.length-1][1],nodes[nodes.length-1][2]];
+var i=0;while(i<nodes.length-2&&u>nodes[i+1][0])i++;
+var a=nodes[i],b=nodes[i+1],t=(u-a[0])/(b[0]-a[0]);t=t*t*(3-2*t);
+return[a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+};
+},
+layer:function(name,keyFn,fn){layer(name,keyFn,fn);return S;},
+frame:function(fn){frameFn=fn;return S;},
+read:function(id,v){var n=document.getElementById(id);if(n&&n.textContent!==v)n.textContent=v;return S;},
+chip:function(k,v,cls){
+var n=chipEl[k];if(!n)return S;
+var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;
+var c='chip'+(cls?' '+cls:'');if(n.className!==c)n.className=c;
+return S;
+},
+pinTo:function(k){pin=k;},
+onTap:function(fn){tapFn=fn;return S;},
+labels:function(){
+var out=[];
+for(var i=0;i<order.length;i++)out=out.concat(layers[order[i]].labels);
+return out.concat(cur||[]);
+},
+draw:function(F){
+fit();
+toks.length=0;
+g=ctx;cur=[];
+if(ctx){ctx.clearRect(0,0,W,H);for(i=0;i<order.length;i++)blit(layers[order[i]]);}
+if(frameFn)frameFn(F);
+g=null;own='';
+syncSel();
+},
+/* 与主图时钟接线：tick 每帧调一次，探针复用同一套映射 */
+link:function(mapFn){
+var mp=mapFn||function(abs){
+var cyc=abs/PERIOD,p=cyc-Math.floor(cyc);
+return{th:p*PHASE_MAX+0.01,p:p,cyc:cyc,T:cyc};
+};
+window.__flowTick=function(abs){S.draw(mp(abs));};
+window.__flowProbe=function(abs){
+S.draw(mp(abs));
+return{w:W,h:H,labels:S.labels(),tokens:toks.slice(),boxes:regions.map(function(b){return{k:b.k,x:b.x,y:b.y,w:b.w,h:b.h};})};
+};
+return S;
+}
+};
+return S;
+}
+
+/* ===== 第 4 章：控制面 × 数据面，一台仿真机 ===== */
+var RATE=12,PR=0.12,RETR=0.13,MRR=2,ATO=0.40,DET=0.35,DOWN=1.2,RBD=0.6,WR=0.06,WIN=60,B0=1000;
+var RY=[240,306,372],RH=60,CH=[296,362,428],ACLY=452,ACCL=180,ACCR=636;
+var INX=40,IDX=160,CTOP=242,CBOT=430;
+var STN=['提交函数','写元数据','leader 调度','拉起实例'];
+var IDON=true,CR=[],RBE=null,TNOW=1;
+var INST=['inst-0','inst-1','inst-2'],OWN=[0,0,1];
+function lmod(a,b){return (a%b+b)%b;}
+function po(n){return lmod(n,37)===9;}
+function fk(n){return !po(n)&&lmod(n,11)===3;}
+function posOf(n){return 'L'+Math.floor(n/128)+'·E'+lmod(n,128);}
+function idOf(n){return 'E'+lmod(n,128);}
+function ownOf(j){return OWN[j]===0?'worker-1':'worker-2';}
+function attOf(n){return po(n)?MRR:(fk(n)?1:0);}
+function durOf(n){var k=attOf(n);return (k+1)*PR+k*RETR;}
+function CHY(j){return CH[j]-13;}
+function downIv(j){
+ var r=[],i;
+ for(i=0;i<CR.length;i++)if(CR[i].j===j)r.push([CR[i].t,CR[i].t+DOWN]);
+ if(RBE&&RBE.inst===j)r.push([RBE.t,RBE.t+RBD]);
+ return r;
+}
+function deadAt(j,t){var r=downIv(j),i;for(i=0;i<r.length;i++)if(t>=r[i][0]&&t<r[i][1])return 1;return 0;}
+function deadEnd(j,t){var r=downIv(j),e=t,i;for(i=0;i<r.length;i++)if(t>=r[i][0]&&t<r[i][1]&&r[i][1]>e)e=r[i][1];return e;}
+function nextDeath(j,t){var r=downIv(j),b=-1,i;for(i=0;i<r.length;i++){if(r[i][0]<=t)continue;if(b<0||r[i][0]<b)b=r[i][0];}return b;}
+function liveFrom(j,t){var k,i;for(k=0;k<3;k++){i=(j+k+3)%3;if(!deadAt(i,t))return i;}return -1;}
+function xOf(t){return INX+Math.min(1,Math.max(0,t/4))*(IDX-INX);}
+function fmt(s){return s.length>25?s.slice(0,24)+'…':s;}
+
+/* ---------- 仿真：逐条消息推账 ---------- */
+function sim(T){
+ var nNow=B0+Math.floor(T*RATE),N0=Math.max(B0,nNow-WIN),i,j,n,q;
+ var o={nNow:nNow,N0:N0,legs:[],aw:[],res:new Array(nNow-N0+2),free:[-9,-9,-9],
+  cnt:{read:0,write:0,fail:0,unack:0,redel:0,pending:0,outw:0,blocked:0,dupw:0,dlt:0},
+  ir:[0,0,0],iw:[0,0,0],ifl:[0,0,0],iu:[0,0,0],dead:[0,0,0],
+  mdp:N0-1,backlog:0};
+ /* 第一遍：正常投递 / 挂掉期间兄弟代班 / 处理中途被打断 */
+ for(n=N0;n<=nNow;n++){
+  var a=(n-B0)/RATE,att=attOf(n),dur=durOf(n),d=n%3,t=Math.max(a,o.free[n%3]),guard=0,done=0;
+  while(guard++<12&&!done){
+   if(deadAt(d,t)){
+    var e2=deadEnd(d,t),lv=liveFrom((d+1)%3,t);
+    if(lv>=0&&e2-t>0.35){d=lv;t=Math.max(a,o.free[lv]);continue;}
+    t=e2+0.03;continue;
+   }
+   var s=nextDeath(d,t),end=t+dur;
+   if(s>=0&&s<end){
+    var fails=0;
+    for(i=0;i<=att;i++){if(t+(i+1)*PR+i*RETR<s)fails++;}
+    var written=(end-WR)<=s;
+    o.legs.push({n:n,j:d,push:t,s:t,end:end,stop:s,fails:fails,att:att});
+    o.aw.push({n:n,from:d,when:Math.max(t+ATO,s+DET)+0.03,written:written,got:-1});
+    done=2;
+    break;
+   }
+   o.free[d]=end;
+   o.legs.push({n:n,j:d,push:t,s:t,end:end,att:att,dur:dur,redel:0,part:0});
+   o.res[n-N0]=end;done=1;
+  }
+ }
+ /* 第二遍：未 ack 的消息到点重投，插进接手人的串行时间线 */
+ for(q=0;q<o.aw.length;q++){
+  var aw=o.aw[q];
+  if(aw.got!==-1)continue;
+  if(aw.when>T){o.cnt.pending++;continue;}
+  var jj=liveFrom((aw.from+1)%3,aw.when);
+  if(jj<0){o.cnt.pending++;continue;}
+  var st=Math.max(aw.when,o.free[jj]);
+  if(deadAt(jj,st)){aw.when=deadEnd(jj,st)+0.03;o.aw.push({n:aw.n,from:aw.from,when:aw.when,written:aw.written,got:-1});o.aw[q].got=-2;continue;}
+  var dur2=durOf(aw.n),end2=st+dur2,sn=nextDeath(jj,st);
+  if(sn>=0&&sn<end2){
+   o.legs.push({n:aw.n,j:jj,push:aw.when,s:st,end:end2,stop:sn,fails:0,att:attOf(aw.n)});
+   o.aw.push({n:aw.n,from:jj,when:Math.max(st+ATO,sn+DET)+0.03,written:aw.written||((end2-WR)<=sn),got:-1});
+   aw.got=-2;continue;
+  }
+  o.free[jj]=end2;aw.got=jj;o.cnt.redel++;
+  o.legs.push({n:aw.n,j:jj,push:aw.when,s:st,end:end2,att:attOf(aw.n),dur:dur2,redel:aw.written?1:2,part:0});
+  if(o.res[aw.n-N0]===undefined)o.res[aw.n-N0]=end2;else o.res[aw.n-N0]=Math.max(o.res[aw.n-N0],end2);
+ }
+ /* 汇总：这一轮（近 1 周期）各家的账 */
+ var W0=T-1;
+ for(j=0;j<3;j++)o.dead[j]=deadAt(j,T);
+ for(q=0;q<o.aw.length;q++)if(o.aw[q].got===-1&&o.aw[q].when<=T)o.cnt.pending++;
+ for(q=0;q<o.legs.length;q++){var l=o.legs[q];
+  if(l.s>W0&&l.s<=T){o.cnt.read++;o.ir[l.j]++;}
+  if(l.stop!==undefined){
+   for(i=0;i<l.fails;i++){var ft=l.s+(i+1)*PR+i*RETR;if(ft>W0&&ft<=T){o.cnt.fail++;o.ifl[l.j]++;}}
+   if(l.s<=T&&T<=l.stop+0.001)o.cnt.unack++;
+   continue;
+  }
+  if(l.s<=T&&l.end>T){o.cnt.unack++;o.iu[l.j]++;}
+  if(l.end<=T){
+   for(i=0;i<l.att;i++){var ft2=l.s+(i+1)*PR+i*RETR;if(ft2>W0&&ft2<=T){o.cnt.fail++;o.ifl[l.j]++;}}
+   var w4=l.end-WR;
+   if(w4>W0&&w4<=T){
+    if(po(l.n))o.cnt.dlt++;
+    else if(l.redel===1){o.cnt.write++;o.iw[l.j]++;if(IDON)o.cnt.blocked++;else o.cnt.dupw++;}
+    else{o.cnt.write++;o.iw[l.j]++;o.cnt.outw++;}
+   }
+  }
+ }
+ var m=N0-1;for(n=N0;n<=nNow;n++){var r5=o.res[n-N0];if(r5!==undefined&&r5<=T)m=n;else break;}
+ o.mdp=m;o.backlog=nNow-m;
+ return o;
+}
+function unCnt(o,j){
+ var c=0,q;
+ for(q=0;q<o.legs.length;q++){var l=o.legs[q];
+  if(l.j===j&&l.stop===undefined&&l.s<=TNOW&&l.end>TNOW)c++;}
+ for(q=0;q<o.aw.length;q++)if(o.aw[q].from===j&&o.aw[q].got===-1)c++;
+ return c;
+}
+
+/* ---------- 部件命中区 ---------- */
+var REG=[
+{k:'band-c',x:16,y:26,w:968,h:158,n:'控制面',d:'控制面只决定「放哪、起几个」：提交、校验、写元数据、算分配、拉起。随主图每轮走一遍提交序列，平时只剩心跳；你点挂实例或点 worker，才有额外的拉起 / 挪实例。',t:[]},
+{k:'band-d',x:16,y:194,w:968,h:252,n:'数据面',d:'数据面才是消息循环：读、process、写输出、ack。Worker 挂了它还能撑，只是没人调度新实例；实例挂了，才轮到控制面出手拉起。',t:[]},
+{k:'admin',x:20,y:44,w:94,h:56,n:'Admin / CLI',d:'给一个包、指定输入输出 topic 就完事；Worker 校验名称、并行度、输入输出。',t:[]},
+{k:'meta',x:122,y:44,w:124,h:56,n:'metadata topic',d:'persistent://public/functions/metadata：函数定义、包位置、实例数都追加进这里。',t:[]},
+{k:'sched',x:254,y:44,w:140,h:56,n:'SchedulerManager（leader）',d:'leader 定期 rebalance：RoundRobin 找实例最多/最少的 worker，差距大于 1 就挪一个；没有两阶段提交，失败了下一轮重算。',t:[]},
+{k:'asg',x:402,y:44,w:132,h:56,n:'assignment topic',d:'每条分配/解绑写一条追加消息；worker 重启靠 Reader 从 earliest 重放恢复。不清理会越来越长，需要 compaction。',t:[]},
+{k:'rtman',x:542,y:44,w:136,h:56,n:'FunctionRuntimeManager',d:'各 worker 都读 assignment：属于自己的交给 FunctionActioner 启动，不属于自己就忽略。',t:[]},
+{k:'spawn',x:686,y:44,w:140,h:56,n:'FunctionActioner / RuntimeSpawner',d:'下载 NAR、建 runtime、start()；随后一个定时器查活，发现死了 stop+start，numRestarts 加一。包从本地/HTTP/内置三处取，URL 协议受 PackageUrlValidator 限制。',t:[]},
+{k:'numr',x:834,y:44,w:146,h:56,n:'numRestarts 累计',d:'RuntimeSpawner 记的重启次数：按 runtime 粒度重启，不是按消息粒度；死循环重启也治不好。',t:[]},
+{k:'member',x:20,y:116,w:146,h:58,n:'Worker 成员关系',d:'leader 选举、worker 存活检测都在这；没有成员关系，rebalance 无从谈起。',t:[]},
+{k:'w1',x:250,y:116,w:226,h:58,n:'worker-1',d:'点它：leader 从这里挪一个实例去 worker-2（新 worker 拉起、旧 worker 停掉，实例停摆 0.6 轮，期间兄弟代班）。',t:[]},
+{k:'w2',x:600,y:116,w:226,h:58,n:'worker-2',d:'点它反向挪。RoundRobin 只保证实例数平均，不保证负载平均；重函数多的 worker 还是忙。',t:[]},
+{k:'topic',x:16,y:208,w:172,h:238,n:'输入 topic',d:'函数组的 consumer 从这里读。暗点=已 ack、亮点=未 ack、红环=超时待重投、橙环=重试中的毒消息；右边尺是积压刻度，底部 x 尺上绿针是游标。',t:[]},
+{k:'gate',x:878,y:252,w:102,h:186,n:'幂等门（msgId 去重）',d:'点它开关。「至少一次」下重投的消息会再写一次：门开着按 msgId 挡下；关掉门，output topic 里就多一条重复行。生产上用业务幂等键，或 EFFECTIVELY_ONCE 事务。',t:[]},
+{k:'dlt',x:652,y:447,w:128,h:17,n:'Dead Letter Topic',d:'重试满 maxMessageRetries 的毒消息进 DLT。它是普通 topic，要你自己消费、排查、重放；不配它，毒消息永远卡着队头。',t:[]},
+{k:'panel',x:16,y:466,w:968,h:102,n:'两本账 + 推演',d:'左边是最近事件，最底一行是「现在点挂」的预测答案；右边是预测明细：挂谁家有几条要重投、游标卡在哪个洞、输出落了几条。这条回路演示的是 ATLEAST_ONCE；ATMOST_ONCE 读出来先 ack（崩了就丢），EFFECTIVELY_ONCE 把输出与 ack 收进同一个事务。',t:[]}
+];
+function addR(k,x,y,w,h,n,d){REG.push({k:k,x:x,y:y,w:w,h:h,n:n,d:d,t:[]});}
+for(var ri=0;ri<3;ri++){
+ addR('i'+ri,174,RY[ri],462,RH,INST[ri]+' 处理循环','点它 = 这个实例当场挂掉：手里的消息全变未 ack，ackTimeout 到点重投给还活着的实例；挂 '+DOWN+' 轮后由 Spawner 拉起。readInput 照常带 receiverQueue/permits；process 同步返回或 CompletableFuture，handleResult 走同一条出口。行尾是这一轮它自己的读/写/败/未 ack，state N = 这家的 StateStore（BookKeeper Table 或元数据存储）计数，重启/挪走就清零。');
+ addR('g'+ri,652,CHY(ri),128,26,'handleResult → 写出','成功才写输出（ATLEAST_ONCE：结果先落地，ack 随后）。写到 = 行通道上的琥珀点走到最右端，这里闪一下绿框；没有输出（返回 null）就跳过这一步。');
+ addR('r'+ri,788,CHY(ri),84,26,'输出 topic','结果落点。重投的消息会再写一次，去不去重看右边的幂等门。');
+}
+
+var S=FlowStage({W:1000,H:580,el:'flow',cap:'flowSel',chips:'flowChips',regions:REG,hint:'',
+chips2:[{k:'plane',l:'哪条线在动'},{k:'owner',l:'实例分布'},{k:'sem',l:'ATLEAST_ONCE'},{k:'dedup',l:'幂等门'}]});
+
+/* 路径 */
+var PSUB=S.path([[0,66,100],[0.06,66,106],[0.62,756,106],[0.7,166,106],[0.86,166,291],[1,240,291]]);
+var PCR=[S.path([[0,166,RY[0]+40],[0.45,166,106],[1,740,106]]),
+S.path([[0,166,RY[1]+40],[0.45,166,106],[1,740,106]]),
+S.path([[0,166,RY[2]+40],[0.45,166,106],[1,740,106]])];
+
+/* ---------- 静态层 ---------- */
+S.layer('base',function(){return S.size();},function(){
+var i,j,b;
+S.owner('');
+var LG=[[20,'#EF9F27','琥珀 = 在途 / 未 ack'],[186,'#639922','绿 = 已 ack / 接手'],[318,'#E24B4A','红环 = 超时重投'],[448,'#D97E06','橙环 = 重试 / DLT'],[572,'#B4B2A9','暗点 = 已 ack 沉底']];
+for(i=0;i<LG.length;i++){S.dot(LG[i][0]+6,14,5,LG[i][1],null);S.text(LG[i][2],LG[i][0]+16,14,10,'#6B695F','left',0);}
+S.text('演示 12 条/轮 · process 0.12 轮',712,14,10,'#B4B2A9','left',0);
+for(i=0;i<REG.length;i++){
+ b=REG[i];
+ var band=b.k==='band-c'||b.k==='band-d';
+ var soft=band||b.k==='panel'||b.k==='topic';
+ S.rect(b.x,b.y,b.w,b.h,soft?'#FBFAF6':'#ffffff',band?'#B4B2A9':(b.k==='gate'?'#5C7CA8':(b.k==='dlt'?'#E24B4A':(soft?'#ECEAE2':'#3B3A34'))),band?[6,5]:null,8,band?1.3:1.4);
+}
+S.owner('band-c');S.text('控制面 · 决定放哪（随主图每轮走一遍提交序列 · 平时只剩心跳）',30,38,10.5,'#854F0B','left',1);
+S.owner('band-d');S.text('数据面 · 决定怎么跑（读 → process → 写 → ack，循环不停）',970,206,10.5,'#854F0B','right',1);
+S.owner('');
+var AR=[[114,122],[246,254],[394,402],[534,542],[678,686],[826,834]];
+for(i=0;i<AR.length;i++){S.line(AR[i][0],72,AR[i][1],72,'#C46A0A',1.4);S.tri((AR[i][0]+AR[i][1])/2+3,72,1,'#C46A0A');}
+S.line(756,100,756,106,'#C46A0A',1.3);
+S.line(756,106,166,106,'#C46A0A',1.2,[5,4]);
+S.line(166,106,166,272,'#C46A0A',1.2,[5,4]);
+S.tri(166,278,0,'#C46A0A');
+S.line(364,100,364,116,'#B4B2A9',1,[4,4]);
+S.line(712,100,712,116,'#B4B2A9',1,[4,4]);
+S.line(324,100,324,106,'#B4B2A9',1,[4,4]);
+S.line(324,106,364,106,'#B4B2A9',1,[4,4]);
+var C1=[['admin',[['Admin 提交',28,60,10.5,'#1F1E1A',1],['jar + 配置',28,80,9.5,'#6B695F',0]]],
+['meta',[['metadata topic',130,60,10.5,'#1F1E1A',1],['定义·包·并行度3',130,80,9.5,'#6B695F',0]]],
+['sched',[['Scheduler 调度',262,60,10.5,'#1F1E1A',1],['leader·摊平',262,80,9.5,'#6B695F',0]]],
+['asg',[['assignment',410,60,10.5,'#1F1E1A',1],['追加日志',410,80,9.5,'#6B695F',0]]],
+['rtman',[['RuntimeManager',550,60,10.5,'#1F1E1A',1],['读分配',550,80,9.5,'#6B695F',0]]],
+['spawn',[['Spawner 拉起',694,60,10.5,'#1F1E1A',1],['存活检查',694,80,9.5,'#6B695F',0]]],
+['numr',[['numRestarts',842,60,10.5,'#1F1E1A',1]]],
+['member',[['Worker 成员关系',28,132,10.5,'#1F1E1A',1],['leader·存活',28,152,9.5,'#6B695F',0]]],
+['w1',[['worker-1',258,132,10.5,'#1F1E1A',1]]],
+['w2',[['worker-2',608,132,10.5,'#1F1E1A',1]]]];
+for(i=0;i<C1.length;i++){S.owner(C1[i][0]);for(j=0;j<C1[i][1].length;j++){var tt=C1[i][1][j];S.text(tt[0],tt[1],tt[2],tt[3],tt[4],'left',tt[5]);}}
+for(j=0;j<3;j++){
+ S.owner('i'+j);
+ S.line(196,CH[j],234,CH[j],'#ECEAE2',7);
+ S.line(282,CH[j],394,CH[j],'#ECEAE2',7);
+ S.line(442,CH[j],576,CH[j],'#ECEAE2',7);
+ S.text('readInput',215,RY[j]+34,9,'#6B695F','center',0);
+ S.text('process',338,RY[j]+34,9,'#6B695F','center',0);
+ S.text('handleResult',509,RY[j]+34,9,'#6B695F','center',0);
+ S.line(636,CH[j],652,CH[j],'#C46A0A',1.3);
+ S.line(780,CH[j],788,CH[j],'#639922',1.3);S.tri(784,CH[j],1,'#639922');
+ S.owner('r'+j);S.text('out topic',794,CHY(j)+6,9,'#6B695F','left',0);
+}
+S.rect(878,320,102,118,'#EFF6FF','#5C7CA8',[4,3],8,1.2);
+S.owner('gate');S.text('幂等门 msgId 去重',886,266,9.5,'#1F1E1A','left',1);S.text('点开关',886,282,9.5,'#6B695F','left',0);
+S.line(636,CH[1],878,CH[1],'#B4B2A9',1.2,[5,4],0.8);
+S.line(878,382,780,CH[2],'#B4B2A9',1,[4,4],0.6);
+S.rect(ACCL,ACLY-9,ACCR-ACCL,18,'#FBFAF6','#ECEAE2',null,7,1.2);
+S.owner('topic');
+S.text('输入 topic',24,222,10.5,'#1F1E1A','left',1);
+S.text('sub fn-shared 一套游标',24,236,9,'#6B695F','left',0);
+S.line(96,244,96,430,'#D3D1C7',1.4);
+for(i=0;i<=4;i++)S.line(93,244+i*46.5,99,244+i*46.5,'#D3D1C7',1.2);
+S.text('积压 60',103,252,8.5,'#B4B2A9','left',0);
+S.text('0',103,428,8.5,'#B4B2A9','left',0);
+S.line(INX,438,IDX,438,'#D3D1C7',1.2);
+S.owner('dlt');S.text('DLT 累计',658,455,9,'#8A2A2A','left',1);
+});
+
+/* ---------- 随点击变化的层 ---------- */
+S.layer('own',function(){return ownOf(0)+ownOf(1)+ownOf(2)+'|'+(IDON?1:0);},function(){
+var i,lst=[[],[]];
+S.owner('gate');S.text('去重 '+(IDON?'开':'关'),886,336,9.5,IDON?'#3D5C82':'#8A2A2A','left',1);
+for(i=0;i<3;i++){
+ S.owner('i'+i);
+ S.text('@'+ownOf(i)+' Shared',344,RY[i]+14,9.5,'#6B695F','left',0);
+ lst[OWN[i]].push(i);
+}
+var mk=function(x){return x.length?('inst '+x[0]+(x.length>1?' ·'+x[1]:'')):'空';};
+S.owner('w1');S.text(mk(lst[0])+' · 点我挪一个',330,152,9.5,'#6B695F','left',0);
+S.owner('w2');S.text(mk(lst[1])+' · 点我挪一个',680,152,9.5,'#6B695F','left',0);
+});
+
+/* ---------- 每帧 ---------- */
+S.frame(function(F){
+var T=F.cyc;
+TNOW=T;
+var o=sim(T),i,j,n,q,l;
+var tT=T-Math.floor(T);
+var ctlName='',ctlPt=null;
+if(tT<0.44){var u0=tT/0.44;ctlPt=PSUB(u0);ctlName=STN[Math.min(3,Math.floor(u0*4))];}
+var redet=null,rrst=0;
+for(i=0;i<CR.length;i++){if(CR[i].t<T&&CR[i].t+DOWN>T)redet={j:CR[i].j,end:CR[i].t+DOWN,since:CR[i].t};if(CR[i].t+DOWN<=T)rrst++;}
+if(RBE&&RBE.t+RBD<=T)rrst++;
+var mdpX=xOf((o.mdp+1-B0)/RATE),nnpX=xOf((o.nNow+1-B0)/RATE);
+S.read('froCtl',ctlName?ctlName:(redet?'存活检查·重启':(RBE&&RBE.t<T&&RBE.t>T-1?'rebalance 挪实例':'仅心跳')));
+S.read('froInst',(3-(o.dead[0]+o.dead[1]+o.dead[2]))+'/3 在跑');
+S.read('froFlow','读'+o.cnt.read+' 写'+o.cnt.write+' 败'+o.cnt.fail);
+S.read('froMdp',posOf(o.mdp));
+S.read('froUnack',o.cnt.unack+' / '+o.cnt.pending);
+S.read('froDup','落'+o.cnt.outw+' 挡'+o.cnt.blocked+(o.cnt.dupw?' 漏'+o.cnt.dupw:''));
+S.chip('plane',ctlName?'控制面在动':'仅心跳',ctlName||redet?'on':'');
+S.chip('owner',ownOf(0)+'|'+ownOf(1)+'|'+ownOf(2),'on');
+S.chip('sem',o.cnt.pending>0?'重投中→可能重复':'成功后才 ack',(o.cnt.pending>0||o.cnt.unack>0)?'':'on');
+S.chip('dedup',IDON?'开':'关',IDON?'on':'');
+S.owner('numr');S.text('累计重启 '+rrst,842,80,9.5,'#854F0B','left',0);
+S.owner('dlt');S.text(o.cnt.dlt+' 条',712,455,9,'#8A2A2A','left',0);
+S.owner('topic');S.text('积压 '+Math.min(999,o.backlog)+' 条',24,250,9.5,o.backlog>16?'#C03434':'#6B695F','left',1);
+
+/* 输入列 */
+var awN={};
+for(q=0;q<o.aw.length;q++)if(o.aw[q].got===-1&&o.aw[q].when<=T)awN[o.aw[q].n]=1;
+for(n=o.nNow;n>=Math.max(B0,o.nNow-106);n--){
+ var ua=T-(n-B0)/RATE;if(ua<0)continue;
+ var y=CBOT-ua*17;if(y<CTOP)break;
+ var res=n>=o.N0?o.res[n-o.N0]:undefined;
+ var acked=res!==undefined&&res<=T;
+ S.dot(64,y,acked?4:5,acked?'#C9C7BC':'#EF9F27',acked?'#B4B2A9':(awN[n]?'#E24B4A':(po(n)?'#D97E06':'#C46A0A')));
+ if(awN[n])S.dot(64,y,8,null,'#E24B4A');
+ else if(!acked&&po(n))S.dot(64,y,8,null,'#D97E06');
+ S.token(64,y,acked?4:5);
+}
+S.tri(mdpX,444,0,'#639922');S.line(mdpX,438,mdpX,450,'#639922',1.6);
+S.shade(mdpX,436,Math.max(0,nnpX-mdpX),5,'rgba(239,159,39,0.30)');
+
+/* 实例行 */
+for(j=0;j<3;j++){
+ var dn=o.dead[j];
+ S.owner('i'+j);
+ S.rect(174,RY[j],462,RH,dn?'rgba(226,75,74,0.10)':'rgba(0,0,0,0)',dn?'#E24B4A':'#ECEAE2',null,9,dn?1.7:1.3);
+ S.text(INST[j],182,RY[j]+14,10.5,dn?'#8A2A2A':'#1F1E1A','left',1);
+ if(dn)S.text('挂',232,RY[j]+14,9.5,'#8A2A2A','left',1);
+ else{var tk=taken(o,j,T);if(tk)S.text(tk,232,RY[j]+14,9,'#4C7A1A','left',0);}
+ S.text('读'+o.ir[j]+' 写'+o.iw[j]+' 败'+o.ifl[j]+' 未'+o.iu[j],524,RY[j]+14,9.5,dn?'#8A2A2A':'#6B695F','left',0);
+ var zr=zeroed(j,T);
+ S.text(zr?'已清零':'state '+stCount(o,j,T),430,RY[j]+34,9,zr?'#8A2A2A':'#6B695F','left',0);
+}
+/* 行通道 / 写出 / ack 的点 */
+for(q=0;q<o.legs.length;q++){l=o.legs[q];
+ if(l.stop!==undefined){
+  if(l.s<=T&&T<=l.stop){var px0=222+(576-222)*((T-l.s)/(l.stop-l.s+0.001));S.dot(px0,CH[l.j],5.5,'#E24B4A','#B91C1C');S.token(px0,CH[l.j],5.5);}
+  continue;
+ }
+ if(l.s>T)continue;
+ if(l.end>T){
+  var f1=Math.min(1,(T-Math.max(l.s,l.end-l.dur))/l.dur);
+  var px1=222+(576-222)*f1;
+  if(l.push>T-0.08&&l.push<=T){var du=(T-(l.push-0.06))/0.06;S.dot(104+(176-104)*du,RY[l.j]+RH-9,5,'#EF9F27','#C46A0A');S.token(104+(176-104)*du,RY[l.j]+RH-9,5);}
+  S.dot(px1,CH[l.j],5.5,l.redel?'#639922':'#EF9F27',l.redel?'#4C7A1A':'#C46A0A');S.token(px1,CH[l.j],5.5);
+  if(po(l.n))S.dot(px1,CH[l.j],8.5,null,'#D97E06');
+ }else if(T-l.end<0.32){
+  var u2=(T-l.end)/0.32;
+  if(u2<0.4){var wx=640+(872-640)*(u2/0.4);
+   S.dot(wx,CH[l.j]+9,5,l.redel===1?(IDON?'#D97E06':'#E24B4A'):'#639922',null);S.token(wx,CH[l.j]+9,5);
+   S.rect(652,CHY(l.j),128,26,null,'#639922',[3,3],5,1.5);}
+  else if(u2<0.6){var gx=880+(960-880)*((u2-0.4)/0.2);S.dot(gx,CH[l.j]+9,4.5,'#639922',null);S.token(gx,CH[l.j]+9,4.5);}
+  else{var ax2=ACCR-(ACCR-Math.max(ACCL+6,mdpX))*((u2-0.6)/0.4);S.dot(ax2,ACLY,4.5,'#639922',null);S.token(ax2,ACLY,4.5);}
+ }
+}
+/* 控制面动点 */
+S.owner('');
+if(ctlPt){S.dot(ctlPt[0],ctlPt[1],7,'#EF9F27','#C46A0A');S.token(ctlPt[0],ctlPt[1],7);S.text(ctlName,538,124,9.5,'#C46A0A','center',1);}
+for(i=0;i<2;i++){
+ var hb=(T*4+i*0.5)%1,hxx=i===0?364:712,bad=0,kk;
+ for(kk=0;kk<3;kk++)if(OWN[kk]===i&&o.dead[kk])bad=1;
+ if(RBE&&RBE.t<T&&RBE.t+RBD>T&&(RBE.from===i||RBE.to===i))bad=1;
+ S.dot(hxx,114-hb*12,4,bad?'#E24B4A':'#639922',null);S.token(hxx,114-hb*12,4);
+}
+if(redet){var u3=Math.min(1,(T-redet.since)/(DET+DOWN));var pp3=PCR[redet.j](u3);
+ S.dot(pp3[0],pp3[1],5.5,'#E24B4A','#B91C1C');S.token(pp3[0],pp3[1],5.5);}
+if(RBE&&RBE.t<T&&RBE.t+RBD>T){var u4=(T-RBE.t)/RBD,rpp=PCR[RBE.inst](u4<0.5?u4*2:2-u4*2);
+ S.dot(rpp[0],rpp[1],5.5,'#EF9F27','#C46A0A');S.token(rpp[0],rpp[1],5.5);}
+
+/* 面板：事件 + 预测 */
+var evs=[];
+for(i=0;i<CR.length;i++){var c2=CR[i];
+ if(c2.t<T&&c2.t>T-1.7)evs.push({t:c2.t,s:'点挂 '+INST[c2.j]+'：'+un7(o,c2.j)+' 条未 ack 待重投'});
+ if(c2.t+DOWN<T&&c2.t+DOWN>T-1.7)evs.push({t:c2.t+DOWN,s:'存活检查到点，Spawner 拉起 '+INST[c2.j]});}
+if(RBE&&RBE.t<T&&RBE.t+RBD+0.8>T)evs.push({t:RBE.t,s:'rebalance：'+INST[RBE.inst]+' → '+ownOf(RBE.inst)+'，state 清零'});
+for(q=0;q<o.legs.length;q++){l=o.legs[q];
+ if(l.redel===1&&l.s>=T-1&&l.s<=T)evs.push({t:l.s,s:idOf(l.n)+' 重投落 '+INST[l.j]+' · 再写一次'});
+ if(l.redel===2&&l.s>=T-1&&l.s<=T)evs.push({t:l.s,s:idOf(l.n)+' 重投落 '+INST[l.j]+' · 没写过，不算重复'});
+ if(l.stop!==undefined&&l.stop>=T-1&&l.stop<=T)evs.push({t:l.stop,s:idOf(l.n)+' 赶上 '+INST[l.j]+' 挂：整批未 ack'});}
+for(n=Math.max(o.N0,o.nNow-14);n<=o.nNow;n++){var rz=o.res[n-o.N0];
+ if(rz!==undefined&&rz>=T-0.6&&rz<=T&&po(n))evs.push({t:rz,s:idOf(n)+' 重试 '+MRR+' 次用满 → 进 DLT'});}
+evs.sort(function(a,b){return b.t-a.t;});
+if(!evs.length)evs.push({t:T,s:ctlName?'控制面走一遍：'+ctlName:'风平浪静：控制面只走心跳，数据面满速跑'});
+S.owner('panel');
+S.text(fmt(evs[0].s),28,482,10.5,evs[0].s.indexOf('DLT')>=0?'#8A2A2A':'#854F0B','left',0);
+if(evs[1])S.text(fmt(evs[1].s),28,502,10,'#6B695F','left',0);
+if(evs[2])S.text(fmt(evs[2].s),28,522,10,'#6B695F','left',0);
+if(evs[3])S.text(fmt(evs[3].s),28,542,10,'#6B695F','left',0);
+else S.text('累计：写'+o.cnt.outw+' · 重投'+o.cnt.redel+' · 重启'+rrst+' · DLT'+o.cnt.dlt,28,542,10,'#6B695F','left',0);
+S.text(fmt(planOf(o)),28,558,10.5,'#4C7A1A','left',1);
+S.text('ack 回路 → 游标',600,472,9.5,'#4C7A1A','left',0);
+var u0b=un7(o,0),u1b=un7(o,1),u2b=un7(o,2);
+S.text('现在点挂：inst-0 '+u0b+' 条 · inst-1 '+u1b+' 条 · inst-2 '+u2b+' 条要重投',560,502,9.5,'#6B695F','left',0);
+var mxr=Math.max(u0b,u1b,u2b),who=mxr===u0b?0:(mxr===u1b?1:2);
+S.text('挂最忙的 inst-'+who+'：'+mxr+' 条未 ack → 兄弟代班 + 到点重投',560,522,9.5,mxr>0?'#C46A0A':'#6B695F','left',0);
+S.text('游标 '+posOf(o.mdp)+' · 后面 '+o.backlog+' 条在排队等它',560,542,9.5,'#854F0B','left',0);
+S.text('output 落 '+o.cnt.outw+' 条 · 门挡 '+o.cnt.blocked+(o.cnt.dupw?' · 门开漏进 '+o.cnt.dupw+' 条':''),560,560,9.5,'#4C7A1A','left',0);
+});
+function un7(o,j){var c=0,q;for(q=0;q<o.legs.length;q++){var l=o.legs[q];if(l.j===j&&l.stop===undefined&&l.s<=TNOW&&l.end>TNOW)c++;}for(q=0;q<o.aw.length;q++)if(o.aw[q].from===j&&o.aw[q].got<0&&o.aw[q].when<=TNOW)c++;return c;}
+function taken(o,j,T){var q,best=null;for(q=0;q<o.legs.length;q++){var l=o.legs[q];if(l.j===j&&l.redel&&l.s>=T-0.7&&l.s<=T)best=l;}return best?(idOf(best.n)+' 接手'):null;}
+function stCount(o,j,T){var c=0,q;for(q=0;q<o.legs.length;q++)if(o.legs[q].j===j&&o.legs[q].stop===undefined&&o.legs[q].end<=T)c++;return c;}
+function zeroed(j,T){
+ if(CR.length&&CR[CR.length-1].j===j&&T-CR[CR.length-1].t<2.2)return 1;
+ if(RBE&&RBE.inst===j&&T-RBE.t<2.2)return 1;return 0;}
+function planOf(o){
+ var bd=-1,best=0,tw=0,j;
+ for(j=0;j<3;j++){var u=un7(o,j);if(u>bd){bd=u;best=j;tw=wDone(o,j);}}
+ var t2=(best+1)%3,t3=(best+2)%3;
+ if(bd<=0)return '现在挂谁都掉不了几条：全部实例都在正常 ack';
+ return '此刻点挂 inst-'+best+'：'+bd+' 条未 ack → inst-'+t2+'/inst-'+t3+' 接手，其中 '+(bd-tw)+' 条已写出 → 重复写 '+(bd-tw)+' 条'+(IDON?'（门挡下）':'（门开，落进 out）');
+}
+function wDone(o,j){var c=0,q;for(q=0;q<o.legs.length;q++){var l=o.legs[q];if(l.j===j&&l.stop===undefined&&l.s<=TNOW&&l.end>TNOW&&l.end-WR<=TNOW)c++;}return c;}
+S.onTap(function(x,y,k){
+ if(!k)return;
+ if(k==='gate'){IDON=!IDON;return;}
+ if(k==='w1'||k==='w2'){
+  var w=k==='w1'?0:1,mv=-1,i;
+  for(i=0;i<3;i++)if(OWN[i]===w)mv=i;
+  if(mv>=0){OWN[mv]=1-w;RBE={t:TNOW,inst:mv,from:w,to:1-w};}
+  return;
+ }
+ if(k.charAt(0)==='i'&&k.length===2){
+  var j=parseInt(k.slice(1),10);
+  if(!deadAt(j,TNOW)){CR.push({j:j,t:TNOW});if(CR.length>4)CR.shift();}
+ }
+});
+S.link();
+window.__flowTick(PERIOD);
+})();
 function tick(now){
+var prev=phase;
 var dt=Math.min(50,now-last);last=now;
 if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
 if(mode==='step'&&stepTo!==null){
@@ -537,6 +1105,10 @@ var e=p*p*(3-2*p);
 phase=stepFrom+(stepTo-stepFrom)*e;
 if(p>=1){phase=((stepTo%PERIOD)+PERIOD)%PERIOD;stepTo=null;}
 }
+var dd=phase-prev;
+if(dd>PERIOD/2)dd-=PERIOD;else if(dd<-PERIOD/2)dd+=PERIOD;
+absPhase+=dd;
+if(window.__flowTick)window.__flowTick(absPhase);
 render(phase/PERIOD*PHASE_MAX+0.01);
 requestAnimationFrame(tick);
 }

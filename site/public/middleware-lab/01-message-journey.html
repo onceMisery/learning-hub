@@ -118,6 +118,13 @@ table.grid td.act{background:#FAEEDA}
 .legend i.g{border-color:#639922}
 .legend i.dash{border-top-style:dashed}
 .legend i.gray{border-color:#B4B2A9}
+.subview{margin:8px 0 4px;background:#ffffff;border:1px dashed #D3D1C7;border-radius:10px;padding:8px 10px}
+.subview .viewtitle{font-size:12px;font-weight:600;color:#854F0B;margin-bottom:4px}
+#flow{width:100%;display:block;cursor:crosshair}
+.flowcap{font-size:12px;color:#6B695F;margin:6px 2px 0;line-height:1.6}
+.flowcap b{color:#3B3A34;font-weight:600}
+#flowSel{color:#3B3A34}
+#flowSel.sel b{color:#854F0B}
 </style>
 </head>
 <body>
@@ -164,6 +171,23 @@ table.grid td.act{background:#FAEEDA}
 <text class="ts" x="500" y="44" text-anchor="middle">琥珀 = 消息 / 请求；绿实线 = 许可 / 分发；绿虚线 = ack 回执；灰 = 未参与（默认 E=2 不写第三个 Bookie）</text>
 <g id="scene"></g>
 </svg>
+
+<div class="subview">
+<div class="viewtitle">第二视图 · 一条消息的连续流（canvas，与主图同一个时钟）</div>
+<canvas id="flow" width="1000" height="600"></canvas>
+<div class="readout">
+<span class="ro">pending <b id="froPend">--</b></span>
+<span class="ro">消费队列 <b id="froBack">--</b></span>
+<span class="ro">publishEq <b id="froPub">--</b></span>
+<span class="ro">LAC <b id="froLac">--</b></span>
+<span class="ro">markDelete <b id="froMdp">--</b></span>
+<span class="ro">待裁剪 <b id="froTrim">--</b></span>
+</div>
+<div class="chips" id="flowChips"></div>
+<p class="flowcap" id="flowSel">鼠标移到图上任意部件即高亮，点击钉住；点下方「部件」卡片也会亮到这张图上。</p>
+<p class="figcap"><b>读法：</b>上排是空间视图——一条消息走完全链正好一个周期，所以同一时刻有 8 条消息在飞，各自停在链路的不同工位（排队 → 校验 → 写 ledger → 复制到两个 Bookie → 待分发 → 推送 → 消费 → ack 回游标）；下排是位点视图——账本带上 markDelete 左边已确认可裁剪，右边是保留区，竖线是 ledger 滚动，滚动后 entryId 从 E0 重来。▲ 是已确认位 LAC，▽ 是最早未 ack。<br><span class="figsrc">口径：Pulsar 5.1.0-SNAPSHOT；默认 E=2 / W=2 / A=2，maxPendingMessages=1000，receiverQueueSize=1000。演示按「每 5 条 entry 滚动一次 ledger」推进，真实由容量与时间触发；trim 还要保留策略放行。</span></p>
+</div>
+
 <div class="ctrl">
 <button class="btn" id="engBtn">暂停</button>
 <span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
@@ -592,6 +616,7 @@ var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),
 var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
 var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
 var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var absPhase=PERIOD;
 var stepFrom=0,stepTo=null,stepElapsed=0,STEP_DUR=900;
 var dots=[];
 for(var s=0;s<STEPS.length;s++){
@@ -626,6 +651,7 @@ stepIdx=(i+STEPS.length)%STEPS.length;
 mode='step';run=false;
 var target=STEPS[stepIdx].d/PHASE_MAX*PERIOD,delta=target-phase;
 if(reduced||Math.abs(delta)>PERIOD/4){
+absPhase+=delta;
 phase=target;stepTo=null;render(target/PERIOD*PHASE_MAX+0.01);
 }else{
 stepFrom=phase;stepTo=phase+delta;stepElapsed=0;render(phase/PERIOD*PHASE_MAX+0.01);
@@ -689,6 +715,7 @@ setChip('dispatch',th>=590?'已分发':'待命');
 setChip('ack',th>=680?'已推进':'待命');
 }
 function tick(now){
+var prev=phase;
 var dt=Math.min(50,now-last);last=now;
 if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
 if(mode==='step'&&stepTo!==null){
@@ -698,10 +725,287 @@ var e=p*p*(3-2*p);
 phase=stepFrom+(stepTo-stepFrom)*e;
 if(p>=1){phase=((stepTo%PERIOD)+PERIOD)%PERIOD;stepTo=null;}
 }
+var dd=phase-prev;
+if(dd>PERIOD/2)dd-=PERIOD;else if(dd<-PERIOD/2)dd+=PERIOD;
+absPhase+=dd;
+drawFlow(absPhase/PERIOD*FENT);
 render(phase/PERIOD*PHASE_MAX+0.01);
 requestAnimationFrame(tick);
 }
 requestAnimationFrame(tick);
+
+/* ================= 第二视图：canvas 连续流仿真（与主图共用 absPhase 时钟） ================= */
+var FW=1000,FH=600,FENT=8,FCAP=5,FL0=47,LANE1=126,LANE2=250;
+var U_SEND=0.07,U_CNX=0.23,U_ML=0.33,U_FORK0=0.455,U_FORK1=0.545,U_PUSH=0.70,U_ACKED=0.96;
+var INK='#1F1E1A',SUB='#6B695F',EDGE='#3B3A34',LINE='#D3D1C7',CARD='#FBFAF6',AMBER='#EF9F27',AMBERD='#C46A0A',GREEN='#639922',GREEND='#4C7A1A',GRAYL='#ECEAE2',GRAYT='#B4B2A9';
+var TX0=20,TW=960,TCELL=28,TCW=TW/TCELL,TCY=452,TCH=44;
+var fcv=document.getElementById('flow');
+var fctx=(fcv&&window.CanvasRenderingContext2D)?fcv.getContext('2d'):null;
+var fdpr=window.devicePixelRatio||1;
+var FNODE=[[0,36,LANE1],[U_SEND,150,LANE1],[0.11,196,LANE1],[0.15,268,LANE1],[U_CNX,300,LANE1],[0.30,452,LANE1],[U_ML,468,LANE1],[0.43,636,LANE1],[U_FORK0,652,LANE1],[U_FORK1,652,LANE1],[0.575,652,190],[0.605,640,LANE2],[0.665,560,LANE2],[U_PUSH,380,LANE2],[0.82,280,LANE2],[0.86,200,LANE2],[U_ACKED,168,LANE2],[1,96,LANE2]];
+var BK=[[690,91],[690,141]];
+var FTOK=[],LLAB=[[],[]],DLAB=[],fLab=DLAB,g=null,fsc=1,fSize='',fCvL=[null,null],fctxL=[null,null],fLayerKey=[null,null],fOwn='';
+function fpath(u){
+if(u<=0)return[FNODE[0][1],FNODE[0][2]];
+if(u>=1)return[FNODE[FNODE.length-1][1],FNODE[FNODE.length-1][2]];
+var i=0;while(i<FNODE.length-2&&u>FNODE[i+1][0])i++;
+var a=FNODE[i],b=FNODE[i+1],t=(u-a[0])/(b[0]-a[0]);t=t*t*(3-2*t);
+return[a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+}
+function fmod(e){return (e%FCAP+FCAP)%FCAP;}
+function eAt(th,T){return Math.floor(T-th*FENT);}
+function fpos(e){return 'L'+(FL0+Math.floor(e/FCAP))+'·E'+fmod(e);}
+function fmeas(s,px,bold){
+if(fctx){fctx.font=(bold?'600 ':'')+px+'px "Microsoft YaHei",sans-serif';return fctx.measureText(s).width;}
+var w=0;for(var i=0;i<s.length;i++)w+=(s.charCodeAt(i)>255?px:px*0.62);
+return w*(bold?1.04:1);
+}
+function ftxt(s,x,y,px,col,al,bold){
+if(g){g.font=(bold?'600 ':'')+px+'px "Microsoft YaHei",sans-serif';g.fillStyle=col;g.textAlign=al||'left';g.textBaseline='middle';g.fillText(s,x,y);}
+var w=fmeas(s,px,bold);
+fLab.push({t:s,x:(al==='center'?x-w/2:al==='right'?x-w:x),y:y-px*0.63,w:w,h:px*1.26,own:fOwn});
+}
+function frr(x,y,w,h,r){
+if(!g)return;
+r=Math.min(r,w/2,h/2);g.beginPath();
+g.moveTo(x+r,y);g.lineTo(x+w-r,y);g.quadraticCurveTo(x+w,y,x+w,y+r);
+g.lineTo(x+w,y+h-r);g.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+g.lineTo(x+r,y+h);g.quadraticCurveTo(x,y+h,x,y+h-r);g.lineTo(x,y+r);
+g.quadraticCurveTo(x,y,x+r,y);g.closePath();
+}
+function fshade(x,y,w,h,col){
+if(!g||w<=0)return;
+frr(x,y,w,h,4);g.fillStyle=col;g.fill();
+}
+function frect(x,y,w,h,fill,stroke,dash,r,lw){
+if(!g)return;
+frr(x,y,w,h,r===undefined?10:r);
+if(fill){g.fillStyle=fill;g.fill();}
+if(stroke){g.setLineDash(dash||[]);g.strokeStyle=stroke;g.lineWidth=lw||1.4;g.stroke();g.setLineDash([]);}
+}
+function fseg(x1,y1,x2,y2,col,w,dash,alpha){
+if(!g)return;
+g.save();if(alpha!==undefined)g.globalAlpha=alpha;
+g.beginPath();g.setLineDash(dash||[]);g.strokeStyle=col;g.lineWidth=w||1.4;
+g.moveTo(x1,y1);g.lineTo(x2,y2);g.stroke();g.setLineDash([]);g.restore();
+}
+function fdot(x,y,r,fill,stroke,alpha){
+if(!g)return;
+g.save();if(alpha!==undefined)g.globalAlpha=alpha;
+g.beginPath();g.arc(x,y,r,0,6.2832);
+if(fill){g.fillStyle=fill;g.fill();}
+if(stroke){g.strokeStyle=stroke;g.lineWidth=1.4;g.stroke();}
+g.restore();
+}
+function ftri(x,y,up,col){
+if(!g)return;
+g.save();g.fillStyle=col;g.beginPath();
+if(up){g.moveTo(x,y-6);g.lineTo(x+6,y+5);g.lineTo(x-6,y+5);}
+else{g.moveTo(x,y+6);g.lineTo(x+6,y-5);g.lineTo(x-6,y-5);}
+g.closePath();g.fill();g.restore();
+}
+function fcol(u){
+if(u<0.85)return AMBER;
+if(u>=0.90)return GREEN;
+var t=(u-0.85)/0.05;
+return 'rgb('+Math.round(239-140*t)+','+Math.round(159-6*t)+','+Math.round(39-5*t)+')';
+}
+/* 部件命中区与文字落点：大盒在前、小盒在后，命中时取小的那个 */
+var FBOX=[
+{k:'client',x:20,y:64,w:148,h:100,n:'Producer 客户端',d:'攒批、压缩后进 pending 队列，拿到写许可才发给 Broker；上限默认 maxPendingMessages=1000。盒底琥珀方块 = 已发未回执的条数。',t:[['Producer 客户端',32,82,12,INK,'left',1],['pending · 已发未回执',32,100,11,SUB,'left',0]]},
+{k:'proxy',x:188,y:64,w:84,h:100,n:'Proxy（可选）',d:'只做 TLS 终止、鉴权与转发，不存消息本体；挂了客户端换地址重连。',t:[['Proxy',230,82,12,INK,'center',1],['TLS · 鉴权',230,100,11,SUB,'center',0],['可选',230,150,11,SUB,'center',0]]},
+{k:'broker',x:278,y:46,w:370,h:130,n:'Broker',d:'一条链路三种角色：ServerCnx 解协议、PersistentTopic 过校验、ManagedLedger 记账。消息本体不落 Broker 磁盘，只落 Bookie；Broker 里只有 entry cache。',t:[['Broker 集群（不存消息本体）',463,60,12,INK,'center',1]]},
+{k:'bookies',x:664,y:46,w:236,h:130,n:'BookKeeper',d:'entry 写到 writeQuorum=2 个 Bookie，收齐 ackQuorum=2 个确认才算写成功。默认 E=2 没有第三份副本；把 E 调到 3，第三个也只是进 ensemble，不在本次 writeQuorum。',t:[['BookKeeper（默认 W=2 / A=2）',782,60,11,INK,'center',1]]},
+{k:'cnx',x:292,y:64,w:160,h:100,n:'ServerCnx / PersistentTopic',d:'fencing、最大消息、延迟投递、去重一关一关过；没过就不进账本，客户端拿到的是失败而不是静默丢弃。',t:[['ServerCnx · 校验',304,82,12,INK,'left',1],['fencing · 去重',304,100,11,SUB,'left',0],['最大消息 · 限速',304,150,11,SUB,'left',0]]},
+{k:'ml',x:464,y:64,w:170,h:100,n:'ManagedLedger',d:'asyncAddEntry → OpAddEntry，把 topic 变成一串 ledger。写成功先更新 lastAddConfirmed 与 entry cache，追尾读多半直接命中 cache，不去问 Bookie。',t:[['ManagedLedger',476,82,12,INK,'left',1],['append entry',476,100,11,SUB,'left',0],['LAC · entry cache',476,150,11,SUB,'left',0]]},
+{k:'dispatch',x:400,y:196,w:240,h:100,n:'Dispatcher',d:'按 permits 读 entry 推给消费者；推出去多少就占多少 receiverQueue，队列满了就不再推，背压从这里往回传到 Broker。',t:[['Subscription / Dispatcher',412,210,12,INK,'left',1],['permits · 按许可推送',412,226,11,SUB,'left',0],['队列满则停推',412,288,11,SUB,'left',0]]},
+{k:'consumer',x:200,y:196,w:180,h:100,n:'Consumer',d:'receiverQueue 默认 1000；本地队列消费掉一半再还 permits。盒底绿方块 = 已推送未 ack 的条数。',t:[['Consumer',212,210,12,INK,'left',1],['receiverQueue = 1000',212,226,11,SUB,'left',0],['方块 = 已推送未 ack',212,288,11,SUB,'left',0]]},
+{k:'cursor',x:20,y:196,w:160,h:100,n:'Cursor',d:'markDeletePosition 是进度账：累积 ack 直接往前推，单条 ack 先记位图，等前面补齐才推得动。ack 落元数据是异步批量写的，崩溃窗口内会重投。',t:[['Cursor',32,210,12,INK,'left',1],['markDeletePosition',32,226,11,SUB,'left',0]]},
+{k:'metadata',x:20,y:312,w:960,h:68,n:'元数据存储',d:'三样东西三种频率：cursor 位点异步批量写；managed-ledgers 里的 ledger 列表只在滚动 ledger 时写；bundle 归属锁给 lookup 用（本页不驱动，见主图第 1–2 步）。元数据挂了，先卡住的是新 topic 加载、ledger 滚动与归属变更。',t:[['元数据存储（ZooKeeper / RocksDB / Oxia）',32,328,12,INK,'left',1],['cursor 位点：异步批量写，崩溃窗口内会重投',32,350,11,SUB,'left',0],['managed-ledgers：ledger 列表只在滚动时写 · bundle 归属锁：lookup 用',32,366,11,SUB,'left',0]]},
+{k:'tape',x:20,y:390,w:960,h:202,n:'账本带 · 位点尺',d:'左旧右新。markDelete 左边已 ack，等保留策略放行才真删；右边是保留区。竖线是 ledger 滚动，滚动后 entryId 从 E0 重来。',t:[]}
+];
+var FCHIPS=[{k:'roll',l:'当前 ledger'},{k:'q',l:'quorum'},{k:'meta',l:'元数据写'}];
+var fChipEl={},fHover=null,fPin=null,fSelBox=document.getElementById('flowSel'),fSelTxt='';
+(function(){
+var bx=document.getElementById('flowChips');
+if(bx)FCHIPS.forEach(function(c){var s=document.createElement('span');s.className='chip';s.innerHTML=c.l+' <b>--</b>';bx.appendChild(s);fChipEl[c.k]=s;});
+})();
+function setFChip(k,v,cls){
+var n=fChipEl[k];if(!n)return;
+var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;
+var c2='chip'+(cls?' '+cls:'');if(n.className!==c2)n.className=c2;
+}
+function fKeyAt(x,y){
+for(var i=FBOX.length-1;i>=0;i--){var b=FBOX[i];if(x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h)return b.k;}
+return null;
+}
+function fSyncSel(){
+var k=fPin||fHover,b=null;
+for(var i=0;i<FBOX.length;i++)if(FBOX[i].k===k)b=FBOX[i];
+var s=b?'<b>'+b.n+(fPin?'（已钉住）':'')+'</b> · '+b.d:'鼠标移到图上任意部件即高亮，点击钉住；点下方「部件」卡片也会亮到这张图上。';
+if(s!==fSelTxt&&fSelBox){fSelTxt=s;fSelBox.innerHTML=s;}
+}
+function ffit(){
+if(!fcv)return;
+var cw=fcv.clientWidth||FW,ch=Math.round(cw*FH/FW);
+var s=Math.min(fdpr,2000/cw),bw=Math.round(cw*s),bh=Math.round(ch*s);
+if(fctx){
+if(fcv.width!==bw||fcv.height!==bh){fcv.width=bw;fcv.height=bh;fcv.style.height=ch+'px';}
+fctx.setTransform(bw/FW,0,0,bw/FW,0,0);
+}
+var k=bw+'x'+bh;
+if(k!==fSize){fSize=k;fLayerKey=[null,null];}
+fsc=bw/FW;
+}
+/* 静态层缓存：管线层只在尺寸变化时重画，账本带层只在位点窗口移动时重画 */
+function flayer(idx,key,fn){
+if(fLayerKey[idx]===key)return;
+fLayerKey[idx]=key;
+if(fctx){
+if(!fCvL[idx]){fCvL[idx]=document.createElement('canvas');fctxL[idx]=fCvL[idx].getContext('2d');}
+if(fCvL[idx].width!==fctx.canvas.width||fCvL[idx].height!==fctx.canvas.height){
+fCvL[idx].width=fctx.canvas.width;fCvL[idx].height=fctx.canvas.height;
+}
+fctxL[idx].setTransform(fsc,0,0,fsc,0,0);
+fctxL[idx].clearRect(0,0,FW,FH);
+g=fctxL[idx];
+}
+fLab=LLAB[idx];fLab.length=0;
+fn();
+g=fctx;
+}
+function fblit(idx){
+if(fctx&&fCvL[idx])fctx.drawImage(fCvL[idx],0,0,FW,FH);
+}
+function fbase(){
+var LG=[[20,AMBER,'琥珀 = 消息 / 写入中'],[212,'#E0A03A','分叉 = 复制到 2 个 Bookie'],[432,GREEN,'绿 = sendReceipt / ack 回传'],[652,GRAYT,'灰 = 已 ack，待保留策略裁剪']];
+fOwn='';
+for(var i=0;i<LG.length;i++){fdot(LG[i][0]+7,18,6,LG[i][1],null);ftxt(LG[i][2],LG[i][0]+20,18,11,SUB,'left',0);}
+for(i=0;i<FNODE.length-1;i++)fseg(FNODE[i][1],FNODE[i][2],FNODE[i+1][1],FNODE[i+1][2],GRAYL,9);
+fseg(200,LANE2,96,LANE2,'#EAF3DE',9);
+for(i=0;i<FBOX.length;i++){
+var b=FBOX[i];
+if(b.k==='tape')continue;
+var isC=(b.k==='broker'||b.k==='bookies'||b.k==='metadata');
+frect(b.x,b.y,b.w,b.h,isC?CARD:'#ffffff',isC?LINE:EDGE,isC?[6,5]:null,isC?12:10);
+fOwn=b.k;
+for(var j=0;j<b.t.length;j++)ftxt(b.t[j][0],b.t[j][1],b.t[j][2],b.t[j][3],b.t[j][4],b.t[j][5],b.t[j][6]);
+}
+frect(676,70,212,42,'#ffffff',EDGE,null,10,1.4);
+frect(676,120,212,42,'#ffffff',EDGE,null,10,1.4);
+fOwn='bookies';
+ftxt('Bookie 1',712,91,11,INK,'left',1);ftxt('ledger 副本',880,91,10.5,SUB,'right',0);
+ftxt('Bookie 2',712,141,11,INK,'left',1);ftxt('ledger 副本',880,141,10.5,SUB,'right',0);
+fOwn='tape';
+ftxt('账本带 · 位点尺（左旧右新，竖线 = ledger 滚动）',TX0,400,12,INK,'left',1);
+ftxt('▲ = 已确认位 LAC　▽ = 最早未 ack　两旗之间 = 已确认未 ack',TX0,546,10.5,SUB,'left',0);
+ftxt('markDelete 左边已 ack；真正回收要保留策略（TTL / 容量）放行，再由 trimConsumedLedgers 整本删掉',TX0,564,10.5,SUB,'left',0);
+ftxt('演示每 '+FCAP+' 条 entry 滚动一次 ledger（真实按容量 / 时间触发），滚动后 entryId 从 E0 重来；竖线亮一下 = 索引账写元数据',TX0,582,10.5,SUB,'left',0);
+}
+/* 账本带只画格子与 E# 标号：状态色由动态层的两块覆盖色表达，所以只有窗口滚动时才重建 */
+function ftape(left){
+fOwn='tape';
+for(var i=0;i<TCELL;i++){
+var e=left+i;
+frect(TX0+i*TCW+2,TCY,TCW-6,TCH,'#ffffff',AMBER,null,4,1);
+ftxt('E'+fmod(e),TX0+i*TCW+TCW/2,TCY+TCH/2,10,AMBERD,'center',0);
+if(fmod(e)===0&&i>0)fseg(TX0+i*TCW,TCY-8,TX0+i*TCW,TCY+TCH+8,GRAYT,1.2);
+}
+}
+function drawFlow(T){
+ffit();
+var eTop=Math.floor(T),eMl=eAt(U_ML,T),eLac=eAt(U_FORK1,T),eAck=eAt(U_ACKED,T);
+var left=eMl-TCELL+1,i,e,u,pend=0,back=0,inquorum=0;
+var e0=Math.floor(eMl/FCAP)*FCAP,rollP=Math.max(0,1-Math.max(0,(T-U_ML*FENT)-e0)/1.2);
+var ackP=Math.max(0,1-Math.max(0,(T-U_ACKED*FENT)-eAck)/0.8);
+flayer(0,fSize,fbase);
+flayer(1,fSize+'|'+left,function(){ftape(left);});
+fLab=DLAB;fLab.length=0;FTOK.length=0;
+g=fctx;
+if(fctx){fctx.clearRect(0,0,FW,FH);fblit(0);fblit(1);}
+var xAck=TX0+(eAck-left)*TCW+TCW/2,xMl=TX0+(eMl-left)*TCW+TCW/2;
+var xLac=TX0+(eLac-left)*TCW+TCW/2,xFu=TX0+(eAck+1-left)*TCW+TCW/2;
+fshade(TX0,TCY,Math.max(0,xAck-TX0+TCW/2-2),TCH,'rgba(180,178,169,0.30)');
+fshade(Math.max(TX0,xAck+TCW/2-2),TCY,Math.max(0,xLac-xAck),TCH,'rgba(239,159,39,0.26)');
+fseg(500,176,500,186,AMBERD,1.4,[5,4],0.25+0.7*rollP);
+fseg(500,186,390,186,AMBERD,1.4,[5,4],0.25+0.7*rollP);
+fseg(390,186,390,312,AMBERD,1.4,[5,4],0.25+0.7*rollP);
+fseg(100,296,100,312,GREEN,1.4,[5,4],0.3+0.7*ackP);
+if(rollP>0.02&&e0>left){var xr=TX0+(e0-left)*TCW;fseg(xr,TCY-8,xr,TCY+TCH+8,AMBERD,2.4,null,rollP);}
+for(e=eTop;e>=Math.floor(T-FENT);e--){
+u=(T-e)/FENT;if(u<0||u>1)continue;
+if(u<U_FORK1)pend++;
+if(u>=U_PUSH&&u<U_ACKED)back++;
+if(u>=U_FORK0&&u<=U_FORK1)inquorum=1;
+if(u>=U_FORK0&&u<=U_FORK1){
+var r=(u-U_FORK0)/(U_FORK1-U_FORK0);
+for(i=0;i<2;i++){
+var t1=Math.min(1,r/0.55),t1e=t1*t1*(3-2*t1);
+var dx=652+(BK[i][0]-652)*t1e,dy=LANE1+(BK[i][1]-LANE1)*t1e;
+fdot(dx,dy,5,AMBER,AMBERD);FTOK.push({x:dx,y:dy,r:8,u:u,e:e});
+if(r>0.55){var t2=Math.min(1,(r-0.55)/0.45),t2e=t2*t2*(3-2*t2);
+fdot(BK[i][0]+(652-BK[i][0])*t2e,BK[i][1]+(LANE1-BK[i][1])*t2e,3.5,GREEN,GREEND);}
+}
+continue;
+}
+var col=fcol(u),al=(u>U_ACKED?Math.max(0,1-(u-U_ACKED)/0.04):1);
+for(i=3;i>=1;i--){var gu=u-i*0.014;if(gu>0){var gp=fpath(gu);fdot(gp[0],gp[1],6-i,col,null,0.05*(4-i)*al);}}
+var p=fpath(u);
+if(u<U_SEND)fdot(p[0],p[1],7,'#ffffff',AMBERD,al);
+else fdot(p[0],p[1],7,col,u>U_FORK1?GREEND:AMBERD,al);
+FTOK.push({x:p[0],y:p[1],r:10,u:u,e:e});
+}
+for(i=0;i<Math.min(8,pend);i++)frect(32+i*15,146,11,11,AMBER,AMBERD,null,3,1);
+for(i=0;i<Math.min(8,back);i++)frect(212+i*15,264,11,11,'#EAF3DE',GREEN,null,3,1);
+fOwn='cursor';ftxt('未 ack 保留 '+(eMl-eAck+1)+' 条',32,288,11,GREEND,'left',1);
+fseg(xMl,TCY-2,xMl,TCY+TCH+2,AMBERD,1.2,[3,3]);
+fseg(xLac,TCY-2,xLac,TCY+TCH+2,'#E0A03A',1.2,[3,3]);
+fseg(xAck,TCY-2,xAck,TCY+TCH+2,GREEN,1.2,[3,3]);
+fseg(xFu,TCY-2,xFu,TCY+TCH+2,'#8FBF4A',1.2,[3,3]);
+fOwn='tape';ftxt('publishEq '+fpos(eMl),xMl-10,420,11,AMBERD,'right',1);
+ftri(xMl,442,false,AMBERD);ftri(xLac,442,true,'#E0A03A');
+ftxt('markDelete '+fpos(eAck),xAck+10,526,11,GREEND,'left',1);
+ftri(xAck,506,true,GREEN);ftri(xFu,506,false,'#8FBF4A');
+var hk=fPin||fHover;
+for(i=0;i<FBOX.length;i++)if(FBOX[i].k===hk)frect(FBOX[i].x,FBOX[i].y,FBOX[i].w,FBOX[i].h,null,'#D96C06',[6,4],10,2);
+g=null;
+setText('froPend',pend+' 条 / 1000');
+setText('froBack',back+' 条 / 1000');
+setText('froPub',fpos(eMl));
+setText('froLac',fpos(eLac));
+setText('froMdp',fpos(eAck));
+setText('froTrim',Math.max(0,eAck-left+1)+' 条');
+setFChip('roll',fpos(eMl).split('·')[0],rollP>0.05?'on':'');
+setFChip('q',inquorum?'等第 2 份':'2/2',inquorum?'':'on');
+setFChip('meta',ackP>0.05?'进度账落盘':(rollP>0.05?'索引账落盘':'待写'),(ackP>0.05||rollP>0.05)?'on':'');
+fSyncSel();
+}
+if(fcv){
+fcv.addEventListener('mousemove',function(ev){
+var rc=fcv.getBoundingClientRect();
+fHover=fKeyAt((ev.clientX-rc.left)/rc.width*FW,(ev.clientY-rc.top)/rc.height*FH);
+});
+fcv.addEventListener('mouseleave',function(){fHover=null;});
+fcv.addEventListener('click',function(ev){
+var rc=fcv.getBoundingClientRect();
+var k=fKeyAt((ev.clientX-rc.left)/rc.width*FW,(ev.clientY-rc.top)/rc.height*FH);
+fPin=(fPin===k?null:k);
+});
+}
+var FPART={client:'client',proxy:'proxy',broker:'cnx',ledger:'ml',bookies:'bookies',metadata:'metadata',consumer:'consumer',cursor:'cursor'};
+document.querySelectorAll('.part').forEach(function(b){
+b.addEventListener('click',function(){
+var k=FPART[b.getAttribute('data-part')];if(!k)return;
+fPin=k;
+setTimeout(function(){if(fPin===k)fPin=null;},2600);
+});
+});
+window.__flowProbe=function(g){
+drawFlow(g/PERIOD*FENT);
+return{w:FW,h:FH,labels:LLAB[0].concat(LLAB[1],DLAB),tokens:FTOK.slice(),boxes:FBOX.map(function(b){return{k:b.k,x:b.x,y:b.y,w:b.w,h:b.h};})};
+};
+drawFlow(absPhase/PERIOD*FENT);
+
 document.querySelectorAll('.part').forEach(function(b){
 b.onclick=function(){
 var ids=PARTS[b.getAttribute('data-part')]||[];

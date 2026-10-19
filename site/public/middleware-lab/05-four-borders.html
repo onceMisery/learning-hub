@@ -114,6 +114,9 @@ table.grid td.act{background:#FAEEDA}
 .chip.off{background:#F5F4EF}
 .subview{margin:8px 0 4px;background:#ffffff;border:1px dashed #D3D1C7;border-radius:10px;padding:8px 10px}
 .subview .viewtitle{font-size:12px;font-weight:600;color:#854F0B;margin-bottom:4px}
+#flow{width:100%;display:block;cursor:crosshair}
+.flowcap{font-size:12px;color:#6B695F;margin:6px 2px 0;line-height:1.6}
+.flowcap b{color:#3B3A34;font-weight:600}
 </style>
 </head>
 <body>
@@ -169,6 +172,15 @@ table.grid td.act{background:#FAEEDA}
 <title>四道闸门状态板</title>
 <g id="scene2"></g>
 </svg>
+</div>
+
+<div class="subview">
+<div class="viewtitle">第三视图 · 四道闸门一台仿真机（canvas，点闸门循环切档：正常 → 收紧 → 放开）</div>
+<canvas id="flow" width="1000" height="580"></canvas>
+<div class="readout"><span class="ro">近一轮进场 <b id="froIn">--</b></span><span class="ro">端到端吞吐 <b id="froThru">--</b></span><span class="ro">近一轮挡下 <b id="froBlock">--</b></span><span class="ro">future 未完成 <b id="froFuture">--</b></span><span class="ro">游标 markDelete <b id="froMdp">--</b></span><span class="ro">背压传到生产者 <b id="froHops">--</b></span></div>
+<div class="chips" id="flowChips"></div>
+<p class="flowcap" id="flowSel">点任意一道闸门循环切换它的额度档位：正常 → 收紧 → 放开。看水位几轮涨满、背压往回传几道、近一轮挡下多少条、最终吞吐掉到多少；右下角「复位档位」一次清掉所有改动。鼠标停在闸门上看它的参数、隐形闸门与超时。</p>
+<p class="figcap"><b>读法：</b>中间那条横的是消息真正走的路：生产者 → ① 客户端 pending 队列 → ② Broker 限速与配额 → ③ 分发批次 → ④ consumer 的 receiverQueue 与 permits → 消费者处理 → ack 回来释放 permits，攒一批发 CommandFlow 把额度还给 ③。每道闸门里那条槽是<b>水位</b>（当前占用 / 这一档的上限，红刻度 = 92%），槽下面三行是近一轮的账：通过多少、挡下多少、卡住时是什么表现。关键在于<b>挡下的消息不会消失，它占着上一道的位子</b>：④ 的额度用完 ③ 就取不到位子，③ 的水位涨满 ② 就交接不出去，② 满 ① 的 pending 队列就顶到上限——sendAsync 的 future 于是开始挂住，这就是背压往回传的机制。琥珀点 = 在途消息，哪一段转得快就说明那一段通过得多；绿点往左回 = ack 与 CommandFlow；红点往左跑 = 背压回传，跑到哪一道，压力就传到哪一道；蓝点 = 已落盘但事务没提交，读路径在等 maxReadPosition。下方四条横道是近 16 轮的水位曲线（越靠上越下游），红点标出各道堵满的时刻，四颗红点连成的折线就是传导链；最底一行是这一轮的总账与结论。<b>点闸门改额度，数字立刻回答</b>：传到生产者要几轮、挡下多少条、吞吐掉到多少。<br><span class="figsrc">口径：Pulsar 5.1.0-SNAPSHOT。本页速率、上限、时延、超时全是演示值：进场约 200 条/轮带波动，四道闸门的容量与每轮通过上限见框内标注，一条 ledger 128 条、第 3 本起算冷读、24 条一个事务、sendTimeout 0.6 轮、ackTimeout 0.45 轮、事务超时 1 轮；「超时失败」「重投」按驻留时长是否超过对应超时估算，真实实现是逐条定时器。真实默认值量级不同但确实存在：客户端 maxPendingMessages 与 pending 内存上限、sendTimeout 默认 30s；Broker 侧 publishRateLimiter 默认 0（关闭）、backlog quota 默认 -1（关闭）、策略默认 producer_request_hold 且每 60s 检查一次、未 ack 上限 50000/200000；ServerCnx 每连接 pending publish 默认 1000、降到 500 才恢复，IO 线程 pending 字节默认 max(64MB, 直接内存/2)、过半就 setAutoRead(false)（停掉的是同一 IO 线程上的所有连接）；账本交接 addEntryHandoverMaxBatchItems=1024 / 5MB；dispatcherMaxReadBatchSize 默认 500；客户端 receiverQueueSize 默认 1000。事务默认关闭（transactionCoordinatorEnabled=false），本页当作打开来演示。</span></p>
 </div>
 
 <div class="ctrl">
@@ -471,6 +483,7 @@ var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),
 var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
 var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
 var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var absPhase=PERIOD;
 var stepFrom=0,stepTo=null,stepElapsed=0,STEP_DUR=900;
 var dots=[];
 for(var s=0;s<STEPS.length;s++){
@@ -505,6 +518,7 @@ stepIdx=(i+STEPS.length)%STEPS.length;
 mode='step';run=false;
 var target=STEPS[stepIdx].d/PHASE_MAX*PERIOD,delta=target-phase;
 if(reduced||Math.abs(delta)>PERIOD/4){
+absPhase+=delta;
 phase=target;stepTo=null;render(target/PERIOD*PHASE_MAX+0.01);
 }else{
 stepFrom=phase;stepTo=phase+delta;stepElapsed=0;render(phase/PERIOD*PHASE_MAX+0.01);
@@ -580,7 +594,612 @@ setOp('v2_own',th>=420&&th<540?1:0.35);
 setOp('v2_bp',th>=540?1:0.35);
 
 }
+(function(){
+/* ---------- FlowStage：canvas 视图的尺寸 / 层缓存 / 命中高亮 / 探针 ---------- */
+function FlowStage(o){
+var W=o.W,H=o.H,el=document.getElementById(o.el);
+var ctx=(el&&window.CanvasRenderingContext2D)?el.getContext('2d'):null;
+var dpr=window.devicePixelRatio||1,sc=1,size='0x0';
+var g=null,cur=null,own='',toks=[],layers={},order=[],frameFn=null;
+var regions=o.regions||[],hover=null,pin=null,capEl=document.getElementById(o.cap||'flowSel'),capTxt='',tapFn=null;
+var chipEl={},chipBox=document.getElementById(o.chips||'flowChips');
+function meas(s,px,bold){
+if(ctx){ctx.font=(bold?'600 ':'')+px+'px "Microsoft YaHei",sans-serif';return ctx.measureText(s).width;}
+var w=0;for(var i=0;i<s.length;i++)w+=(s.charCodeAt(i)>255?px:px*0.62);
+return w*(bold?1.04:1);
+}
+function rr(x,y,w,h,r){
+if(!g)return;
+r=Math.min(r,w/2,h/2);g.beginPath();
+g.moveTo(x+r,y);g.lineTo(x+w-r,y);g.quadraticCurveTo(x+w,y,x+w,y+r);
+g.lineTo(x+w,y+h-r);g.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+g.lineTo(x+r,y+h);g.quadraticCurveTo(x,y+h,x,y+h-r);g.lineTo(x,y+r);
+g.quadraticCurveTo(x,y,x+r,y);g.closePath();
+}
+function fit(){
+if(!el)return;
+var cw=el.clientWidth||W,ch=Math.round(cw*H/W),s=Math.min(dpr,2000/cw);
+var bw=Math.round(cw*s),bh=Math.round(ch*s);
+if(ctx){
+if(el.width!==bw||el.height!==bh){el.width=bw;el.height=bh;el.style.height=ch+'px';}
+ctx.setTransform(bw/W,0,0,bw/W,0,0);
+}
+if(bw+'x'+bh!==size){size=bw+'x'+bh;for(var k in layers)layers[k].key=null;}
+sc=bw/W;
+}
+function layer(name,keyFn,fn){
+var L=layers[name];
+if(!L){L={cv:null,cx:null,key:null,labels:[]};layers[name]=L;order.push(name);}
+var key=String(keyFn===undefined?size:size+'|'+keyFn());
+if(L.key===key)return L;
+L.key=key;L.labels.length=0;
+if(ctx){
+if(!L.cv){L.cv=document.createElement('canvas');L.cx=L.cv.getContext('2d');}
+if(L.cv.width!==ctx.canvas.width||L.cv.height!==ctx.canvas.height){L.cv.width=ctx.canvas.width;L.cv.height=ctx.canvas.height;}
+L.cx.setTransform(sc,0,0,sc,0,0);
+L.cx.clearRect(0,0,W,H);
+g=L.cx;
+}
+cur=L.labels;
+fn();
+g=ctx;cur=null;
+return L;
+}
+function blit(L){
+if(ctx&&L.cv)ctx.drawImage(L.cv,0,0,W,H);
+}
+function keyAt(x,y){
+for(var i=regions.length-1;i>=0;i--){var b=regions[i];if(x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h)return b.k;}
+return null;
+}
+function syncSel(){
+var k=pin||hover,b=null;
+for(var i=0;i<regions.length;i++)if(regions[i].k===k)b=regions[i];
+var s=b?'<b>'+b.n+(pin?'（已钉住）':'')+'</b> · '+b.d:(o.hint||'');
+if(s!==capTxt&&capEl){capTxt=s;capEl.innerHTML=s;}
+}
+if(el){
+el.addEventListener('mousemove',function(ev){
+var rc=el.getBoundingClientRect();
+hover=keyAt((ev.clientX-rc.left)/rc.width*W,(ev.clientY-rc.top)/rc.height*H);
+});
+el.addEventListener('mouseleave',function(){hover=null;});
+el.addEventListener('click',function(ev){
+var rc=el.getBoundingClientRect();
+var k=keyAt((ev.clientX-rc.left)/rc.width*W,(ev.clientY-rc.top)/rc.height*H);
+pin=(pin===k?null:k);
+if(tapFn)tapFn((ev.clientX-rc.left)/rc.width*W,(ev.clientY-rc.top)/rc.height*H,k);
+});
+}
+if(chipBox&&(o.chips2||[]).length){
+o.chips2.forEach(function(c){
+var s=document.createElement('span');s.className='chip';
+s.innerHTML=c.l+' <b>--</b>';chipBox.appendChild(s);chipEl[c.k]=s;
+});
+}
+var S={
+W:W,H:H,size:function(){return size;},
+owner:function(k){own=k;return S;},
+text:function(s,x,y,px,col,al,bold){
+if(g){g.font=(bold?'600 ':'')+px+'px "Microsoft YaHei",sans-serif';g.fillStyle=col;g.textAlign=al||'left';g.textBaseline='middle';g.fillText(s,x,y);}
+var w=meas(s,px,bold);
+if(cur)cur.push({t:s,x:(al==='center'?x-w/2:al==='right'?x-w:x),y:y-px*0.63,w:w,h:px*1.26,own:own});
+return S;
+},
+rect:function(x,y,w,h,fill,stroke,dash,r,lw){
+if(!g)return S;
+rr(x,y,w,h,r===undefined?10:r);
+if(fill){g.fillStyle=fill;g.fill();}
+if(stroke){g.setLineDash(dash||[]);g.strokeStyle=stroke;g.lineWidth=lw||1.4;g.stroke();g.setLineDash([]);}
+return S;
+},
+shade:function(x,y,w,h,col){
+if(!g||w<=0)return S;
+rr(x,y,w,h,4);g.fillStyle=col;g.fill();return S;
+},
+line:function(x1,y1,x2,y2,col,w,dash,alpha){
+if(!g)return S;
+g.save();if(alpha!==undefined)g.globalAlpha=alpha;
+g.beginPath();g.setLineDash(dash||[]);g.strokeStyle=col;g.lineWidth=w||1.4;
+g.moveTo(x1,y1);g.lineTo(x2,y2);g.stroke();g.setLineDash([]);g.restore();return S;
+},
+dot:function(x,y,r,fill,stroke,alpha){
+if(!g)return S;
+g.save();if(alpha!==undefined)g.globalAlpha=alpha;
+g.beginPath();g.arc(x,y,r,0,6.2832);
+if(fill){g.fillStyle=fill;g.fill();}
+if(stroke){g.strokeStyle=stroke;g.lineWidth=1.4;g.stroke();}
+g.restore();return S;
+},
+tri:function(x,y,up,col){
+if(!g)return S;
+g.save();g.fillStyle=col;g.beginPath();
+if(up){g.moveTo(x,y-6);g.lineTo(x+6,y+5);g.lineTo(x-6,y+5);}
+else{g.moveTo(x,y+6);g.lineTo(x+6,y-5);g.lineTo(x-6,y-5);}
+g.closePath();g.fill();g.restore();return S;
+},
+token:function(x,y,r){toks.push({x:x,y:y,r:r});return S;},
+path:function(nodes){
+return function(u){
+if(u<=0)return[nodes[0][1],nodes[0][2]];
+if(u>=1)return[nodes[nodes.length-1][1],nodes[nodes.length-1][2]];
+var i=0;while(i<nodes.length-2&&u>nodes[i+1][0])i++;
+var a=nodes[i],b=nodes[i+1],t=(u-a[0])/(b[0]-a[0]);t=t*t*(3-2*t);
+return[a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+};
+},
+layer:function(name,keyFn,fn){layer(name,keyFn,fn);return S;},
+frame:function(fn){frameFn=fn;return S;},
+read:function(id,v){var n=document.getElementById(id);if(n&&n.textContent!==v)n.textContent=v;return S;},
+chip:function(k,v,cls){
+var n=chipEl[k];if(!n)return S;
+var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;
+var c='chip'+(cls?' '+cls:'');if(n.className!==c)n.className=c;
+return S;
+},
+pinTo:function(k){pin=k;},
+onTap:function(fn){tapFn=fn;return S;},
+labels:function(){
+var out=[];
+for(var i=0;i<order.length;i++)out=out.concat(layers[order[i]].labels);
+return out.concat(cur||[]);
+},
+draw:function(F){
+fit();
+toks.length=0;
+g=ctx;cur=[];
+if(ctx){ctx.clearRect(0,0,W,H);for(i=0;i<order.length;i++)blit(layers[order[i]]);}
+if(frameFn)frameFn(F);
+g=null;own='';
+syncSel();
+},
+/* 与主图时钟接线：tick 每帧调一次，探针复用同一套映射 */
+link:function(mapFn){
+var mp=mapFn||function(abs){
+var cyc=abs/PERIOD,p=cyc-Math.floor(cyc);
+return{th:p*PHASE_MAX+0.01,p:p,cyc:cyc,T:cyc};
+};
+window.__flowTick=function(abs){S.draw(mp(abs));};
+window.__flowProbe=function(abs){
+S.draw(mp(abs));
+return{w:W,h:H,labels:S.labels(),tokens:toks.slice(),boxes:regions.map(function(b){return{k:b.k,x:b.x,y:b.y,w:b.w,h:b.h};})};
+};
+return S;
+}
+};
+return S;
+}
+
+/* ===== 第 5 章：四道闸门 = 一条排队链，同一个时钟推背压 ===== */
+var LG=1000,TXN=24,COLD=2,WIN=16,P0=200,PA=36,PPD=3.3;
+var CTO=0.6,CAT=0.45,CCL=0.12,CCD=0.3,OWR=5,OWD=0.15,BATCH=40,BPAUSE=0.018;
+var KT=[[240,56,700],[200,48,560],[170,40,480],[96,20,260]];
+var MU=[[320,320,360],[280,120,340],[270,130,330],[260,90,400]];
+var TN=['正常','收紧','放开'],CIR=['\u2460','\u2461','\u2462','\u2463'];
+var BX=[126,308,490,672],BW=170,BTY=36,BBY=212,CY=120,SX=[114,302,486,670],EX=[300,482,666,852];
+var TKY=132,TKH=12,TKX=12,TKW=146;
+var AKE=917,AKM=754,AK0=266,ACKY=218,PRY=231,PRX=190;
+var TL0=110,TL1=760,RS=[364,382,400,418],ROWK=[3,2,1,0],SH=['pending','限速','批次','permits'];
+var GN=[['闸门\u2460 客户端','pending 队列上限','maxPendingMessages','future 挂起 ','sendTimeout 0.6 \u8f6e'],
+        ['闸门\u2461 Broker','限速与配额','publishRateLimiter','throttle/hold ','producer_request_hold'],
+        ['闸门\u2462 分发','批次与读队列','dispatcherMaxReadBatchSize','停读 ','addEntryHandover 1024'],
+        ['闸门\u2463 许可','receiverQueue','receiverQueueSize','等 CommandFlow ','totalAvailablePermits']];
+var EV=[[{t:-99,v:0}],[{t:-99,v:0}],[{t:-99,v:0}],[{t:-99,v:0}]];
+var LCHG={t:-99,g:-1,v:0},NOWR=1,N0B=0,MDPHI=-1,MDPT=-1;
+
+function tierAt(i,t){var L=EV[i],q;for(q=L.length-1;q>=0;q--)if(L[q].t<=t)return L[q].v;return 0;}
+var CCA=PA*PPD/6.283185;
+function cum(t){return P0*t-CCA*(Math.cos(6.283185*t/PPD)-1);}
+function prate(t){return P0+PA*Math.sin(6.283185*t/PPD);}
+function arrOf(n){var t=n/P0,q,d;for(q=0;q<5;q++){d=cum(t)-n;t-=d/prate(t);if(t<0)t=0;}return t;}
+function owHold(t){if(t<OWR-0.4)return 0;var b=Math.floor(t/OWR),s=b*OWR+1.25;return(t>=s&&t<s+OWD)?(s+OWD-t):0;}
+function isTxnB(b){return b%2===0;}
+function isAbB(b){return((b%9)+9)%9===4;}
+function posOf(n){return 'L'+Math.floor(n/LG)+'\u00b7E'+(((n%LG)+LG)%LG);}
+function fill(k,s,x,y,px,c,bd){S.owner(k);S.text(s,x,y,px,c,'left',bd||0);}
+function tankCol(f){return f>=0.9?'#F7D1D0':(f>=0.6?'#FAC775':'#B9DC84');}
+function rateCr(t){var c=t/85;return c<0.22?0.22:(c>3.2?3.2:c);}
+function mx(t,t0,T){var gp=T-t0;return gp>0?TL0+(t-t0)/gp*(TL1-TL0):TL1;}
+/* 游标只前进不后退：窗口重推时前缀会因为「冷启动」略微抖动，这里按物理事实钳住；时间倒回去就重新来 */
+function monoMdp(v,T){if(T<MDPT-1e-9)MDPHI=v;MDPT=T;if(v>MDPHI)MDPHI=v;return MDPHI;}
+
+/* ---------- 排队链：一条消息一次走完四道闸门（服务完但下游没位子，就占着上游的位子） ---------- */
+function sim(T){
+  var t0=(T>WIN)?(T-WIN):0,nNow=Math.floor(cum(T)),N0=Math.floor(cum(t0));
+  if(N0<0)N0=0;
+  var cnt=nNow-N0+1,i,n,e,s,dep,q,b,p,cap,gd,lim2;
+  if(cnt<2){cnt=2;nNow=N0+1;}
+  N0B=N0;
+  var A=[],E0=[],D0=[],N0_=[],E1=[],D1=[],N1_=[],E2=[],D2=[],N2_=[],E3=[],D3=[],DM=[],VIS=[],SK=[],CW=[],DL=[];
+  for(i=0;i<cnt;i++){A[i]=0;E0[i]=0;D0[i]=9e9;N0_[i]=0;E1[i]=0;D1[i]=9e9;N1_[i]=0;E2[i]=0;D2[i]=9e9;N2_[i]=0;E3[i]=0;D3[i]=9e9;DM[i]=0;VIS[i]=0;SK[i]=0;CW[i]=0;}
+  var r0=T-1;if(r0<0)r0=0;
+  var lim=(LCHG.g>=0)?LCHG.t:-99;
+  var h0=0,h1=0,h2=0,h3=0,ld0=-99,ld1=-99,ld2=-99,ld3=-99;
+  var bl=[0,0,0,0],th=[0,0,0,0],sat=[-1,-1,-1,-1],oc=[0,0,0,0];
+  var curL=Math.floor(nNow/LG),inv=0,cd=0,cdIn=0,vw=0,hold=0,unf=0,tov=0,pd=0,lastColdL=-9,blN=[0,0,0,0];
+  for(i=0;i<cnt;i++){
+    n=N0+i;b=Math.floor(n/TXN);
+    A[i]=arrOf(n);
+    e=A[i]+owHold(A[i]);
+    if(e-A[i]>1e-7&&A[i]>=r0&&A[i]<=T)hold++;
+    /* 闸门① 客户端 pending 队列 */
+    var dm=e;
+    while(h0<i&&D0[h0]<=e)h0++;
+    cap=KT[0][tierAt(0,e)];gd=0;
+    while(h0<i&&i-h0>=cap&&gd++<4000){e=D0[h0];h0++;while(h0<i&&D0[h0]<=e)h0++;}
+    E0[i]=e;
+    if(e>dm+1e-7){if(dm>=r0&&dm<=T)bl[0]++;if(e>blN[0])blN[0]=e;}
+    if(e>=lim&&sat[0]<0&&i-h0>=0.92*cap)sat[0]=e;
+    s=e>ld0?e:ld0;dep=s+1/MU[0][tierAt(0,s)];N0_[i]=dep;ld0=dep;
+    /* 闸门② Broker 限速与配额 */
+    e=N0_[i];dm=e;
+    while(h1<i&&D1[h1]<=e)h1++;
+    cap=KT[1][tierAt(1,e)];gd=0;
+    while(h1<i&&i-h1>=cap&&gd++<4000){e=D1[h1];h1++;while(h1<i&&D1[h1]<=e)h1++;}
+    E1[i]=e;
+    if(e>dm+1e-7){if(dm>=r0&&dm<=T)bl[1]++;if(e>blN[1])blN[1]=e;}
+    if(e>=lim&&sat[1]<0&&i-h1>=0.92*cap)sat[1]=e;
+    s=e>ld1?e:ld1;dep=s+1/MU[1][tierAt(1,s)];N1_[i]=dep;ld1=dep;
+    D0[i]=E1[i];
+    /* 账本：事务 marker 决定什么时候可读；卸载后的本要冷读；abort 批被读路径跳过 */
+    VIS[i]=0;SK[i]=0;CW[i]=0;
+    if(isTxnB(b)){p=arrOf(b*TXN+TXN-1)+CCL;VIS[i]=p;if(isAbB(b))SK[i]=1;}
+    else p=0;
+    e=N1_[i];
+    if(p>e){if(p<=T&&p>=r0)inv++;e=p;}
+    if(!SK[i]&&curL-Math.floor(n/LG)>=COLD){
+      CW[i]=1;
+      if(Math.floor(n/LG)!==lastColdL){CW[i]=2;lastColdL=Math.floor(n/LG);}
+    }
+    dm=e;
+    /* 闸门③ 分发批次 */
+    while(h2<i&&D2[h2]<=e)h2++;
+    cap=KT[2][tierAt(2,e)];gd=0;
+    while(h2<i&&i-h2>=cap&&gd++<4000){e=D2[h2];h2++;while(h2<i&&D2[h2]<=e)h2++;}
+    E2[i]=e;
+    /* 交接时刻只增不减：② 的位子要到 ③ 真收下（或账本写完）才腾出来 */
+    D1[i]=N1_[i]>e?N1_[i]:e;
+    if(SK[i]){N2_[i]=e;}
+    else{
+      if(e>dm+1e-7){if(dm>=r0&&dm<=T)bl[2]++;if(e>blN[2])blN[2]=e;}
+      if(e>=lim&&sat[2]<0&&i-h2>=0.92*cap)sat[2]=e;
+      s=e>ld2?e:ld2;
+      if(CW[i]===2)s+=CCD;
+      if(((N0B+i)%BATCH+BATCH)%BATCH===BATCH-1)s+=BPAUSE;
+      dep=s+1/MU[2][tierAt(2,s)];N2_[i]=dep;ld2=dep;
+    }
+    /* 闸门④ 消费端 receiverQueue + permits：额度用完，③ 就取不到位子，水位退回上一道 */
+    if(SK[i]){E3[i]=N2_[i]>ld3?N2_[i]:ld3;D3[i]=E3[i];DM[i]=E3[i];}
+    else{
+      e=N2_[i];dm=e;
+      while(h3<i&&D3[h3]<=e)h3++;
+      cap=KT[3][tierAt(3,e)];gd=0;
+      while(h3<i&&i-h3>=cap&&gd++<4000){e=D3[h3];h3++;while(h3<i&&D3[h3]<=e)h3++;}
+      E3[i]=e;
+      if(e>dm+1e-7){if(dm>=r0&&dm<=T)bl[3]++;if(e>blN[3])blN[3]=e;}
+      if(e>=lim&&sat[3]<0&&i-h3>=0.92*cap)sat[3]=e;
+      s=e>ld3?e:ld3;dep=s+1/MU[3][tierAt(3,s)];D3[i]=dep;ld3=dep;DM[i]=E3[i];
+    }
+    D2[i]=N2_[i]>E3[i]?N2_[i]:E3[i];
+  }
+  for(q=0;q<4;q++){
+    var EE=(q===0)?E0:(q===1)?E1:(q===2)?E2:E3,DD=(q===0)?D0:(q===1)?D1:(q===2)?D2:D3,a=0,c=0;
+    while(a<cnt&&EE[a]<=T)a++;
+    while(c<cnt&&DD[c]<=T)c++;
+    oc[q]=a>c?a-c:0;
+  }
+  for(i=0;i<cnt;i++){
+    if(D0[i]>=r0&&D0[i]<=T)th[0]++;
+    if(D1[i]>=r0&&D1[i]<=T)th[1]++;
+    if(D2[i]>=r0&&D2[i]<=T)th[2]++;
+    if(D3[i]>=r0&&D3[i]<=T&&!SK[i])th[3]++;
+    if(A[i]<=T&&N1_[i]>T)unf++;
+    if(!SK[i]&&N1_[i]<=T&&VIS[i]>T&&VIS[i]<9e8)vw++;
+    if(N1_[i]-A[i]>CTO&&N1_[i]>T-1&&N1_[i]<=T)tov++;
+    if(!SK[i]&&D3[i]<=T&&VIS[i]>T&&VIS[i]<9e8)pd++;
+    if(CW[i]===2&&D2[i]>=r0&&D2[i]<=T)cd++;
+    if(CW[i]===1&&E2[i]>T)cdIn++;
+  }
+  /* ackTimeout：推到消费端到 ack 拖太久 = 重投一次 */
+  var redel=0,red0=0;
+  for(i=0;i<cnt;i++)if(!SK[i]&&D3[i]-N2_[i]>CAT){redel++;if(D3[i]>T-1&&D3[i]<=T)red0++;}
+  /* 游标：连续「已 ack 且 marker 已写」的前缀；abort 批在 marker 时刻被跳过 */
+  var k=0;
+  while(k<cnt){if(SK[k]){if(VIS[k]>T)break;}else{if(D3[k]>T||VIS[k]>T)break;}k++;}
+  var mdp=(k>=cnt)?(nNow-1):(N0+k-1);
+  var cm=0,ab=0;
+  for(b=Math.floor(N0/TXN);b<=Math.floor(nNow/TXN);b++){
+    if(!isTxnB(b))continue;
+    var pt=arrOf(b*TXN+TXN-1)+CCL;
+    if(pt>=r0&&pt<=T){if(isAbB(b))ab++;else cm++;}
+  }
+  var HS=[];
+  for(q=0;q<4;q++){
+    var E4=(q===0)?E0:(q===1)?E1:(q===2)?E2:E3,D4=(q===0)?D0:(q===1)?D1:(q===2)?D2:D3;
+    HS.push(histRun(cnt,E4,D4,q,t0,T,14,lim));
+    sat[q]=(sat[q]>=0)?sat[q]:HS[q].sat;
+  }
+  return {T:T,t0:t0,nNow:nNow,N0:N0,cnt:cnt,A:A,D0:D0,D1:D1,D2:D2,D3:D3,VIS:VIS,SK:SK,
+    oc:oc,bl:bl,th:th,blN:blN,sat:sat,hs:HS,
+    mdp:mdp,pd:pd,unf:unf,tov:tov,redel:redel,red0:red0,inv:inv,cd:cd,cdIn:cdIn,cm:cm,ab:ab,vw:vw,hold:hold,
+    ack:th[3],inN:cntRange(A,r0,T),fSat:sat[0]};
+}
+function histRun(cnt,E,D,q,t0,T,mt,since){
+  var a=0,b=0,i,sf=0,TS=[],VF=[],st=-1;
+  for(i=0;i<mt;i++){
+    var ts=t0+(T-t0)*(i+0.5)/mt;
+    while(a<cnt&&E[a]<=ts)a++;
+    while(b<cnt&&D[b]<=ts)b++;
+    var f=(a-b)>0?(a-b)/KT[q][tierAt(q,ts)]:0;
+    if(f>1)f=1;
+    TS.push(t0+(T-t0)*(i+0.25)/mt);VF.push(f);
+    if(f>=0.92&&st<0&&TS[i]>=since){st=TS[i];sf=f;}
+  }
+  return {ts:TS,vf:VF,sat:st,satF:sf};
+}
+function cntRange(L,lo,hi){var c=0,i;for(i=0;i<L.length;i++)if(L[i]>=lo&&L[i]<=hi)c++;return c;}
+
+/* ---------- 部件命中区（后压前：小盒盖在大盒上）---------- */
+var REG=[
+{k:'pipe',x:16,y:26,w:968,h:212,n:'四道闸门 \u00b7 一条排队链',d:'四道闸门串联，但不共享一个队列：客户端 pending 队列、Broker 限速与配额、分发批次、消费端 permits 各有各的上限和超时（sendTimeout / topicLoadTimeoutSeconds / metadataOperationsTimeoutSeconds / ackTimeout / 事务超时）。生产端堵了不会立刻让消费端停，消费端慢了也不会让生产端马上失败——压力是一层一层往回传的；只调一个超时，通常只是把问题挪到下一层。'},
+{k:'prod',x:18,y:36,w:92,h:176,n:'生产者 sendAsync',d:'先拿信号量许可，消息进 pending 队列；队列满就挂住 future（或配成直接抛失败）。重连、限流、写账本的耗时都由 Broker 回调，回调不到 future 就一直不完成。'}
+];
+(function(){
+  var GD=['客户端 pending 队列上限：maxPendingMessages + 内存上限。满了直接阻塞 sendAsync 的 future，压力留在应用线程，不往下游传。这道的超时是 sendTimeout：在队列里等太久就报错——只堵不失败，内存会替你失败。点我循环切档。',
+  'Broker 侧：publishRateLimiter 令牌桶（默认 0 = 关闭），超限就 throttle 这条连接；backlog quota（默认 -1 = 关闭）超限按 producer_request_hold 挂住生产者，每 60 秒检查一次。还有两道隐形闸门：ServerCnx 每连接 pending publish 默认 1000、降到 500 才恢复；IO 线程 pending 字节超限就 setAutoRead(false)，停掉的是同一个 IO 线程上的所有连接，不只是慢的那个 topic。点我循环切档。',
+  '账本交接与分发批次：addEntryHandoverMaxBatchItems=1024 / 5MB 一批，超过分批，避免一次吃太多 direct memory；dispatcher 按 totalAvailablePermits 决定这一轮读多少，没有许可就停止从 Bookie 读，backlog 留在账本里；未 ack 消息超过 50000/200000 也会阻塞消费。点我循环切档。',
+  '消费端 receiverQueueSize（默认 1000）就是这个消费者的信用额度：permits 是信用不是速率，额度用完 Broker 就不再发；消费掉一批才发 CommandFlow 把额度还回去。太久不 ack 由 ackTimeout 重投；在事务里 ack 先落 pending ack store，提交才应用到 cursor。点我循环切档。'];
+  for(var i=0;i<4;i++)REG.push({k:'g'+i,x:BX[i],y:BTY,w:BW,h:BBY-BTY,n:GN[i][0]+' \u00b7 '+GN[i][1],d:GD[i],t:[]});
+})();
+REG.push({k:'cons',x:854,y:36,w:128,h:176,n:'Consumer',d:'listener 处理完才 ack；ack 一回来 permits 就腾出来，③ 才继续从 Bookie 读。处理慢、ack 慢、订阅挂起，都会从这一道往回传。'});
+REG.push({k:'pre',x:16,y:242,w:968,h:82,n:'另外三道边界',d:'事务可见性、分层存储、bundle 归属都不改四道闸门的水位，改的是消息什么时候可见、读一次要多久、要不要先重连一次。'});
+REG.push({k:'txn',x:24,y:256,w:300,h:60,n:'事务可见性',d:'生产侧：消息带 txnid 写进 ledger，但 maxReadPosition 不前进，消费者读不到；提交时写 commit marker 才放行。消费侧：ack 先写进 <topic>-<sub>__transaction_pending_ack，提交才应用到 cursor。回滚也写 marker：abort marker 告诉读路径这批跳过——账本只能追加删不掉，靠 lowWaterMark 清索引与快照。'});
+REG.push({k:'off',x:340,y:256,w:300,h:60,n:'分层存储',d:'旧 ledger 按容量 / 时间卸载到对象存储，offloadContext.complete=true 是分水岭：读路径据此改从对象存储读，延迟升高；Bookie 上的副本要到 deletionLag 到期才删，这期间两边都能读。'});
+REG.push({k:'own',x:656,y:256,w:304,h:60,n:'bundle 归属',d:'topic 算 hash 落到 bundle，归属锁保证同一时刻只有一个 owner；客户端 lookup 问到的不是 owner 就收到 Redirect，拿到地址才建连。新 owner 打开 ledger 会 fence 旧 writer。'});
+REG.push({k:'bp',x:16,y:330,w:968,h:104,n:'背压回传 \u00b7 近 16 轮水位',d:'四条横道是四道闸门最近 16 轮的占用水位（越靠上越下游），红点 = 这一道堵满的时刻，四颗红点连起来的折线就是传导链。'});
+REG.push({k:'rst',x:892,y:334,w:84,h:20,n:'复位档位',d:'点一下把四道闸门全部切回正常档。'});
+REG.push({k:'panel',x:16,y:440,w:968,h:130,n:'这一轮的账',d:'背压的代价写在数字里：吞吐掉了多少、每道挡下多少、future 挂住多少。四道门没有一道是免费的正确性，背压是用吞吐换稳定。'});
+
+var S=FlowStage({W:1000,H:580,el:'flow',cap:'flowSel',chips:'flowChips',regions:REG,hint:'',
+  chips2:[{k:'bp0',l:'\u2460 客户端'},{k:'bp1',l:'\u2461 Broker'},{k:'bp2',l:'\u2462 分发'},{k:'bp3',l:'\u2463 许可'}]});
+
+/* ---------- 静态层：只跟画布尺寸走 ---------- */
+S.layer('base',function(){return S.size();},function(){
+  var i,b;
+  S.owner('');
+  var LBD=[[18,'#EF9F27','琥珀点 = 在途消息'],[150,'#639922','绿点 = ack / CommandFlow'],[338,'#E24B4A','红点 = 背压 \u00b7 堵满'],[520,'#5C7CA8','蓝点 = 等可见'],[628,'#6B695F','槽 = 占用/上限'],[750,'#B4B2A9','数字全由同一个时钟推出']];
+  for(i=0;i<LBD.length;i++){S.dot(LBD[i][0]+6,12,5,LBD[i][1],null);S.text(LBD[i][2],LBD[i][0]+16,12,10,'#6B695F','left',0);}
+  S.rect(16,26,968,212,'#FBFAF6','#ECEAE2',[6,5],10,1.2);
+  S.rect(16,242,968,82,'#FBFAF6','#ECEAE2',[6,5],10,1.2);
+  S.rect(16,330,968,104,'#FBFAF6','#ECEAE2',null,10,1.2);
+  S.rect(16,440,968,130,'#FBFAF6','#3B3A34',null,10,1.4);
+  S.rect(18,36,92,176,'#ffffff','#3B3A34',null,9,1.4);
+  S.rect(854,36,128,176,'#ffffff','#3B3A34',null,9,1.4);
+  for(i=0;i<4;i++){
+    b=BX[i];
+    S.rect(b,BTY,BW,BBY-BTY,'#ffffff','#3B3A34',null,9,1.4);
+    S.owner('g'+i);
+    S.text(GN[i][0],b+8,BTY+12,11,'#1F1E1A','left',1);
+    S.text(GN[i][1],b+8,BTY+27,9,'#6B695F','left',0);
+    S.text(GN[i][2],b+8,BTY+40,9,'#854F0B','left',0);
+    S.rect(b+TKX,TKY,TKW,TKH,'#F5F4EF','#D3D1C7',null,4,1);
+    S.line(b+TKX+TKW*0.92,TKY,b+TKX+TKW*0.92,TKY+TKH,'#E24B4A',1,null,0.55);
+  }
+  for(i=0;i<4;i++)S.line(SX[i],CY,EX[i],CY,'#F0EEE6',9);
+  S.line(114,CY,852,CY,'#ECEAE2',9);
+  S.line(960,CY,960,30,'#ECEAE2',1.4,[5,4]);
+  S.line(960,30,120,30,'#ECEAE2',1.4,[5,4]);
+  S.tri(120,30,false,'#B4B2A9');
+  S.line(AK0,ACKY,AKE,ACKY,'#E7F1DC',6);
+  S.line(PRX,PRY,850,PRY,'#F6DEDE',6);
+  S.owner('prod');
+  S.text('生产者',24,52,11,'#1F1E1A','left',1);
+  S.text('sendAsync',24,68,9.5,'#6B695F','left',0);
+  S.text('拿许可 \u00b7 入队',24,82,9,'#6B695F','left',0);
+  S.owner('cons');
+  S.text('Consumer',860,52,11,'#1F1E1A','left',1);
+  S.text('listener 处理',860,68,9.5,'#6B695F','left',0);
+  S.text('处理完才 ack',860,82,9,'#6B695F','left',0);
+  S.owner('pipe');
+  S.text('ack \u2192 释放 permits \u00b7 CommandFlow 还额度',18,218,9.5,'#4C7A1A','left',0);
+  S.owner('pre');
+  S.text('另外三道边界：不改水位，改的是可见时刻、读延迟和一次重连',24,249,10.5,'#854F0B','left',1);
+  for(i=0;i<3;i++){
+    b=i===0?24:(i===1?340:656);
+    S.rect(b,256,i===2?304:300,60,'#ffffff','#D3D1C7',null,8,1.2);
+  }
+  S.owner('txn');S.text('事务：一批 '+TXN+' 条一起可见',32,266,9.5,'#1F1E1A','left',1);
+  S.owner('off');S.text('卸载：complete=true 才读对象存储',348,266,9.5,'#1F1E1A','left',1);
+  S.owner('own');S.text('归属：hash \u2192 bundle \u2192 owner',664,266,9.5,'#1F1E1A','left',1);
+  S.owner('bp');
+  S.text('背压回传：近 16 轮的占用水位 \u00b7 越靠上越下游',24,344,10.5,'#854F0B','left',1);
+  for(i=0;i<4;i++){
+    S.text(CIR[ROWK[i]]+' '+SH[ROWK[i]],22,RS[i],9.5,'#3B3A34','left',0);
+    S.line(TL0,RS[i]+7,TL1,RS[i]+7,'#ECEAE2',1);
+  }
+  S.rect(892,334,84,20,'#ffffff','#5C7CA8',[4,3],6,1.2);
+  S.owner('rst');S.text('复位档位',898,344,9.5,'#3D5C82','left',1);
+  S.owner('panel');
+  S.text('这一轮的账',28,452,11,'#1F1E1A','left',1);
+  S.text('四道门串联但不共享队列：\u2460 满挂 future \u00b7 \u2461 throttle 连接 \u00b7 \u2462 停读 \u00b7 \u2463 等 CommandFlow',28,513,9.5,'#6B695F','left',0);
+  S.text('隐形闸门：ServerCnx 每连接 pending 1000',736,468,9,'#6B695F','left',0);
+  S.text('降到 500 才恢复；backlog quota 默认 -1',736,483,9,'#6B695F','left',0);
+  S.text('IO 线程字节 max(64MB,直接内存/2) 过半',736,498,9,'#6B695F','left',0);
+  S.text('setAutoRead(false) \u00b7 未 ack 超 50000/200000',736,513,9,'#8A2A2A','left',0);
+  S.text('每层都有自己的超时，得一起调：',736,528,9.5,'#854F0B','left',1);
+  S.text('sendTimeout 0.6 \u00b7 ackTimeout 0.45',736,543,9,'#6B695F','left',0);
+  S.text('topicLoadTimeoutSeconds \u00b7 事务超时 1 轮',736,558,9,'#6B695F','left',0);
+});
+
+/* ---------- 每帧：同一个时钟推出四道的联动数量 ---------- */
+S.frame(function(F){
+  var T=F.cyc,i,j,g,b,fr,col,px,pu,o;
+  NOWR=T;
+  o=sim(T);
+  var caps=[KT[0][tierAt(0,T)],KT[1][tierAt(1,T)],KT[2][tierAt(2,T)],KT[3][tierAt(3,T)]];
+  var frs=[o.oc[0]/caps[0],o.oc[1]/caps[1],o.oc[2]/caps[2],o.oc[3]/caps[3]];
+  for(i=0;i<4;i++)if(frs[i]>1)frs[i]=1;
+  var vals=[o.unf,o.bl[1],o.th[2],caps[3]-o.oc[3]];
+  /* 读数 */
+  S.read('froIn',o.inN+' 条');
+  S.read('froThru',o.ack+' 条/轮');
+  S.read('froBlock',(o.bl[0]+o.bl[1]+o.bl[2]+o.bl[3])+' 条');
+  S.read('froFuture',o.unf+' 条');
+  var mdpS=monoMdp(o.mdp<0?0:o.mdp,T);
+  S.read('froMdp',posOf(mdpS));
+  var firstSat=-1;
+  for(i=0;i<4;i++)if(o.sat[i]>=0&&(firstSat<0||o.sat[i]<firstSat))firstSat=o.sat[i];
+  var hops=(o.sat[0]>=0&&firstSat>=0&&o.sat[0]>=firstSat)?(o.sat[0]-firstSat):-1;
+  S.read('froHops',hops>=0?(hops.toFixed(1)+' 轮'):(LCHG.g<0?'没人改档位':'\u2460 还没堵'));
+  for(i=0;i<4;i++)S.chip('bp'+i,TN[tierAt(i,T)]+' '+o.oc[i]+'/'+caps[i],frs[i]>=0.9?'on':'');
+
+  /* 四道闸门本体 */
+  for(i=0;i<4;i++){
+    b=BX[i];g='g'+i;fr=frs[i];
+    if(fr>0.015)S.shade(b+TKX,TKY+TKH-Math.max(2,TKH*fr),TKW*fr,TKH,tankCol(fr));
+    S.rect(b+TKX,TKY,TKW,TKH,null,fr>=0.9?'#E24B4A':'#B4B2A9',null,4,fr>=0.9?1.7:1);
+    fill(g,'演示上限 '+caps[i]+' \u00b7 每轮 '+MU[i][tierAt(i,T)],b+8,93,9,'#6B695F');
+    fill(g,GN[i][4],b+8,105,9,'#854F0B');
+    fill(g,'占用 '+o.oc[i]+' \u00b7 '+Math.round(o.oc[i]/caps[i]*100)+'%',b+8,156,9.5,fr>=0.9?'#C03434':'#3B3A34',fr>=0.9?1:0);
+    fill(g,'近一轮通过 '+o.th[i]+' \u00b7 挡下 '+o.bl[i],b+8,171,9.5,'#3B3A34');
+    fill(g,stLine(i,o,caps,vals),b+8,186,9,'#3B3A34');
+    fill(g,CIR[i]+' 档位 '+TN[tierAt(i,T)]+' \u00b7 点切档',b+8,201,9.5,'#854F0B');
+  }
+  /* 两端 */
+  fill('prod','近一轮进场 '+o.inN,24,156,9.5,'#3B3A34');
+  fill('prod','future 未回 '+o.unf,24,171,9.5,o.unf>0?'#C46A0A':'#6B695F');
+  fill('prod','超时失败 '+o.tov,24,186,9.5,o.tov>0?'#8A2A2A':'#6B695F');
+  fill('prod','重连挂起 '+o.hold,24,201,9.5,o.hold>0?'#3D5C82':'#6B695F');
+  fill('cons','近一轮 ack '+o.ack,860,156,9.5,'#4C7A1A');
+  fill('cons','待还许可 '+vals[3],860,171,9.5,'#6B695F');
+  fill('cons','ack 超时 '+o.red0,860,186,9.5,o.red0>0?'#8A2A2A':'#6B695F');
+  fill('cons','未 ack '+o.oc[3],860,201,9.5,frs[3]>=0.9?'#C03434':'#6B695F');
+  /* 另外三道边界的数字 */
+  fill('txn','未提交钉住 '+o.inv+' 条',32,279,9,'#854F0B');
+  fill('txn','pending ack 挂起 '+o.pd+' 条',32,292,9,o.pd>0?'#C46A0A':'#6B695F');
+  fill('txn','marker：commit '+o.cm+' \u00b7 abort '+o.ab,32,305,9,'#6B695F');
+  fill('off','演示 '+LG+' 条一本 \u00b7 第 '+COLD+' 本起冷',348,279,9,'#6B695F');
+  fill('off','近一轮冷区 seek '+o.cd+' 次 \u00b7 在读 '+o.cdIn,348,292,9,o.cd>0?'#1E3A8A':'#6B695F');
+  fill('off','副本到 deletionLag 才删',348,305,9,'#6B695F');
+  fill('own','近一轮 Redirect '+o.hold+' 次',664,279,9,o.hold>0?'#3D5C82':'#6B695F');
+  fill('own','重连挂起 0.15 轮',664,292,9,'#6B695F');
+  fill('own','归属锁 + ledger fencing',664,305,9,'#6B695F');
+
+  /* 横道流速：哪一段通过得多，哪一段的点转得快 */
+  for(i=0;i<4;i++){
+    var cy2=rateCr(o.th[i]);
+    for(j=0;j<3;j++){
+      pu=(T*cy2+(j+0.5)/3)%1;
+      px=SX[i]+(EX[i]-SX[i])*pu;
+      var jam=(o.bl[i]>0&&frs[i]>=0.85);
+      S.dot(px,CY,4.6,jam?'#E24B4A':'#EF9F27',jam?'#B91C1C':'#C46A0A');
+      S.token(px,CY,4.6);
+    }
+  }
+  /* 被挡在门口的：红点在两个门口之间挤 */
+  for(i=0;i<3;i++){
+    if(o.bl[i+1]>0){
+      pu=(T*1.5+i*0.27)%1;
+      px=EX[i]+16*pu;
+      S.dot(px,CY,4.2,'#E24B4A',null);S.token(px,CY,4.2);
+    }
+  }
+  /* 等可见（事务没提交）：压在 \u2461\u2192\u2462 的门口，只待在两框之间的空档里 */
+  for(i=0;i<3&&i<o.vw;i++){
+    px=466+i*6+3*Math.sin(T*3+i);
+    S.dot(px,CY-11,4.2,'#5C7CA8',null);S.token(px,CY-11,4.2);
+  }
+  /* ack 回来 + CommandFlow 还许可 */
+  var ac=rateCr(o.ack);
+  for(j=0;j<3;j++){
+    pu=(T*ac+j/3)%1;
+    px=AKE-(AKE-AKM)*pu;
+    S.dot(px,ACKY,4.3,'#639922','#4C7A1A');S.token(px,ACKY,4.3);
+    if(pu>0.5){
+      px=AKM-(AKM-AK0)*((pu-0.5)/0.5);
+      S.dot(px,ACKY,4.3,'#8FBF4A',null);S.token(px,ACKY,4.3);
+    }
+  }
+  if(o.red0>0){px=AKM-(AKM-AK0)*((T*0.9)%1);S.dot(px,ACKY+8,4.3,'#E24B4A',null);S.token(px,ACKY+8,4.3);}
+  /* 背压回传：从最堵的那道往生产者跑 */
+  var jm=-1,jf=-1;
+  for(i=0;i<4;i++)if(frs[i]>=0.9&&frs[i]>jf){jf=frs[i];jm=i;}
+  if(jm>=0){
+    var lx=BX[jm]+BW/2,up=(T*1.1)%1;
+    S.line(PRX,PRY,lx,PRY,'#F2B6B5',1.4,[5,4]);
+    px=lx-(lx-PRX)*up;
+    S.dot(px,PRY,4.4,'#E24B4A','#B91C1C');S.token(px,PRY,4.4);
+    fill('pipe','背压起点 '+CIR[jm]+' \u00b7 往 \u2460 回传',18,231,9.5,'#C03434',1);
+  }else{
+    fill('pipe','没有闸门堵满 \u00b7 四道都在放行',18,231,9.5,'#4C7A1A');
+  }
+  /* 近 16 轮水位 + 传导折线 */
+  var spts=[];
+  for(i=0;i<4;i++){
+    var gk=ROWK[i],H=o.hs[gk],M=H.ts,V=H.vf,x1,y1,x2,y2;
+    for(j=0;j+1<M.length;j++){
+      x1=mx(M[j],o.t0,T);y1=RS[i]+7-V[j]*13;
+      x2=mx(M[j+1],o.t0,T);y2=RS[i]+7-V[j+1]*13;
+      S.line(x1,y1,x2,y2,V[j+1]>=0.9?'#E24B4A':(V[j+1]>=0.6?'#D97E06':'#639922'),1.6);
+    }
+    if(H.sat>=0){
+      var sx=mx(H.sat,o.t0,T),sy=RS[i]+7-H.satF*13;
+      S.dot(sx,sy,4.6,'#E24B4A','#B91C1C');S.token(sx,sy,4.6);
+      spts.push([sx,sy]);
+    }
+    fill('bp',(H.sat>=0?('堵满 '+H.sat.toFixed(1)+' 轮'):'未堵满')+' \u00b7 上限 '+caps[gk],770,RS[i],9,'#6B695F');
+  }
+  for(i=0;i+1<spts.length;i++)S.line(spts[i][0],spts[i][1],spts[i+1][0],spts[i+1][1],'#E24B4A',1.2,[4,3]);
+
+  /* 面板：这一轮的账 + 结论 */
+  var who='风平浪静：'+o.ack+' 条走完全程，没有一道堵满';
+  if(jm>=0){
+    who='压力起于 '+GN[jm][0]+' \u00b7 挡下 \u2460'+o.bl[0]+' \u2461'+o.bl[1]+' \u2462'+o.bl[2]+' \u2463'+o.bl[3]+(hops>=0?(' \u00b7 '+hops.toFixed(1)+' 轮后 future 挂住'):'');
+  }
+  fill('panel',who,28,468,10,jm>=0?'#C03434':'#4C7A1A');
+  fill('panel','进场 '+o.inN+' \u00b7 走完 '+o.ack+' \u00b7 消费端未 ack '+o.oc[3]+' \u00b7 水位 '+Math.round(frs[0]*100)+'/'+Math.round(frs[1]*100)+'/'+Math.round(frs[2]*100)+'/'+Math.round(frs[3]*100)+'%',28,483,10,'#3B3A34');
+  fill('panel',sugOf(o,jm,caps),28,498,10,'#854F0B',1);
+  fill('panel','档位：'+CIR[0]+' '+TN[tierAt(0,T)]+' \u00b7 '+CIR[1]+' '+TN[tierAt(1,T)]+' \u00b7 '+CIR[2]+' '+TN[tierAt(2,T)]+' \u00b7 '+CIR[3]+' '+TN[tierAt(3,T)],126,452,10,'#3B3A34');
+  fill('panel','近一轮：进场 '+o.inN+' \u00b7 落账 '+o.ack+' \u00b7 冷区 seek '+o.cd+' \u00b7 钉住 '+o.inv+' \u00b7 abort '+o.ab+' 批',28,543,10,'#3B3A34');
+  fill('panel','markDelete '+posOf(mdpS)+' \u00b7 落后 '+(o.nNow-mdpS)+' 条 \u00b7 pending ack '+o.pd+' 条没应用到 cursor',28,558,10,'#854F0B');
+  fill('panel',chgStr(o),28,528,10,'#6B695F');
+});
+function stLine(i,o,caps,vals){
+  if(i===0)return 'future \u6302\u8d77 '+o.unf+' \u6761';
+  if(i===1)return 'throttle/hold '+o.bl[1]+' \u6761';
+  if(i===2)return '\u672c\u8f6e\u8bfb '+o.th[2]+((o.bl[3]>0||o.oc[3]>=caps[3])?' \u00b7 \u505c\u8bfb':' \u6761');
+  return '\u5269 '+vals[3]+' \u4e2a'+(o.bl[3]>0?' \u00b7 \u7b49 Flow':' permits');
+}
+function chgStr(o){
+  if(LCHG.g<0)return '没动过档位：点任意一道闸门切档';
+  var arr=[],i;
+  for(i=0;i<4;i++)if(o.sat[i]>=o.t0&&o.sat[i]>=LCHG.t)arr.push(CIR[i]+' '+o.sat[i].toFixed(1));
+  return '上次 '+CIR[LCHG.g]+' 第 '+LCHG.t.toFixed(1)+' 轮 \u2192 '+TN[LCHG.v]+' \u00b7 堵满 '+(arr.length?arr.join(' \u2192 '):'还没有');
+}
+function sugOf(o,jm,caps){
+  if(jm>=0)return '该放开的是 '+CIR[jm]+'：每轮 '+MU[jm][tierAt(jm,NOWR)]+' 条 / 额度 '+caps[jm]+'，或者让消费端快点 ack';
+  if(LCHG.g<0)return '试着把 '+CIR[3]+' 切到收紧：等几轮看 future 什么时候开始挂';
+  return '额度缓过来了：端到端 '+o.ack+' 条/轮，进场 '+o.inN+' 条/轮';
+}
+S.onTap(function(x,y,k){
+  var i;if(!k)return;
+  if(k==='rst'){
+    for(i=0;i<4;i++){EV[i].push({t:NOWR,v:0});if(EV[i].length>6)EV[i].shift();}
+    LCHG={t:NOWR,g:-1,v:0};return;
+  }
+  if(k.length===2&&k.charAt(0)==='g'){
+    i=parseInt(k.slice(1),10);
+    var nv=(tierAt(i,NOWR)+1)%3;
+    EV[i].push({t:NOWR,v:nv});
+    if(EV[i].length>6)EV[i].shift();
+    LCHG={t:NOWR,g:i,v:nv};
+  }
+});
+S.link();
+window.__flowTick(PERIOD);
+})();
 function tick(now){
+var prev=phase;
 var dt=Math.min(50,now-last);last=now;
 if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
 if(mode==='step'&&stepTo!==null){
@@ -590,6 +1209,10 @@ var e=p*p*(3-2*p);
 phase=stepFrom+(stepTo-stepFrom)*e;
 if(p>=1){phase=((stepTo%PERIOD)+PERIOD)%PERIOD;stepTo=null;}
 }
+var dd=phase-prev;
+if(dd>PERIOD/2)dd-=PERIOD;else if(dd<-PERIOD/2)dd+=PERIOD;
+absPhase+=dd;
+if(window.__flowTick)window.__flowTick(absPhase);
 render(phase/PERIOD*PHASE_MAX+0.01);
 requestAnimationFrame(tick);
 }

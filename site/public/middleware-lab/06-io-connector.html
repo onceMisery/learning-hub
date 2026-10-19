@@ -114,6 +114,9 @@ table.grid td.act{background:#FAEEDA}
 .chip.off{background:#F5F4EF}
 .subview{margin:8px 0 4px;background:#ffffff;border:1px dashed #D3D1C7;border-radius:10px;padding:8px 10px}
 .subview .viewtitle{font-size:12px;font-weight:600;color:#854F0B;margin-bottom:4px}
+#flow{width:100%;display:block;cursor:crosshair}
+.flowcap{font-size:12px;color:#6B695F;margin:6px 2px 0;line-height:1.6}
+.flowcap b{color:#3B3A34;font-weight:600}
 </style>
 </head>
 <body>
@@ -169,6 +172,15 @@ table.grid td.act{background:#FAEEDA}
 <title>三种 ack 语义时间轴</title>
 <g id="scene2"></g>
 </svg>
+</div>
+
+<div class="subview">
+<div class="viewtitle">第三视图 · 一条 Record 的一生与四种 ack 时机（canvas，点档位 / 点泳道钉杀点）</div>
+<canvas id="flow" width="1000" height="580"></canvas>
+<div class="readout"><span class="ro">Source read 位 <b id="froSrc">--</b></span><span class="ro">publishEq / LAC <b id="froPub">--</b></span><span class="ro">游标 markDelete <b id="froMdp">--</b></span><span class="ro">外部 offset <b id="froExt">--</b></span><span class="ro">未 ack 在途 <b id="froGap">--</b></span><span class="ro">此刻杀掉 <b id="froKill">--</b></span></div>
+<div class="chips" id="flowChips"></div>
+<p class="flowcap" id="flowSel">点下面四个档位任意一个，切换 Sink 什么时候 ack（档位只影响之后读到的 Record，等于连接器重启一次）；点中间泳道（或四种档位那一段）的任意一格，把「杀掉连接器进程」钉在那一刻；右下角复位按钮回到跟随此刻。鼠标停在部件上看它的契约与分支。</p>
+<p class="figcap"><b>读法：</b>最上面一排是链上的部件，琥珀点在四个接口缝里走，走得快慢就是这一轮的吞吐；下面那条横泳道一格 = 一条 Record，格子里是它自己的序号和状态色，格子下面四行旗子分别标出 <b>Source read 位</b>、<b>publishEq / LAC</b>、<b>游标 markDelete</b>、<b>外部 offset</b>——三段进度同一条轴，谁超前谁落后一眼就看见。压在格子底下的色带是要命的地方：<b>游标与外部 offset 之间那一段</b>，游标超前就是「已 ack 未落地 = 会丢」（红），offset 超前就是「已落地未记位 = 会重」（橙）；<b>read 位与 publishEq 之间</b>只有「读到就 ack」那档才会亮，那是 Source 侧已经 commit 外部 offset、却还没写进账本的窗口。再下面四行横道是同一批 Record 在四种档位下的 ack 时刻：灰点 = consumer 收到，蓝点 = 落到外部系统，竖线 = 游标真的前进，线段的长度就是「算成功」要等多久。右下角按当前档位算账：这时把连接器进程杀掉，会丢几条、会重放几条、重复几条被幂等键挡下，外部表最终剩几行。<br><span class="figsrc">口径：Pulsar 5.1.0-SNAPSHOT。接口按 5.1.0 的 pulsar-io/core：Source.open(config, SourceContext) + read()（读不到就阻塞）、Sink.open + write(record)，推送型走 PushSource.consume(record)；语义取自 ProcessingGuarantees 的 ATMOST_ONCE / ATLEAST_ONCE / EFFECTIVELY_ONCE / MANUAL，真实默认是 ATLEAST_ONCE。本页节奏全是演示值：一条 Record 1/8 轮，read→写账本 0.10 轮，ackQuorum 确认 0.08 轮，派发到实例 0.10 轮，sink.write 落地 0.12 轮，每 7 条一次慢写 +0.5 轮，每 13 条一次 read 阻塞，每 17 条一条毒消息（fail() 重投 3 次、0.62 轮后进 DLQ），批量档 0.40 轮一批，ackTimeout 0.55 轮，ack 到游标真的生效 0.25 轮。挡重复按 PulsarSinkEffectivelyOnceProcessor 的说法演示：partitionId 当 producerName、recordSequence 当 sequenceId，缺一个直接抛异常；真实批量阈值、重试次数、超时都由配置决定，而且事务管不到 Pulsar 外面——写 ES / JDBC 那一侧仍然要靠主键做业务幂等。</span></p>
 </div>
 
 <div class="ctrl">
@@ -453,6 +465,7 @@ var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),
 var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
 var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
 var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var absPhase=PERIOD;
 var stepFrom=0,stepTo=null,stepElapsed=0,STEP_DUR=900;
 var dots=[];
 for(var s=0;s<STEPS.length;s++){
@@ -487,6 +500,7 @@ stepIdx=(i+STEPS.length)%STEPS.length;
 mode='step';run=false;
 var target=STEPS[stepIdx].d/PHASE_MAX*PERIOD,delta=target-phase;
 if(reduced||Math.abs(delta)>PERIOD/4){
+absPhase+=delta;
 phase=target;stepTo=null;render(target/PERIOD*PHASE_MAX+0.01);
 }else{
 stepFrom=phase;stepTo=phase+delta;stepElapsed=0;render(phase/PERIOD*PHASE_MAX+0.01);
@@ -543,7 +557,504 @@ setOp('v6_ack1',th>=640?1:0.25);setOp('v6_dot1',th>=640?1:0.25);
 setOp('v6_ack2',th>=640?1:0.25);setOp('v6_dot2',th>=640?1:0.25);
 
 }
+(function(){
+/* ---------- FlowStage：canvas 视图的尺寸 / 层缓存 / 命中高亮 / 探针 ---------- */
+function FlowStage(o){
+var W=o.W,H=o.H,el=document.getElementById(o.el);
+var ctx=(el&&window.CanvasRenderingContext2D)?el.getContext('2d'):null;
+var dpr=window.devicePixelRatio||1,sc=1,size='0x0';
+var g=null,cur=null,own='',toks=[],layers={},order=[],frameFn=null;
+var regions=o.regions||[],hover=null,pin=null,capEl=document.getElementById(o.cap||'flowSel'),capTxt='',tapFn=null;
+var chipEl={},chipBox=document.getElementById(o.chips||'flowChips');
+function meas(s,px,bold){
+if(ctx){ctx.font=(bold?'600 ':'')+px+'px "Microsoft YaHei",sans-serif';return ctx.measureText(s).width;}
+var w=0;for(var i=0;i<s.length;i++)w+=(s.charCodeAt(i)>255?px:px*0.62);
+return w*(bold?1.04:1);
+}
+function rr(x,y,w,h,r){
+if(!g)return;
+r=Math.min(r,w/2,h/2);g.beginPath();
+g.moveTo(x+r,y);g.lineTo(x+w-r,y);g.quadraticCurveTo(x+w,y,x+w,y+r);
+g.lineTo(x+w,y+h-r);g.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+g.lineTo(x+r,y+h);g.quadraticCurveTo(x,y+h,x,y+h-r);g.lineTo(x,y+r);
+g.quadraticCurveTo(x,y,x+r,y);g.closePath();
+}
+function fit(){
+if(!el)return;
+var cw=el.clientWidth||W,ch=Math.round(cw*H/W),s=Math.min(dpr,2000/cw);
+var bw=Math.round(cw*s),bh=Math.round(ch*s);
+if(ctx){
+if(el.width!==bw||el.height!==bh){el.width=bw;el.height=bh;el.style.height=ch+'px';}
+ctx.setTransform(bw/W,0,0,bw/W,0,0);
+}
+if(bw+'x'+bh!==size){size=bw+'x'+bh;for(var k in layers)layers[k].key=null;}
+sc=bw/W;
+}
+function layer(name,keyFn,fn){
+var L=layers[name];
+if(!L){L={cv:null,cx:null,key:null,labels:[]};layers[name]=L;order.push(name);}
+var key=String(keyFn===undefined?size:size+'|'+keyFn());
+if(L.key===key)return L;
+L.key=key;L.labels.length=0;
+if(ctx){
+if(!L.cv){L.cv=document.createElement('canvas');L.cx=L.cv.getContext('2d');}
+if(L.cv.width!==ctx.canvas.width||L.cv.height!==ctx.canvas.height){L.cv.width=ctx.canvas.width;L.cv.height=ctx.canvas.height;}
+L.cx.setTransform(sc,0,0,sc,0,0);
+L.cx.clearRect(0,0,W,H);
+g=L.cx;
+}
+cur=L.labels;
+fn();
+g=ctx;cur=null;
+return L;
+}
+function blit(L){
+if(ctx&&L.cv)ctx.drawImage(L.cv,0,0,W,H);
+}
+function keyAt(x,y){
+for(var i=regions.length-1;i>=0;i--){var b=regions[i];if(x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h)return b.k;}
+return null;
+}
+function syncSel(){
+var k=pin||hover,b=null;
+for(var i=0;i<regions.length;i++)if(regions[i].k===k)b=regions[i];
+var s=b?'<b>'+b.n+(pin?'（已钉住）':'')+'</b> · '+b.d:(o.hint||'');
+if(s!==capTxt&&capEl){capTxt=s;capEl.innerHTML=s;}
+}
+if(el){
+el.addEventListener('mousemove',function(ev){
+var rc=el.getBoundingClientRect();
+hover=keyAt((ev.clientX-rc.left)/rc.width*W,(ev.clientY-rc.top)/rc.height*H);
+});
+el.addEventListener('mouseleave',function(){hover=null;});
+el.addEventListener('click',function(ev){
+var rc=el.getBoundingClientRect();
+var k=keyAt((ev.clientX-rc.left)/rc.width*W,(ev.clientY-rc.top)/rc.height*H);
+pin=(pin===k?null:k);
+if(tapFn)tapFn((ev.clientX-rc.left)/rc.width*W,(ev.clientY-rc.top)/rc.height*H,k);
+});
+}
+if(chipBox&&(o.chips2||[]).length){
+o.chips2.forEach(function(c){
+var s=document.createElement('span');s.className='chip';
+s.innerHTML=c.l+' <b>--</b>';chipBox.appendChild(s);chipEl[c.k]=s;
+});
+}
+var S={
+W:W,H:H,size:function(){return size;},
+owner:function(k){own=k;return S;},
+text:function(s,x,y,px,col,al,bold){
+if(g){g.font=(bold?'600 ':'')+px+'px "Microsoft YaHei",sans-serif';g.fillStyle=col;g.textAlign=al||'left';g.textBaseline='middle';g.fillText(s,x,y);}
+var w=meas(s,px,bold);
+if(cur)cur.push({t:s,x:(al==='center'?x-w/2:al==='right'?x-w:x),y:y-px*0.63,w:w,h:px*1.26,own:own});
+return S;
+},
+rect:function(x,y,w,h,fill,stroke,dash,r,lw){
+if(!g)return S;
+rr(x,y,w,h,r===undefined?10:r);
+if(fill){g.fillStyle=fill;g.fill();}
+if(stroke){g.setLineDash(dash||[]);g.strokeStyle=stroke;g.lineWidth=lw||1.4;g.stroke();g.setLineDash([]);}
+return S;
+},
+shade:function(x,y,w,h,col){
+if(!g||w<=0)return S;
+rr(x,y,w,h,4);g.fillStyle=col;g.fill();return S;
+},
+line:function(x1,y1,x2,y2,col,w,dash,alpha){
+if(!g)return S;
+g.save();if(alpha!==undefined)g.globalAlpha=alpha;
+g.beginPath();g.setLineDash(dash||[]);g.strokeStyle=col;g.lineWidth=w||1.4;
+g.moveTo(x1,y1);g.lineTo(x2,y2);g.stroke();g.setLineDash([]);g.restore();return S;
+},
+dot:function(x,y,r,fill,stroke,alpha){
+if(!g)return S;
+g.save();if(alpha!==undefined)g.globalAlpha=alpha;
+g.beginPath();g.arc(x,y,r,0,6.2832);
+if(fill){g.fillStyle=fill;g.fill();}
+if(stroke){g.strokeStyle=stroke;g.lineWidth=1.4;g.stroke();}
+g.restore();return S;
+},
+tri:function(x,y,up,col){
+if(!g)return S;
+g.save();g.fillStyle=col;g.beginPath();
+if(up){g.moveTo(x,y-6);g.lineTo(x+6,y+5);g.lineTo(x-6,y+5);}
+else{g.moveTo(x,y+6);g.lineTo(x+6,y-5);g.lineTo(x-6,y-5);}
+g.closePath();g.fill();g.restore();return S;
+},
+token:function(x,y,r){toks.push({x:x,y:y,r:r});return S;},
+path:function(nodes){
+return function(u){
+if(u<=0)return[nodes[0][1],nodes[0][2]];
+if(u>=1)return[nodes[nodes.length-1][1],nodes[nodes.length-1][2]];
+var i=0;while(i<nodes.length-2&&u>nodes[i+1][0])i++;
+var a=nodes[i],b=nodes[i+1],t=(u-a[0])/(b[0]-a[0]);t=t*t*(3-2*t);
+return[a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+};
+},
+layer:function(name,keyFn,fn){layer(name,keyFn,fn);return S;},
+frame:function(fn){frameFn=fn;return S;},
+read:function(id,v){var n=document.getElementById(id);if(n&&n.textContent!==v)n.textContent=v;return S;},
+chip:function(k,v,cls){
+var n=chipEl[k];if(!n)return S;
+var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;
+var c='chip'+(cls?' '+cls:'');if(n.className!==c)n.className=c;
+return S;
+},
+pinTo:function(k){pin=k;},
+onTap:function(fn){tapFn=fn;return S;},
+labels:function(){
+var out=[];
+for(var i=0;i<order.length;i++)out=out.concat(layers[order[i]].labels);
+return out.concat(cur||[]);
+},
+draw:function(F){
+fit();
+toks.length=0;
+g=ctx;cur=[];
+if(ctx){ctx.clearRect(0,0,W,H);for(i=0;i<order.length;i++)blit(layers[order[i]]);}
+if(frameFn)frameFn(F);
+g=null;own='';
+syncSel();
+},
+/* 与主图时钟接线：tick 每帧调一次，探针复用同一套映射 */
+link:function(mapFn){
+var mp=mapFn||function(abs){
+var cyc=abs/PERIOD,p=cyc-Math.floor(cyc);
+return{th:p*PHASE_MAX+0.01,p:p,cyc:cyc,T:cyc};
+};
+window.__flowTick=function(abs){S.draw(mp(abs));};
+window.__flowProbe=function(abs){
+S.draw(mp(abs));
+return{w:W,h:H,labels:S.labels(),tokens:toks.slice(),boxes:regions.map(function(b){return{k:b.k,x:b.x,y:b.y,w:b.w,h:b.h};})};
+};
+return S;
+}
+};
+return S;
+}
+
+/* ===== 第 6 章：一条 Record 的一生 = 一条链 + 四种 ack 时机（同一个时钟推） ===== */
+var SR=0.125,JT=0.03,BLK=0.15,PL=0.10,PL2=0.05,QL=0.08,RL=0.10,UL=0.12,SLOW=0.5,DLY=0.62,BT=0.40,ATO=0.55,CURD=0.25;
+var LG=128,LE0=21,NN=28,NX=24,NW=34,CT=212,CH=46,SY=260,RW=[276,292,308,324];
+var RY=[378,394,410,426],BX=[16,258,500,742],BW=234,BTY=142,BTH=48;
+var GAP=[[144,176],[320,350],[510,540],[714,746]],GY=68;
+var AXL=430,AXR=627,AY=129,AX0=24,AX1=976;
+var TN=['ATMOST','ATLEAST','EFFECTIVE','MANUAL'];
+var TS=['\u2460 读到就 ack','\u2461 落地才 ack','\u2462 批量 ack + 幂等','\u2463 业务自己 ack'];
+var TC=['#E24B4A','#EF9F27','#639922','#5C7CA8'];
+var RC=['#C46A0A','#3D5C82','#4C7A1A','#8A4A08'];
+var NOWT=0,KILLI=null,EVT=[{t:-99,v:0}],MDPHI=-1,MDPT=-1;
+var REG=[
+{k:'lg',x:16,y:4,w:968,h:20,n:'图例',d:'琥珀 = 在途 Record；绿 = 已 ack 且已落地；红 = 已 ack 却没落地，杀掉就丢；橙 = 已落地但游标没跟上，杀掉就重；蓝 = 幂等键 / sequenceId 挡下的重复。',t:[]},
+{k:'b1',x:16,y:24,w:128,h:88,n:'外部数据源',d:'不是 Pulsar 的那一侧：MySQL 增量列、Kafka binlog、文件逐行，或者 webhook / MQTT 这类推送型。推送型走 PushSource，由外部系统推给 consume(record)，后面的实例循环一模一样。',t:[['外部数据源',24,37,10.5,'#1F1E1A','left',1],['MySQL \u00b7 Kafka binlog',24,52,8.5,'#6B695F','left',0],['webhook 走 PushSource',24,66,8.5,'#6B695F','left',0]]},
+{k:'b2',x:176,y:24,w:144,h:88,n:'Source 连接器',d:'契约只有两个方法：open(config, SourceContext) 拿 topic / schema / metrics，read() 是拉模型，读不到就阻塞。包是 NAR，里面带 bundled-dependencies，一个 NAR 一个 NarClassLoader，两个连接器依赖不同版本 Jackson 也不打架。JavaInstanceRunnable:605 调 read()。',t:[['\u2462\u2463 Source 连接器',184,37,10.5,'#1F1E1A','left',1],['open(config, SourceCtx)',184,52,8,'#6B695F','left',0],['read() 拉模型，阻塞式',184,66,8.5,'#6B695F','left',0],['NAR + NarClassLoader',184,93,8.5,'#854F0B','left',0]]},
+{k:'b3',x:350,y:24,w:160,h:88,n:'输入 topic \u00b7 账本',d:'Source 读到的每条 Record 包成 key / value / schema / topic / partitionId / recordSequence 发进 topic，落到 BookKeeper 账本：publishEq = 已确认写入位，LAC = 收齐 ackQuorum 的最后一本，消费者游标 markDelete 记在这条 topic 的元数据里。',t:[['\u2464 输入 topic',358,37,10.5,'#1F1E1A','left',1],['Record：key/value/schema',358,80,8,'#6B695F','left',0],['partitionId + recordSequence',358,93,8,'#854F0B','left',0]]},
+{k:'b4',x:540,y:24,w:174,h:88,n:'Sink 实例 \u00b7 同一个循环',d:'连接器不是另一套运行时，它就是 function 实例：readInput \u2192 process \u2192 sendOutputMessage，componentType = SINK 时切到连接器的 classloader。Sink 场景里的「用户函数」是 IdentityFunction 直通，真正的活交给 sink.write(record)（JavaInstanceRunnable:545）；写失败调 srcRecord.fail()，超过 maxMessageRetries 进 DLQ。',t:[['\u2465\u2466\u2467\u2468 Sink 实例循环',548,37,10.5,'#1F1E1A','left',1],['open + write(record)',548,52,8.5,'#6B695F','left',0],['IdentityFunction 直通',548,66,8.5,'#6B695F','left',0],['StateStore 按实例隔离',548,93,8,'#6B695F','left',0]]},
+{k:'b5',x:746,y:24,w:230,h:88,n:'外部目标',d:'ES / JDBC / S3。Pulsar 事务管不到这里：目的地是 Pulsar 才能靠 sequenceId 去重，写数据库要靠主键或唯一索引。外部系统慢，write 就慢，积压一路传到 topic 的 backlog——连接器不隔离压力。',t:[['外部目标 ES / JDBC',754,37,10.5,'#1F1E1A','left',1],['主键 order_id 挡住重复行',754,52,8.5,'#6B695F','left',0]]},
+{k:'ackl',x:340,y:116,w:644,h:26,n:'\u2468 ack 回路',d:'成功才 ack：consumer 把 ack 发回 Broker，游标 markDelete 才真的前进（演示延迟 0.25 轮，真实是批量刷写，所以游标总是慢半拍）。红点是 ackTimeout 到点的重投，沿同一条路反向回到实例。',t:[['\u2468 ack \u2192 markDelete 前进 \u00b7 乱序会钉住前缀',648,129,9,'#4C7A1A','left',0]]},
+{k:'t0',x:16,y:142,w:234,h:48,n:'档位 \u2460 ATMOST_ONCE',d:'currentRecord.ack() 在处理之前就发（JavaInstanceRunnable:375 里的 atMostOnceAutoAck）；Source 侧等于先 commit 外部 offset。最快，也最适合可丢的指标：挂在这一刻，已经 ack 还没落地的那些条一条都不会再回来。',t:[['\u2460 读到就 ack',24,152,10,'#E24B4A','left',1],['ATMOST_ONCE：先 ack 再 commit',24,168,8,'#6B695F','left',0]]},
+{k:'t1',x:258,y:142,w:234,h:48,n:'档位 \u2461 ATLEAST_ONCE',d:'默认档。process + write 都成功才 ack，所以不丢；代价是「已落地、游标没跟上」的那一段会重投——重复是常态不是异常，函数里只要有外部副作用就得做幂等。',t:[['\u2461 落地才 ack',266,152,10,'#C46A0A','left',1],['ATLEAST_ONCE：write 返回后 ack',266,168,8,'#6B695F','left',0]]},
+{k:'t2',x:500,y:142,w:234,h:48,n:'档位 \u2462 EFFECTIVELY_ONCE',d:'写出成功后按 0.40 轮一批 ack，重复交给去重：PulsarSinkEffectivelyOnceProcessor 拿 partitionId 当 producerName、recordSequence 当 sequenceId，Broker 侧把同号的重发挡掉；这两个字段缺一个直接抛异常。最慢，而且只管得到 Pulsar 里面。',t:[['\u2462 批量 ack + 幂等',508,152,10,'#4C7A1A','left',1],['EFFECTIVELY_ONCE：sequenceId 去重',508,168,8,'#6B695F','left',0]]},
+{k:'t3',x:742,y:142,w:234,h:48,n:'档位 \u2463 MANUAL',d:'业务自己调 context.ack()。忘了就永远不 ack——这里演的是靠 ackTimeout 把没 ack 的那份重投回来才补上：灵活，也最容易写错。游标一直跟在写后面，丢不了，但 backlog 会堆起来。',t:[['\u2463 业务自己 ack',750,152,10,'#3D5C82','left',1],['MANUAL：context.ack() 随手调',750,168,8,'#6B695F','left',0]]},
+{k:'lane',x:16,y:196,w:968,h:148,n:'一条 Record 的一生 \u00b7 泳道',d:'一格一条 Record，格子里是它自己的序号和状态色。格子下面四行旗子分别是 Source read 位、publishEq / LAC、游标 markDelete、外部 offset：三段进度同一条轴。压在格子下的色带是两个风险窗口——「游标与外部 offset 之间」和「read 位与 publishEq 之间」。点任意一格把杀掉时刻钉在那里。',t:[]},
+{k:'cmp',x:16,y:350,w:968,h:102,n:'四种档位的 ack 时刻',d:'同一批 Record，四种语义各自什么时候算成功。灰点 = consumer 收到，蓝点 = 落到外部系统，竖线 = 游标真的前进，中间那段线就是等了多久。\u2460 的竖线在蓝点左边（先 ack），\u2461 压在蓝点上，\u2462 齐刷刷排到批次栅格上，\u2463 缺几条（忘了 ack，等 ackTimeout 重投才补）。',t:[]},
+{k:'panel',x:16,y:458,w:968,h:108,n:'杀掉连接器进程之后',d:'把进程杀在当前这一刻再重启：游标之前的 Record 不会再回来，游标之后的全部重投。于是丢 / 重 / 表里行数三个数完全由 ack 时机决定。顺带一条：Worker 挂了数据面还在跑，实例挂了才由 RuntimeSpawner 定时检查拉起——重启是进程粒度，不是消息粒度。',t:[]},
+{k:'rst',x:856,y:462,w:124,h:24,n:'复位：跟随此刻',d:'点一下把杀掉时刻交回给当前时钟；也可以在泳道上另钉一格。',t:[]}
+];
+var S=FlowStage({W:1000,H:580,el:'flow',cap:'flowSel',chips:'flowChips',regions:REG,hint:'',
+ chips2:[{k:'src',l:'Source read'},{k:'pub',l:'topic 写入'},{k:'sink',l:'Sink write'},{k:'ack',l:'ack 语义'}]});
+
+function jit(i){return JT*(0.5+0.5*Math.sin(i*0.7));}
+function isSlow(i){return i%7===3;}
+function isPoison(i){return i%17===9;}
+function isBlock(i){return i%13===5;}
+function isForget(i){return i%11===5;}
+function tR(i){return i*SR+jit(i)+(isBlock(i)?BLK:0);}
+function tP(i){return tR(i)+PL+(i%9===4?PL2:0);}
+function tLc(i){return tP(i)+QL;}
+function tC(i){return tLc(i)+RL;}
+function tEnd(i){return isPoison(i)?1e9:tC(i)+UL+(isSlow(i)?SLOW:0);}
+function tDq(i){return isPoison(i)?tC(i)+DLY:1e9;}
+function tDn(i){var a=tEnd(i),b=tDq(i);return a<b?a:b;}
+function tierAt(t){for(var q=EVT.length-1;q>=0;q--)if(EVT[q].t<=t)return EVT[q].v;return 0;}
+function myTier(i){return tierAt(tR(i));}
+function ackRaw(i,tier){
+  if(tier===0)return tC(i);
+  var dn=tDn(i);
+  if(tier===1)return dn;
+  if(tier===2)return Math.ceil(dn/BT)*BT;
+  return isForget(i)?1e9:dn+0.03+0.02*(0.5+0.5*Math.cos(i*1.1));
+}
+function ackT(i,tier){
+  var a=ackRaw(i,tier),to=tC(i)+ATO;
+  if(a<=to)return a;
+  var sec=to+UL+(isSlow(i)?SLOW:0)+0.03;
+  if(a>1e8)return sec;
+  return a>sec?a:sec;
+}
+function curT(i,tier){return ackT(i,tier)+CURD;}
+function redel(i,tier){return ackRaw(i,tier)>tC(i)+ATO;}
+function dupT(i,tier){return (redel(i,tier)&&!isPoison(i))?tC(i)+ATO+UL+(isSlow(i)?SLOW:0):1e9;}
+function fCur(i){return curT(i,myTier(i));}
+function fDn(i){return tDn(i);}
+function fCm(i){return myTier(i)===0?tR(i):tP(i);}
+function nIdx(f,K,c){
+  if(K<f(0))return -1;
+  var i=Math.floor((K-c)/SR);if(i<0)i=0;var q=0;
+  while(i>0&&f(i)>K&&q++<90)i--;q=0;
+  while(q++<90&&f(i+1)<=K)i++;
+  return i;
+}
+function pfx(f,K,lo,hi){var k=lo;while(k<=hi&&f(k)<=K)k++;return k-1;}
+function posOf(n){if(n<0)n=0;return 'L'+(LE0+Math.floor(n/LG))+'\u00b7E'+(((n%LG)+LG)%LG);}
+function monoMdp(v,T){if(T<MDPT-1e-9)MDPHI=v;MDPT=T;if(v>MDPHI)MDPHI=v;return MDPHI;}
+function cx(i,lo){return NX+(i-lo+0.5)*NW;}
+function clamp(v,a,b){return v<a?a:(v>b?b:v);}
+function flp(x){return x<132?132:(x>780?x-8:x+8);}
+function fla(x){return x>780?'right':'left';}
+function fill(k,s,x,y,px,c,bd){S.owner(k);S.text(s,x,y,px,c,'left',bd||0);}
+function fillx(k,s,x,y,px,c){S.owner(k);S.text(s,flp(x),y,px,c,fla(x),0);}
+function stepOf(i,T){
+  if(tR(i)>T)return '\u2462 read() 还堵着';
+  if(tP(i)>T)return '\u2463\u2464 包成 Record \u2192 sendAsync';
+  if(tC(i)>T)return '\u2465\u2466 进实例循环 \u00b7 IdentityFunction 直通';
+  if(tDn(i)>T)return '\u2467 sink.write(record) 落外部系统';
+  if(fCur(i)>T)return '\u2468 ack 已发 \u00b7 游标待生效';
+  return '\u2468 ack 生效 \u00b7 游标前进';
+}
+/* 杀掉时刻 K 的账：全部由同一条时间轴推出来 */
+function analyze(K){
+  var hi=nIdx(tP,K,0.16);if(hi<0)hi=0;
+  var r={hi:hi,lost:0,replay:0,dup:0,block:0,extra:0,dlq:0,pois:0,redel:0};
+  for(var i=0;i<=hi;i++){
+    var tn=myTier(i),c=curT(i,tn),dn=tDn(i),dl=tDq(i);
+    if(isPoison(i)){r.pois++;if(dl<=K)r.dlq++;}
+    if(c<=K){if(dn>K&&dl>K)r.lost++;}
+    else{
+      r.replay++;
+      if(dn<=K&&!isPoison(i)){r.dup++;if(tn===2)r.block++;else r.extra++;}
+    }
+    if(dupT(i,tn)<=K){r.redel++;if(tn===2)r.block++;else r.extra++;}
+  }
+  r.e=hi+1-r.pois;
+  r.rows=r.e-r.lost+r.extra;
+  return r;
+}
+
+/* ---------- base：链上部件 + 契约文案（只跟画布尺寸走） ---------- */
+S.layer('base',function(){return S.size();},function(){
+  var i,b;
+  S.rect(16,196,968,148,'#FBFAF6','#ECEAE2',[6,5],10,1.2);
+  S.rect(16,350,968,102,'#FBFAF6','#ECEAE2',[6,5],10,1.2);
+  S.rect(16,458,968,108,'#FBFAF6','#3B3A34',null,10,1.4);
+  S.line(AXL,112,AXL,AY,'#E7F1DC',1.4);S.line(AXR,112,AXR,AY,'#E7F1DC',1.4);
+  S.line(AXL,AY,AXR,AY,'#E7F1DC',6);
+  for(i=0;i<4;i++){S.line(GAP[i][0],GY,GAP[i][1],GY,'#F0EEE6',8);}
+  for(i=0;i<REG.length;i++){
+    b=REG[i];
+    if(!b.t||b.k==='lg')continue;
+    S.rect(b.x,b.y,b.w,b.h,(b.k==='ackl')?'#F4FBF0':'#ffffff',(b.k==='ackl')?'#C6E0B4':(b.k==='rst'?'#5C7CA8':'#3B3A34'),(b.k==='rst')?[4,3]:null,9,1.4);
+    S.owner(b.k);
+    for(var j=0;j<b.t.length;j++)S.text(b.t[j][0],b.t[j][1],b.t[j][2],b.t[j][3],b.t[j][4],b.t[j][5],b.t[j][6]);
+  }
+  S.owner('lg');
+  var LGD=[[22,'#EF9F27','琥珀 = 在途'],[92,'#639922','绿 = ack 已落地'],[214,'#E24B4A','红 = 会丢'],[290,'#D97E06','橙 = 会重'],[366,'#5C7CA8','蓝 = 幂等挡下'],[486,'#B4B2A9','四行旗子 = 三段进度同轴'],[700,'#854F0B','数字全由同一个时钟推出']];
+  for(i=0;i<LGD.length;i++){S.dot(LGD[i][0]+5,12,5,LGD[i][1],null);S.text(LGD[i][2],LGD[i][0]+15,12,9,'#6B695F','left',0);}
+  S.owner('lane');
+  S.text('一条 Record 的一生：一格一条，序号 + 状态色',24,204,10,'#1F1E1A','left',1);
+  S.text('演示 8 条/轮 \u00b7 JavaInstanceRunnable 的同一个循环',976,204,9,'#6B695F','right',0);
+  var RN=['read 位','publishEq \u00b7 LAC','markDelete','外部 offset'];
+  for(i=0;i<4;i++){S.owner('lane');S.text(RN[i],24,RW[i],8.5,RC[i],'left',1);}
+  S.owner('lane');S.text('风险带',24,SY+3,8,'#8A2A2A','left',0);
+  S.owner('cmp');
+  S.text('同一批 Record \u00b7 四种档位的 ack 时刻（灰 = 收到 蓝 = 落地 竖线 = 游标生效）',24,358,9.5,'#1F1E1A','left',1);
+  for(i=0;i<4;i++){S.owner('cmp');S.text(TS[i],24,RY[i],8.5,TC[i],'left',0);}
+  S.owner('panel');
+  S.text('杀掉连接器进程，重启之后',24,474,10.5,'#1F1E1A','left',1);
+});
+
+/* ---------- tier 层：只在档位切换时重画（选中框描边，不覆盖文字） ---------- */
+S.layer('tier',function(){return String(tierAt(NOWT))+'|'+S.size();},function(){
+  var t=tierAt(NOWT);
+  S.owner('t'+t);
+  S.rect(BX[t]+2,BTY+2,BW-4,BTH-4,null,TC[t],null,9,2);
+  S.owner('cmp');
+  S.rect(96,RY[t]-11,888,22,null,TC[t],[5,4],6,1.1);
+});
+
+/* ---------- 每帧：连续流仿真 ---------- */
+S.frame(function(F){
+  var T=F.cyc,i,rw,x,lo,hiR,hiP,hiL,hiC,mdp,ext,cmt,tn=tierAt(T);
+  NOWT=T;
+  hiR=nIdx(tR,T,0);if(hiR<0)hiR=0;
+  hiP=nIdx(tP,T,0.15);if(hiP>hiR)hiP=hiR;
+  hiL=nIdx(tLc,T,0.23);if(hiL>hiP)hiL=hiP;
+  hiC=nIdx(tC,T,0.33);if(hiC>hiP)hiC=hiP;
+  lo=hiR-NN+1;if(lo<0)lo=0;
+  mdp=pfx(fCur,T,lo,hiP);if(mdp<lo-1)mdp=lo-1;
+  ext=pfx(fDn,T,lo,hiP);if(ext<lo-1)ext=lo-1;
+  cmt=pfx(fCm,T,lo,hiR);if(cmt<lo-1)cmt=lo-1;
+  var KT=(KILLI===null)?T:Math.min(T,tP(KILLI)+0.06);
+  var aT=analyze(T),aK=(KILLI===null)?aT:analyze(KT);
+  var extD=Math.max(0,ext),cmtD=Math.max(0,cmt),gapD=Math.max(0,hiP-mdp);
+  var tLo=tR(lo),TW=NN*SR;
+  function AX(t){return AX0+clamp((t-tLo)/TW,0,1)*(AX1-AX0);}
+
+  /* 泳道：每格一条 Record，序号 + 状态色 */
+  for(i=lo;i<=hiR;i++){
+    x=NX+(i-lo)*NW;
+    var c=fCur(i),dn=tDn(i),dl=tDq(i),fg='#F5F4EF',st='#ECEAE2',lb='',tc='#B4B2A9';
+    if(c<=T){
+      if(dl<=T){fg='#F1EBE9';st='#B91C1C';lb='DLQ';tc='#8A2A2A';}
+      else if(dn<=T){fg='#EAF3DF';st='#639922';lb='ack';tc='#4C7A1A';}
+      else{fg='#F7D1D0';st='#E24B4A';lb='会丢';tc='#8A2A2A';}
+    }else if(dn<=T){fg='#FDEBC8';st='#D97E06';lb='未 ack';tc='#8A4A08';}
+    else if(tC(i)<=T){fg='#FFF6E8';st='#EF9F27';lb='写中';tc='#8A4A08';}
+    else if(tP(i)<=T){fg='#E8EEF6';st='#5C7CA8';lb='topic';tc='#3D5C82';}
+    else if(tR(i)<=T){fg='#FBF3E4';st='#D9A85A';lb='read';tc='#8A6A2A';}
+    S.rect(x+1,CT,NW-2,CH,fg,st,null,4,1);
+    S.owner('lane');
+    S.text(String(i),x+NW/2,226,8.5,tc,'center',0);
+    S.text(lb,x+NW/2,244,8,tc,'center',0);
+  }
+  /* 两段风险窗口，压在格子底边的色带上 */
+  var xa=clamp(cx(Math.min(mdp,ext)+1,lo),NX,AX1),xb=clamp(cx(Math.max(mdp,ext)+1,lo),NX,AX1);
+  if(xb>xa+1)S.shade(xa,SY,xb-xa,6,mdp>ext?'rgba(226,75,74,0.6)':'rgba(217,126,6,0.6)');
+  if(cmt>hiP){
+    var sx=clamp(cx(hiP+1,lo),NX,AX1),sxe=clamp(cx(cmt+1,lo),NX,AX1);
+    if(sxe>sx+1)S.shade(sx,SY,sxe-sx,6,'rgba(138,42,42,0.5)');
+  }
+  /* 四行旗子：Source read / publishEq+LAC / 游标 / 外部 offset */
+  var FX=[cx(hiR,lo),cx(hiP,lo),cx(mdp,lo),cx(ext,lo)];
+  for(i=0;i<4;i++){
+    x=clamp(FX[i],NX+2,AX1-2);
+    S.line(x,CT-4,x,RW[i]+4,RC[i],1.1,null,0.55);
+    S.tri(x,RW[i]-10,true,RC[i]);
+  }
+  x=clamp(cx(hiL,lo),NX+2,AX1-2);
+  S.line(x,CT-4,x,RW[1]+4,'#5C7CA8',1.1,[4,3],0.7);
+  fillx('lane','read '+hiR+' \u00b7 next '+(hiR+1)+(isBlock(hiR)?' \u00b7 阻塞中':''),FX[0],RW[0],8.5,RC[0]);
+  fillx('lane','publishEq '+hiP+' \u00b7 LAC '+hiL,FX[1],RW[1],8.5,RC[1]);
+  fillx('lane','游标 '+posOf(mdp)+' \u00b7 差 '+gapD+' 条 = 杀掉会重放',FX[2],RW[2],8.5,RC[2]);
+  fillx('lane','offset '+extD+' \u00b7 表里 '+aT.rows+' 行',FX[3],RW[3],8.5,RC[3]);
+
+  /* 链上部件的活数字 */
+  fill('b1','源表第 '+(hiR+1)+' 行',24,80,8.5,'#3B3A34',0);
+  fill('b1','next 增量列 '+(hiR+2),24,93,8.5,'#6B695F',0);
+  fill('b2','commit '+cmtD+' \u00b7 未写进 '+Math.max(0,cmt-hiP),184,79,8.5,cmt>hiP?'#C03434':'#3B3A34',0);
+  fill('b3','publishEq '+posOf(hiP),358,52,8.5,'#1E3A8A',0);
+  fill('b3','LAC '+posOf(hiL)+' \u00b7 backlog '+gapD,358,66,8.5,gapD>8?'#C03434':'#6B695F',0);
+  fill('b4','已派发 '+hiC+' \u00b7 落地 '+extD,548,79,8.5,'#3B3A34',0);
+  fill('b5','offset '+extD+' \u00b7 表里 '+aT.rows+' 行',754,66,8.5,'#3B3A34',0);
+  fill('b5','累计多写 +'+aT.extra+' 行 \u00b7 挡下 '+aT.block+' 条',754,79,8.5,aT.extra>0?'#8A4A08':'#4C7A1A',0);
+  fill('b5','慢写 0.5 轮 \u2192 反压回 topic',754,93,8.5,'#6B695F',0);
+
+  /* 四个档位各自的此刻账（同一条轴，只换 ack 时机） */
+  var bt=[0,0,0,0];
+  for(i=Math.max(0,hiP-NN);i<=hiP;i++){
+    var dd=tDn(i),dq=tDq(i);
+    for(rw=0;rw<4;rw++){
+      var cq=curT(i,rw);
+      if(rw===0){if(cq<=T&&dd>T&&dq>T)bt[0]++;}
+      else if(rw===1){if(cq>T&&dd<=T&&!isPoison(i))bt[1]++;}
+      else if(rw===2){if((cq>T&&dd<=T&&!isPoison(i))||dupT(i,2)<=T)bt[2]++;}
+      else{if(isForget(i)&&cq>T)bt[3]++;}
+    }
+  }
+  fill('t0','此刻 已 ack 未落地 '+bt[0]+' 条',24,182,8.5,bt[0]?'#C03434':'#6B695F',0);
+  fill('t1','重复 '+bt[1]+' 条（重投会二次写）',266,182,8.5,'#8A4A08',0);
+  fill('t2','挡下 '+bt[2]+' 条 \u00b7 行数不涨',508,182,8.5,'#4C7A1A',0);
+  fill('t3','忘 ack '+bt[3]+' 条 \u00b7 等超时重投',750,182,8.5,'#3D5C82',0);
+
+  /* 四种档位的 ack 时刻（横道对比） */
+  for(rw=0;rw<4;rw++){
+    var sel=(rw===tn),ay=RY[rw];
+    for(i=lo;i<=hiR;i++){
+      var a0=AX(tC(i)),a1=AX(tDn(i)),a2=AX(curT(i,rw)),a3=AX(tP(i));
+      S.line(a3,ay-3,a3,ay+3,sel?'#C9C6BC':'#E4E1D8',1);
+      S.dot(a0,ay,sel?2.4:1.9,sel?'#8A867C':'#C9C6BC',null);
+      if(a1<AX1-1)S.dot(a1,ay,sel?2.8:2.2,isPoison(i)?'#B91C1C':(sel?'#5C7CA8':'#AFC4DE'),null);
+      if(a2<=AX1-1){
+        S.line(a1<a2?a1:a2,ay,a1<a2?a2:a1,ay,TC[rw],1.2,null,sel?0.55:0.3);
+        S.line(a2,ay-5.5,a2,ay+5.5,TC[rw],sel?2:1.2,null,sel?1:0.55);
+      }else S.dot(AX1-2,ay,2.4,null,TC[rw]);
+    }
+  }
+  var kx=AX(KT);
+  S.line(kx,CT-4,kx,RY[3]+7,KILLI===null?'#C46A0A':'#E24B4A',1.3,[6,4],0.8);
+  S.tri(kx,RY[3]+9,false,KILLI===null?'#C46A0A':'#E24B4A');
+
+  /* 面板：杀掉这一刻算出来的账 */
+  S.owner('rst');
+  S.text(KILLI===null?'复位：跟随此刻':'钉在第 '+KILLI+' 条',864,474,9,KILLI===null?'#3D5C82':'#C03434','left',1);
+  fill('panel','丢 '+aK.lost+' 条 \u00b7 重放 '+aK.replay+' 条 \u00b7 会二次写 '+aK.dup+' 条 \u00b7 表里 '+aK.rows+' 行 / 应有 '+aK.e+' 行',24,492,11,aK.lost>0?'#8A2A2A':'#3B3A34',1);
+  var why=[
+    'ATMOST：ack 早于落地，'+aK.lost+' 条已经 ack / commit 却没进表 \u2192 重启后不再投，表里就少 '+aK.lost+' 行，只有可丢的指标才这么配',
+    'ATLEAST：一条不丢，但游标没跟上的 '+aK.dup+' 条要重投二次写 \u2192 没主键就是 '+aK.dup+' 行重复；慢写和毒消息把它们推得更多',
+    'EFFECTIVELY_ONCE：'+aK.replay+' 条重投照样发生，Broker 按 sequenceId 挡下 '+aK.block+' 条 \u2192 表里行数不涨，代价是每条都得带 partitionId + recordSequence',
+    'MANUAL：'+aK.redel+' 条是忘了 ack、被 ackTimeout 重投回来才补上的 \u2192 丢不了，可游标永远跟在写后面，重投要 '+aK.replay+' 条'
+  ];
+  fill('panel',why[tn],24,509,10,TC[tn],0);
+  fill('panel','链上账：read '+hiR+' \u00b7 publishEq '+hiP+' \u00b7 LAC '+hiL+' \u00b7 游标 '+posOf(mdp)+' \u00b7 offset '+extD+' \u00b7 DLQ '+aK.dlq+' 条 \u00b7 毒消息 '+aK.pois+' 条',24,526,9.5,'#3B3A34',0);
+  fill('panel','表里累计已经多写 '+aT.extra+' 行（超时重投 + 重放），挡下 '+aT.block+' 条 \u00b7 第 '+hiR+' 条此刻在：'+stepOf(hiR,T)+' \u00b7 第 '+(Math.floor(T)+1)+' 轮 '+Math.round(F.th)+'\u00b0',24,543,9.5,'#854F0B',0);
+  fill('panel','环境依赖：包下载失败停在 \u2461（PackageUrlValidator 挡 file://），凭证过期停在 \u2462 open，外部系统慢卡在 \u2467 write；没有 DLQ 一条毒消息钉死整条订阅；监控看 sink 异常数 / backlog / DLQ',24,559,9,'#6B695F',0);
+
+  /* 运动件：接口缝里走的在途 Record + ack 回路 + 超时重投 */
+  var rate=3.2+Math.min(3.2,gapD*0.28);
+  for(i=0;i<4;i++){
+    for(var j=0;j<3;j++){
+      var u=(T*rate*(i===2?1.2:1)+j/3)%1;
+      x=GAP[i][0]+6+u*(GAP[i][1]-GAP[i][0]-12);
+      S.dot(x,GY,4.4,'#EF9F27','#C46A0A');S.token(x,GY,4.4);
+    }
+  }
+  for(j=0;j<3;j++){
+    u=(T*2.4+j/3)%1;
+    x=AXR-(AXR-AXL)*u;
+    S.dot(x,AY,4.3,'#639922','#4C7A1A');S.token(x,AY,4.3);
+  }
+  if(aT.redel>0){
+    u=(T*1.7)%1;x=AXL+(AXR-AXL)*u;
+    S.dot(x,AY+7,4.3,'#E24B4A','#B91C1C');S.token(x,AY+7,4.3);
+  }
+
+  /* 读数 + chip */
+  var mdpM=monoMdp(mdp,T);
+  S.read('froSrc','第 '+hiR+' 行 \u00b7 next '+(hiR+1));
+  S.read('froPub',posOf(hiP)+' / '+posOf(hiL));
+  S.read('froMdp',posOf(mdpM));
+  S.read('froExt','第 '+extD+' 行 \u00b7 表里 '+aT.rows+' 行');
+  S.read('froGap',gapD+' 条');
+  S.read('froKill','丢 '+aK.lost+' / 重 '+aK.dup);
+  S.chip('src','read '+hiR+(isBlock(hiR)?' 阻塞':''),isBlock(hiR)?'on':'');
+  S.chip('pub',posOf(hiP),'on');
+  S.chip('sink','write '+extD,'on');
+  S.chip('ack',TN[tn]+' 差 '+gapD,gapD>10?'on':'');
+});
+S.onTap(function(x,y,k){
+  if(!k)return;
+  var T=NOWT,i,t=tierAt(T);
+  if(k==='rst'){KILLI=null;return;}
+  if(k.length===2&&k.charAt(0)==='t'){
+    i=parseInt(k.slice(1),10);
+    if(i===t)return;
+    EVT.push({t:T,v:i});
+    if(EVT.length>8)EVT.shift();
+    return;
+  }
+  if(k==='lane'||k==='cmp'){
+    var hiR=nIdx(tR,T,0);if(hiR<0)hiR=0;
+    var lo=hiR-NN+1;if(lo<0)lo=0;
+    i=lo+Math.floor((x-NX)/NW);
+    if(i<lo||i>hiR)return;
+    KILLI=i;
+  }
+});
+S.link();
+window.__flowTick(PERIOD);
+})();
 function tick(now){
+var prev=phase;
 var dt=Math.min(50,now-last);last=now;
 if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
 if(mode==='step'&&stepTo!==null){
@@ -553,6 +1064,10 @@ var e=p*p*(3-2*p);
 phase=stepFrom+(stepTo-stepFrom)*e;
 if(p>=1){phase=((stepTo%PERIOD)+PERIOD)%PERIOD;stepTo=null;}
 }
+var dd=phase-prev;
+if(dd>PERIOD/2)dd-=PERIOD;else if(dd<-PERIOD/2)dd+=PERIOD;
+absPhase+=dd;
+if(window.__flowTick)window.__flowTick(absPhase);
 render(phase/PERIOD*PHASE_MAX+0.01);
 requestAnimationFrame(tick);
 }

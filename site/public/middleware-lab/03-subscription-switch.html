@@ -114,6 +114,9 @@ table.grid td.act{background:#FAEEDA}
 .chip.off{background:#F5F4EF}
 .subview{margin:8px 0 4px;background:#ffffff;border:1px dashed #D3D1C7;border-radius:10px;padding:8px 10px}
 .subview .viewtitle{font-size:12px;font-weight:600;color:#854F0B;margin-bottom:4px}
+#flow{width:100%;display:block;cursor:crosshair}
+.flowcap{font-size:12px;color:#6B695F;margin:6px 2px 0;line-height:1.6}
+.flowcap b{color:#3B3A34;font-weight:600}
 </style>
 </head>
 <body>
@@ -169,6 +172,15 @@ table.grid td.act{background:#FAEEDA}
 <title>四种订阅模式的分发对比</title>
 <g id="scene2"></g>
 </svg>
+</div>
+
+<div class="subview">
+<div class="viewtitle">第三视图 · 四种订阅同时起跑（canvas，点横道或点消费者看这本账）</div>
+<canvas id="flow" width="1000" height="580"></canvas>
+<div class="readout"><span class="ro">当前订阅 <b id="froMode">--</b></span><span class="ro">本轮分发 <b id="froSplit">--</b></span><span class="ro">空转消费者 <b id="froIdle">--</b></span><span class="ro">顺序违例 <b id="froOrder">--</b></span><span class="ro">游标 markDelete <b id="froMdp">--</b></span><span class="ro">该订阅积压 <b id="froBack">--</b></span></div>
+<div class="chips" id="flowChips"></div>
+<p class="flowcap" id="flowSel">四道横的是同一个 topic 上的四个订阅（各一套游标），每道三个消费者同时在收同一条流。点任意一道把读数切过去，点某个消费者看它拿到/漏掉哪几条；上方的订阅按钮和横道是联动的。</p>
+<p class="figcap"><b>读法：</b>左侧竖槽是同一条 topic 流，圆点颜色 = 消息 key，最新一条在底部往上走。竖槽右边那把尺上四个三角，是四个订阅各自的 markDelete——高低差就是「谁比谁慢了多少条」。每道横着读：灰槽里排着的圆点是还没推出去的消息（dispatcher 队头），下方往左回的绿点是 ack + CommandFlow 还许可，消费者行右边的四个小格是 receiverQueue 的在队深度（演示 4）。右侧四行数字当场算：本轮各消费者各收到几条、空转几个、顺序违例几次（同一 key 的相邻两条落到不同消费者记一次）、游标卡在哪一条。底部把选中那道最近分发的 10 条摊开：底色 = 收到它的消费者，红框 = ackTimeout 到点重投过，橙框 = 业务 negativeAcknowledge() 重投过。<br><span class="figsrc">口径：Pulsar 5.1.0-SNAPSHOT。生产 8 条/轮、每消费者处理 3 条/轮、receiverQueueSize=4、ackTimeout=0.75 轮、maxRedeliverCount=3、hash range 分 3 段，全是演示值（真实默认 receiverQueueSize=1000、dispatcherMaxReadBatchSize=500，量级不同但相互关系一致）；Exclusive/Failover 的空余许可只算 active 那一份；分区 topic 上每个分区另有自己的 active 与游标，这里只画 partition-0。</span></p>
 </div>
 
 <div class="ctrl">
@@ -446,6 +458,7 @@ var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),
 var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
 var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
 var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var absPhase=PERIOD;
 var stepFrom=0,stepTo=null,stepElapsed=0,STEP_DUR=900;
 var dots=[];
 for(var s=0;s<STEPS.length;s++){
@@ -480,6 +493,7 @@ stepIdx=(i+STEPS.length)%STEPS.length;
 mode='step';run=false;
 var target=STEPS[stepIdx].d/PHASE_MAX*PERIOD,delta=target-phase;
 if(reduced||Math.abs(delta)>PERIOD/4){
+absPhase+=delta;
 phase=target;stepTo=null;render(target/PERIOD*PHASE_MAX+0.01);
 }else{
 stepFrom=phase;stepTo=phase+delta;stepElapsed=0;render(phase/PERIOD*PHASE_MAX+0.01);
@@ -553,7 +567,502 @@ setAttr('v3_play','x1',x2);setAttr('v3_play','x2',x2);setAttr('v3_dot','cx',x2);
 setText('v3_now','相位 '+(Math.floor(t2)%720)+'° · '+MODE_NAME[MODE]);
 
 }
+(function(){
+/* ---------- FlowStage：canvas 视图的尺寸 / 层缓存 / 命中高亮 / 探针 ---------- */
+function FlowStage(o){
+var W=o.W,H=o.H,el=document.getElementById(o.el);
+var ctx=(el&&window.CanvasRenderingContext2D)?el.getContext('2d'):null;
+var dpr=window.devicePixelRatio||1,sc=1,size='0x0';
+var g=null,cur=null,own='',toks=[],layers={},order=[],frameFn=null;
+var regions=o.regions||[],hover=null,pin=null,capEl=document.getElementById(o.cap||'flowSel'),capTxt='',tapFn=null;
+var chipEl={},chipBox=document.getElementById(o.chips||'flowChips');
+function meas(s,px,bold){
+if(ctx){ctx.font=(bold?'600 ':'')+px+'px "Microsoft YaHei",sans-serif';return ctx.measureText(s).width;}
+var w=0;for(var i=0;i<s.length;i++)w+=(s.charCodeAt(i)>255?px:px*0.62);
+return w*(bold?1.04:1);
+}
+function rr(x,y,w,h,r){
+if(!g)return;
+r=Math.min(r,w/2,h/2);g.beginPath();
+g.moveTo(x+r,y);g.lineTo(x+w-r,y);g.quadraticCurveTo(x+w,y,x+w,y+r);
+g.lineTo(x+w,y+h-r);g.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+g.lineTo(x+r,y+h);g.quadraticCurveTo(x,y+h,x,y+h-r);g.lineTo(x,y+r);
+g.quadraticCurveTo(x,y,x+r,y);g.closePath();
+}
+function fit(){
+if(!el)return;
+var cw=el.clientWidth||W,ch=Math.round(cw*H/W),s=Math.min(dpr,2000/cw);
+var bw=Math.round(cw*s),bh=Math.round(ch*s);
+if(ctx){
+if(el.width!==bw||el.height!==bh){el.width=bw;el.height=bh;el.style.height=ch+'px';}
+ctx.setTransform(bw/W,0,0,bw/W,0,0);
+}
+if(bw+'x'+bh!==size){size=bw+'x'+bh;for(var k in layers)layers[k].key=null;}
+sc=bw/W;
+}
+function layer(name,keyFn,fn){
+var L=layers[name];
+if(!L){L={cv:null,cx:null,key:null,labels:[]};layers[name]=L;order.push(name);}
+var key=String(keyFn===undefined?size:size+'|'+keyFn());
+if(L.key===key)return L;
+L.key=key;L.labels.length=0;
+if(ctx){
+if(!L.cv){L.cv=document.createElement('canvas');L.cx=L.cv.getContext('2d');}
+if(L.cv.width!==ctx.canvas.width||L.cv.height!==ctx.canvas.height){L.cv.width=ctx.canvas.width;L.cv.height=ctx.canvas.height;}
+L.cx.setTransform(sc,0,0,sc,0,0);
+L.cx.clearRect(0,0,W,H);
+g=L.cx;
+}
+cur=L.labels;
+fn();
+g=ctx;cur=null;
+return L;
+}
+function blit(L){
+if(ctx&&L.cv)ctx.drawImage(L.cv,0,0,W,H);
+}
+function keyAt(x,y){
+for(var i=regions.length-1;i>=0;i--){var b=regions[i];if(x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h)return b.k;}
+return null;
+}
+function syncSel(){
+var k=pin||hover,b=null;
+for(var i=0;i<regions.length;i++)if(regions[i].k===k)b=regions[i];
+var s=b?'<b>'+b.n+(pin?'（已钉住）':'')+'</b> · '+b.d:(o.hint||'');
+if(s!==capTxt&&capEl){capTxt=s;capEl.innerHTML=s;}
+}
+if(el){
+el.addEventListener('mousemove',function(ev){
+var rc=el.getBoundingClientRect();
+hover=keyAt((ev.clientX-rc.left)/rc.width*W,(ev.clientY-rc.top)/rc.height*H);
+});
+el.addEventListener('mouseleave',function(){hover=null;});
+el.addEventListener('click',function(ev){
+var rc=el.getBoundingClientRect();
+var k=keyAt((ev.clientX-rc.left)/rc.width*W,(ev.clientY-rc.top)/rc.height*H);
+pin=(pin===k?null:k);
+if(tapFn)tapFn((ev.clientX-rc.left)/rc.width*W,(ev.clientY-rc.top)/rc.height*H,k);
+});
+}
+if(chipBox&&(o.chips2||[]).length){
+o.chips2.forEach(function(c){
+var s=document.createElement('span');s.className='chip';
+s.innerHTML=c.l+' <b>--</b>';chipBox.appendChild(s);chipEl[c.k]=s;
+});
+}
+var S={
+W:W,H:H,size:function(){return size;},
+owner:function(k){own=k;return S;},
+text:function(s,x,y,px,col,al,bold){
+if(g){g.font=(bold?'600 ':'')+px+'px "Microsoft YaHei",sans-serif';g.fillStyle=col;g.textAlign=al||'left';g.textBaseline='middle';g.fillText(s,x,y);}
+var w=meas(s,px,bold);
+if(cur)cur.push({t:s,x:(al==='center'?x-w/2:al==='right'?x-w:x),y:y-px*0.63,w:w,h:px*1.26,own:own});
+return S;
+},
+rect:function(x,y,w,h,fill,stroke,dash,r,lw){
+if(!g)return S;
+rr(x,y,w,h,r===undefined?10:r);
+if(fill){g.fillStyle=fill;g.fill();}
+if(stroke){g.setLineDash(dash||[]);g.strokeStyle=stroke;g.lineWidth=lw||1.4;g.stroke();g.setLineDash([]);}
+return S;
+},
+shade:function(x,y,w,h,col){
+if(!g||w<=0)return S;
+rr(x,y,w,h,4);g.fillStyle=col;g.fill();return S;
+},
+line:function(x1,y1,x2,y2,col,w,dash,alpha){
+if(!g)return S;
+g.save();if(alpha!==undefined)g.globalAlpha=alpha;
+g.beginPath();g.setLineDash(dash||[]);g.strokeStyle=col;g.lineWidth=w||1.4;
+g.moveTo(x1,y1);g.lineTo(x2,y2);g.stroke();g.setLineDash([]);g.restore();return S;
+},
+dot:function(x,y,r,fill,stroke,alpha){
+if(!g)return S;
+g.save();if(alpha!==undefined)g.globalAlpha=alpha;
+g.beginPath();g.arc(x,y,r,0,6.2832);
+if(fill){g.fillStyle=fill;g.fill();}
+if(stroke){g.strokeStyle=stroke;g.lineWidth=1.4;g.stroke();}
+g.restore();return S;
+},
+tri:function(x,y,up,col){
+if(!g)return S;
+g.save();g.fillStyle=col;g.beginPath();
+if(up){g.moveTo(x,y-6);g.lineTo(x+6,y+5);g.lineTo(x-6,y+5);}
+else{g.moveTo(x,y+6);g.lineTo(x+6,y-5);g.lineTo(x-6,y-5);}
+g.closePath();g.fill();g.restore();return S;
+},
+token:function(x,y,r){toks.push({x:x,y:y,r:r});return S;},
+path:function(nodes){
+return function(u){
+if(u<=0)return[nodes[0][1],nodes[0][2]];
+if(u>=1)return[nodes[nodes.length-1][1],nodes[nodes.length-1][2]];
+var i=0;while(i<nodes.length-2&&u>nodes[i+1][0])i++;
+var a=nodes[i],b=nodes[i+1],t=(u-a[0])/(b[0]-a[0]);t=t*t*(3-2*t);
+return[a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+};
+},
+layer:function(name,keyFn,fn){layer(name,keyFn,fn);return S;},
+frame:function(fn){frameFn=fn;return S;},
+read:function(id,v){var n=document.getElementById(id);if(n&&n.textContent!==v)n.textContent=v;return S;},
+chip:function(k,v,cls){
+var n=chipEl[k];if(!n)return S;
+var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;
+var c='chip'+(cls?' '+cls:'');if(n.className!==c)n.className=c;
+return S;
+},
+pinTo:function(k){pin=k;},
+onTap:function(fn){tapFn=fn;return S;},
+labels:function(){
+var out=[];
+for(var i=0;i<order.length;i++)out=out.concat(layers[order[i]].labels);
+return out.concat(cur||[]);
+},
+draw:function(F){
+fit();
+toks.length=0;
+g=ctx;cur=[];
+if(ctx){ctx.clearRect(0,0,W,H);for(i=0;i<order.length;i++)blit(layers[order[i]]);}
+if(frameFn)frameFn(F);
+g=null;own='';
+syncSel();
+},
+/* 与主图时钟接线：tick 每帧调一次，探针复用同一套映射 */
+link:function(mapFn){
+var mp=mapFn||function(abs){
+var cyc=abs/PERIOD,p=cyc-Math.floor(cyc);
+return{th:p*PHASE_MAX+0.01,p:p,cyc:cyc,T:cyc};
+};
+window.__flowTick=function(abs){S.draw(mp(abs));};
+window.__flowProbe=function(abs){
+S.draw(mp(abs));
+return{w:W,h:H,labels:S.labels(),tokens:toks.slice(),boxes:regions.map(function(b){return{k:b.k,x:b.x,y:b.y,w:b.w,h:b.h};})};
+};
+return S;
+}
+};
+return S;
+}
+
+/* ===== 第 3 章：四种订阅 = 四台同时运转的分发机 ===== */
+var PP=8,FD=0.06,RQS=4,SRV=0.34,ATO=0.75,MRC=3,BACK=160,PSR=0.16,ID0=1000;
+var FOS0=0.3,FOS1=0.9;
+var KL=['A','B','C'],KP=[0,0,1,2,0,1,2,0];
+var KC=['#EF9F27','#639922','#5C7CA8'],KD=['#C46A0A','#4C7A1A','#3D5C82'];
+var CF=['#FAEEDA','#EAF3DE','#E7EEF6'],CB=['#D97E06','#639922','#5C7CA8'];
+var MN=['Exclusive','Failover','Shared','Key_Shared'];
+var MSUB=['sub-ex','sub-fo','sub-sh','sub-ks'];
+var MTAG=['一个吃全部','主备：仍是一份算力','三份算力','key 绑住消费者'];
+var DCLS=['SingleActive','SingleActive','MultipleCons','StickyKey'];
+var DSCP=['scope 0','scope 分区号','无 active','key→range'];
+var LY=[30,145,260,375],LH=111,LNX=236,LNW=748,DAX=336,DAW=116,CIX=462,CIW=194,VVX=666,VVW=312;
+var CY=[24,52,80],CRH=24;
+var CX=76,CTOP=124,CBOT=456,CST=34,RX=120,LBX=134;
+var sel=0,insp=-1;
+
+function keyOf(n){return KP[((n%8)+8)%8];}
+function poison(n){return ((n%41)+41)%41===7;}
+function negack(n){return ((n%41)+41)%41===19;}
+function posOf(n){return 'L'+Math.floor(n/128)+'·E'+(((n%128)+128)%128);}
+function eid(n){return 'E'+(((n%128)+128)%128);}
+function actAt(m,t){if(m!==1)return 0;var c=Math.floor(t),f=t-c;return(c%4===2&&f>=FOS0&&f<FOS1)?1:0;}
+
+/* ---------- 一台分发机：用同一个时钟推出真正联动的数量 ---------- */
+function advK(o,j,t){var d=o.dl[j];while(o.k[j]<d.length&&d[o.k[j]]<=t)o.k[j]++;}
+function pushMsg(o,j0,n,st){
+var j=j0,cur=st,b,a;
+if(poison(n)){
+if(!o.seen[n]){o.seen[n]=1;o.pz++;}
+for(a=0;a<MRC;a++){
+j=(o.m===2)?(((j0+a)%3+3)%3):j0;
+b=o.pd[j];if(b<cur)b=cur;
+cur=b+ATO;o.pd[j]=cur;o.ml[j].push(n);o.dl[j].push(cur);o.rd++;
+}
+if(!o.dq[n]){o.dq[n]=1;o.dlq++;}
+}else if(negack(n)){
+if(!o.seen[n]){o.seen[n]=1;o.na++;}
+b=o.pd[j0];if(b<cur)b=cur;cur=b+PSR;o.rd++;
+b=o.pd[j0];if(b<cur)b=cur;cur=b+SRV;
+o.pd[j0]=cur;o.ml[j0].push(n);o.dl[j0].push(cur);
+}else{
+b=o.pd[j0];if(b<cur)b=cur;cur=b+SRV;
+o.pd[j0]=cur;o.ml[j0].push(n);o.dl[j0].push(cur);
+}
+o.dOf[n-o.N0]=cur;o.aOf[n-o.N0]=st;o.jOf[n-o.N0]=j0;
+return cur;
+}
+/* active 换人：旧 active 手里没 ack 的整批重投给新 active */
+function doFlush(o,from,to,s,take){
+advK(o,from,s);
+var mv={},c,c2=0,nn;
+for(c=o.k[from];c<o.ml[from].length;c++){nn=o.ml[from][c];if(!mv[nn]){mv[nn]=1;pushMsg(o,to,nn,s);c2++;}}
+o.ml[from].length=o.k[from];o.dl[from].length=o.k[from];
+o.pd[from]=o.k[from]>0?o.dl[from][o.k[from]-1]:0;
+o.mv+=c2;if(take&&c2>0)o.tk++;
+}
+function assign(m,n,t){
+if(m===0)return 0;
+if(m===1)return actAt(1,t);
+if(m===2)return((n%3)+3)%3;
+return keyOf(n)===2?1:0;
+}
+function sim(m,T){
+var nNow=ID0+Math.floor(T*PP),N0=Math.max(ID0,nNow-BACK),n,j;
+var o={m:m,nNow:nNow,N0:N0,dl:[[],[],[]],ml:[[],[],[]],pd:[0,0,0],k:[0,0,0],
+dOf:new Array(nNow-N0+2),aOf:new Array(nNow-N0+2),jOf:new Array(nNow-N0+2),
+push:[],wait:[],recv:[0,0,0],inQ:[0,0,0],seen:{},dq:{},conn:1,av:0,
+pz:0,dlq:0,na:0,rd:0,mv:0,tk:0,disp:0,vio:0,idle:0,perm:0,mdp:N0-1,backlog:0,blockAt:-1,down:false};
+var sw=[],sq,si=0,hd=0,gd,fa,ad,a;
+if(m===1){
+for(sq=Math.floor(N0/PP/4)-2;sq<=Math.ceil(T/4)+1;sq++){
+sw.push({t:(4*sq+2)+FOS0,f:0,to:1,c:1});sw.push({t:(4*sq+2)+FOS1,f:1,to:0,c:0});
+}
+sw.sort(function(p,q){return p.t-q.t;});
+}
+for(n=N0;n<=nNow;n++){
+a=(n-ID0)/PP+FD;
+if(a>T)break;
+ad=a>hd?a:hd;
+gd=0;
+while(gd++<10){
+for(;si<sw.length&&sw[si].t<=ad;si++)doFlush(o,sw[si].f,sw[si].to,sw[si].t,sw[si].c);
+j=assign(m,n,ad);
+advK(o,0,ad);advK(o,1,ad);advK(o,2,ad);
+if(o.ml[j].length-o.k[j]<RQS)break;
+fa=o.dl[j][o.k[j]];
+if(fa===undefined){ad=T+1;break;}
+if(fa<=ad)break;
+ad=fa;
+if(ad>T){o.blockAt=n;break;}
+}
+hd=ad;
+if(ad>T){if(o.blockAt<0)o.blockAt=n;if(o.wait.length<12)o.wait.push({n:n,j:j});continue;}
+var d=pushMsg(o,j,n,ad);
+o.push.push({n:n,j:j,ad:ad,d:d});
+}
+o.down=(m===1&&actAt(1,T)===1);
+o.av=assign(m,0,T);
+advK(o,0,T);advK(o,1,T);advK(o,2,T);
+for(j=0;j<3;j++)o.inQ[j]=o.ml[j].length-o.k[j];
+o.conn=(m===2||m===3)?3:1;
+if(m===2||m===3){for(j=0;j<3;j++)o.perm+=(RQS-o.inQ[j]);}else{o.perm=RQS-o.inQ[o.av];}
+var W0=T-1,pk=[-1,-1,-1],q,it,kk;
+for(q=0;q<o.push.length;q++){it=o.push[q];if(it.ad>W0){o.recv[it.j]++;o.disp++;}}
+for(q=0;q<o.push.length;q++){
+it=o.push[q];if(it.ad<=W0)continue;
+kk=keyOf(it.n);if(pk[kk]>=0&&pk[kk]!==it.j)o.vio++;pk[kk]=it.j;
+}
+for(j=0;j<3;j++)if(o.recv[j]===0)o.idle++;
+for(n=N0;n<=nNow;n++){var dd=o.dOf[n-N0];if(dd!==undefined&&dd<=T)o.mdp=n;else break;}
+o.backlog=nNow-o.mdp;
+return o;
+}
+
+/* ---------- 部件命中区（后压前：小盒盖在大盒上）---------- */
+var REG=[{k:'topic',x:16,y:30,w:216,h:456,n:'Topic / partition 0',d:'一条流喂四个订阅。分区是并行上限，也是 Key_Shared 的分配边界；订阅名不同就各有一套 cursor，进度互不拖累。',t:[]}];
+function addR(k,x,y,w,h,n,d){REG.push({k:k,x:x,y:y,w:w,h:h,n:n,d:d,t:[]});}
+addR('lane0',LNX,LY[0],LNW,LH,'Exclusive 这一道','PersistentDispatcherSingleActiveConsumer：一份算力，第二个消费者连上来是被拒绝、不是排队。要扩只能加分区。');
+addR('lane1',LNX,LY[1],LNW,LH,'Failover 这一道','同一个 dispatcher 类，构造时传的是 scope=分区号：每个分区各排各的 active，先比 priority level 再比 consumer name，排在前面的当 active。');
+addR('lane2',LNX,LY[2],LNW,LH,'Shared 这一道','PersistentDispatcherMultipleConsumers：轮询发，三份算力；但一个订阅共用一套游标，谁卡住就全体卡住。');
+addR('lane3',LNX,LY[3],LNW,LH,'Key_Shared 这一道','PersistentStickyKeyDispatcherMultipleConsumers：key 哈希进 hash range，同一 key 固定一个消费者；消费者增减要重分配 range，期间可能重投。');
+for(var ri=0;ri<4;ri++){
+addR('d'+ri,DAX,LY[ri]+22,DAW,82,'dispatcher · '+MN[ri],'calculateToRead()：这一轮读多少 = min(totalAvailablePermits, dispatcherMaxReadBatchSize, 5MB)。许可归零就停读，等 CommandFlow 把额度还回来。');
+for(var rj=0;rj<3;rj++)addR('c'+ri+'_'+rj,CIX,LY[ri]+CY[rj],CIW,CRH,MN[ri]+' 的 C'+(rj+1),'receiverQueueSize（演示 4）就是这个消费者的信用额度：Broker 最多压这么多条进来，消费掉一半才发 CommandFlow 批量补许可。');
+addR('v'+ri,VVX,LY[ri]+22,VVW,82,MN[ri]+' 的本轮账','这些数不是写死的，是同一个时钟推出来的。空转 = 本轮一条都没收到；顺序违例 = 同一 key 的相邻两条落到不同消费者。重投次数记在 reconsumeTimes 上，超过 maxRedeliverCount（演示 3）就发往 &lt;topic&gt;-&lt;subscription&gt;-DLQ，游标这才过得去。');
+}
+addR('panel',16,490,968,88,'最近 10 条的落点','底色 = 收到它的消费者：橙 C1 / 绿 C2 / 蓝 C3。红框 = ackTimeout 到点，客户端 UnAckedMessageTracker 发 redeliverUnacknowledgedMessages；橙框 = 业务 negativeAcknowledge() 主动重投。');
+
+var S=FlowStage({W:1000,H:580,el:'flow',cap:'flowSel',chips:'flowChips',regions:REG,hint:'',
+chips2:[{k:'holder',l:'谁能收'},{k:'perm',l:'空余许可'},{k:'poison',l:'重投/DLQ'},{k:'cursor',l:'游标'}]});
+
+var MBTN=[],bi,bs=document.querySelectorAll('.modebtn');
+for(bi=0;bi<bs.length;bi++)MBTN.push(bs[bi]);
+for(bi=0;bi<MBTN.length;bi++){(function(ix){MBTN[ix].addEventListener('click',function(){sel=ix;});})(bi);}
+function pick(i){if(i===sel||i<0||i>3)return;sel=i;insp=-1;if(MBTN[i])MBTN[i].click();}
+
+/* ---------- 静态层 ---------- */
+S.layer('base',function(){return S.size();},function(){
+var i,j;
+S.owner('');
+var LG=[[20,KC[0],'key A','d'],[74,KC[1],'key B','d'],[128,KC[2],'key C','d'],
+[184,'#E24B4A','红环 = 超时重投，3 次进 DLQ','d'],[366,'#854F0B','三角 = 该订阅的 markDelete','t'],
+[545,'#6B695F','点横道 / 点消费者看明细','n'],[776,'#6B695F','演示：8 条/轮，每消费者 3 条/轮','n']];
+for(i=0;i<LG.length;i++){
+if(LG[i][3]==='d')S.dot(LG[i][0]+6,14,6,LG[i][1],null);
+if(LG[i][3]==='t')S.tri(LG[i][0]+6,14,false,LG[i][1]);
+S.text(LG[i][2],LG[i][0]+(LG[i][3]==='n'?0:18),14,11,'#6B695F','left',0);
+}
+S.rect(16,30,216,456,'#FBFAF6','#3B3A34',null,10,1.4);
+S.owner('topic');
+S.text('Topic：orders-partition-0',24,46,11.5,'#1F1E1A','left',1);
+S.text('四个订阅共用这一条流',24,64,10,'#6B695F','left',0);
+S.text('key 走 A·A·B·C·A·B·C·A',24,80,10,'#6B695F','left',0);
+S.text('演示 8 条/轮 · 橙环 = 负向 ack',24,96,10,'#6B695F','left',0);
+S.line(RX,128,RX,456,'#D3D1C7',1.4);
+for(i=0;i<=4;i++)S.line(RX-4,128+i*82,RX+4,128+i*82,'#D3D1C7',1.2);
+S.text('游标尺：底 0 条 → 顶 160 条积压',24,478,9.5,'#B4B2A9','left',0);
+for(i=0;i<4;i++){
+var ly=LY[i];
+S.rect(LNX,ly,LNW,LH,'#ffffff','#ECEAE2',null,10,1.3);
+S.owner('lane'+i);
+S.text(MN[i]+'　'+MTAG[i]+'（订阅 '+MSUB[i]+'）',244,ly+12,11.5,'#1F1E1A','left',1);
+S.line(236,ly+58,332,ly+58,'#ECEAE2',7);
+S.line(236,ly+82,332,ly+82,'#ECEAE2',3);
+S.rect(DAX,ly+22,DAW,82,'#FBFAF6','#B4B2A9',[6,5],8,1.2);
+S.owner('d'+i);
+S.text('dispatcher',342,ly+36,9.5,'#1F1E1A','left',1);
+S.text(DCLS[i],342,ly+52,9,'#6B695F','left',0);
+S.text(DSCP[i],342,ly+68,9,'#854F0B','left',0);
+S.rect(VVX,ly+22,VVW,82,'#FBFAF6','#ECEAE2',[6,5],8,1.2);
+for(j=0;j<3;j++){
+S.rect(CIX,ly+CY[j],CIW,CRH,'#ffffff','#D3D1C7',null,5,1.2);
+S.owner('c'+i+'_'+j);
+S.text('C'+(j+1),470,ly+CY[j]+12,10,'#1F1E1A','left',1);
+S.line(DAX,ly+58,CIX,ly+CY[j]+12,'#D3D1C7',1.2);
+}
+}
+});
+
+/* ---------- 选中层：只有点选会变 ---------- */
+S.layer('sel',function(){return S.size()+'|'+sel+'|'+insp;},function(){
+S.owner('lane'+sel);
+S.rect(LNX,LY[sel],LNW,LH,'rgba(239,159,39,0.05)','#EF9F27',null,10,2);
+S.text('← 读数在这一道',840,LY[sel]+12,10,'#C46A0A','left',1);
+S.rect(16,490,968,88,'#FBFAF6','#3B3A34',null,10,1.4);
+S.owner('panel');
+S.text(MN[sel]+'（第 '+(sel+1)+' 道）· 订阅 '+MSUB[sel]+' · 最近分发出去的 10 条：底色 = 收到它的消费者（橙 C1 / 绿 C2 / 蓝 C3）',
+28,504,11.5,'#1F1E1A','left',1);
+});
+
+/* ---------- 每帧 ---------- */
+S.frame(function(F){
+var T=F.cyc,i,j,n;
+var O=[sim(0,T),sim(1,T),sim(2,T),sim(3,T)],s=O[sel],o;
+var nNow=ID0+Math.floor(T*PP),mnb=O[0].backlog;
+for(i=1;i<4;i++)if(O[i].backlog<mnb)mnb=O[i].backlog;
+S.read('froMode',MN[sel]);
+S.read('froSplit','C1 '+s.recv[0]+' · C2 '+s.recv[1]+' · C3 '+s.recv[2]);
+S.read('froIdle',s.idle+' 个');
+S.read('froOrder',s.vio+' 次');
+S.read('froMdp',posOf(s.mdp));
+S.read('froBack',(s.backlog>=BACK?'≥'+BACK:s.backlog)+' 条');
+var hold=sel===0?'只有 C1':sel===1?(s.down?'c-b 接班':'c-a active'):sel===2?'三家轮班':'A·B→C1 C→C2';
+S.chip('holder',hold,'on');
+S.chip('perm',s.perm+' 个',s.perm===0?'':'on');
+S.chip('poison',s.dlq>0?('DLQ '+s.dlq+' 条'):(s.rd>0?('重投 '+s.rd+' 次'):'无'),(s.rd>0||s.dlq>0)?'':'on');
+S.chip('cursor',posOf(s.mdp),'on');
+
+/* 竖槽：一条连续流 */
+S.owner('topic');
+for(n=nNow;n>=ID0;n--){
+var u=T-(n-ID0)/PP;
+if(u<0)continue;
+var y=CBOT-u*CST;
+if(y<CTOP)break;
+var kj=keyOf(n),pz=poison(n),ng=negack(n);
+S.dot(CX,y,8,KC[kj],KD[kj]);
+if(pz||ng)S.dot(CX,y,11,null,pz?'#E24B4A':'#D97E06');
+S.token(CX,y,(pz||ng)?11:8);
+}
+/* 四个订阅的游标放在同一把尺上比高低 */
+for(i=0;i<4;i++){
+var ny=CBOT-Math.min(O[i].backlog,BACK)/BACK*332;
+S.owner('topic');
+S.line(RX-7,ny,RX+1,ny,i===sel?'#854F0B':'#B4B2A9',i===sel?2:1.2);
+S.tri(RX-14,ny,false,i===sel?'#854F0B':'#B4B2A9');
+S.line(RX-2,ny,LBX-3,LY[i]+88,i===sel?'#D97E06':'#D3D1C7',1,[4,4]);
+S.text(MSUB[i]+' '+posOf(O[i].mdp),LBX,LY[i]+88,i===sel?10.5:10,i===sel?'#854F0B':'#6B695F','left',i===sel?1:0);
+}
+
+/* 四道同时跑 */
+for(i=0;i<4;i++){
+o=O[i];var ly=LY[i];
+S.owner('lane'+i);
+S.text('空余许可 '+o.perm,240,ly+32,9.5,'#6B695F','left',0);
+S.text(o.blockAt>=0?('停读 · 等 '+o.wait.length+' 条'):'在读取',240,ly+98,9.5,o.blockAt>=0?'#C03434':'#6B695F','left',0);
+for(j=0;j<Math.min(6,o.wait.length);j++){
+var wj=o.wait[j],wx=242+j*14,wk=keyOf(wj.n);
+S.dot(wx,ly+58,7,KC[wk],KD[wk]);S.token(wx,ly+58,7);
+}
+for(j=0;j<o.push.length;j++){
+var pi=o.push[j];
+if(pi.d>T||pi.d<=T-0.24)continue;
+var pu=(T-pi.d)/0.24,pxx=332-96*pu;
+S.dot(pxx,ly+82,5,'#639922','#4C7A1A');S.token(pxx,ly+82,5);
+}
+S.owner('d'+i);
+S.text('本轮读 '+o.disp+' 条',342,ly+86,9,i===sel?'#854F0B':'#6B695F','left',0);
+for(j=0;j<3;j++){
+var cj='c'+i+'_'+j,cq=o.inQ[j],hot=0,rl,z;
+for(z=0;z<o.push.length;z++)if(o.push[z].j===j&&o.push[z].ad>T-0.16)hot=1;
+S.owner(cj);
+if(i===0)rl=j===0?'唯一 holder':'会被拒绝';
+else if(i===1)rl=o.down?(j===0?'掉线':j===1?'active 接班':'待命'):(j===0?'active':'待命 plv 0');
+else if(i===2)rl='轮询 1/3';
+else rl=j===0?'A·B 0–119':j===1?'C 120–239':'240–359 空';
+S.text(rl,494,ly+CY[j]+12,9.5,(o.recv[j]===0)?'#B4B2A9':'#3B3A34','left',0);
+for(z=0;z<RQS;z++){
+var fx=600+z*13;
+S.rect(fx,ly+CY[j]+7,11,10,z<cq?'#FAC775':'#F5F4EF',z<cq?'#D97E06':'#ECEAE2',null,2,1);
+}
+if(hot)S.rect(CIX,ly+CY[j],CIW,CRH,null,'#639922',[3,3],5,1.6);
+if(o.av===j&&(i===0||i===1))S.tri(CIX-8,ly+CY[j]+12,true,'#639922');
+}
+S.owner('v'+i);
+S.text('C1 '+o.recv[0]+' 条 · C2 '+o.recv[1]+' 条 · C3 '+o.recv[2]+' 条',672,ly+38,10,i===sel?'#1F1E1A':'#6B695F','left',0);
+S.text('空转 '+o.idle+' 个 · 顺序违例 '+o.vio+' 次',672,ly+56,10,i===sel?'#1F1E1A':'#6B695F','left',0);
+S.text('游标 '+posOf(o.mdp)+' · 积压 '+(o.backlog>=BACK?'≥'+BACK:o.backlog)+' 条',672,ly+74,10,i===sel?'#854F0B':'#6B695F','left',0);
+S.text('重投 '+o.rd+' 次 · DLQ '+o.dlq+' · 负向 ack '+o.na,672,ly+92,9.5,i===sel?'#8A2A2A':'#B4B2A9','left',0);
+}
+
+/* 底部：把选中那道的最近 10 条摊开 */
+var list=s.push.slice(Math.max(0,s.push.length-10)),la,lb;
+var sn=s.mdp+1,sd=sn>=s.N0&&sn<s.N0+s.dOf.length?s.dOf[sn-s.N0]:null;
+var sa=sn>=s.N0&&sn<s.N0+s.aOf.length?s.aOf[sn-s.N0]:null;
+var sj=sn>=s.N0&&sn<s.N0+s.jOf.length?s.jOf[sn-s.N0]:null;
+S.owner('panel');
+for(i=0;i<list.length;i++){
+var it=list[i],cx0=28+i*72,ik=keyOf(it.n);
+var fill=(insp>=0&&it.j!==insp)?'#F5F4EF':CF[it.j];
+var stk=poison(it.n)?'#E24B4A':(negack(it.n)?'#D97E06':CB[it.j]);
+S.rect(cx0,512,66,26,fill,stk,null,4,1.4);
+S.text(KL[ik],cx0+33,520,9,KD[ik],'center',1);
+S.text(posOf(it.n),cx0+33,532,8.5,'#6B695F','center',0);
+for(j=i+1;j<list.length;j++){
+if(keyOf(list[j].n)!==ik)continue;
+if(list[j].j!==it.j)S.line(cx0+33,545,28+j*72+33,545,'#E24B4A',1.2,[3,3]);
+break;
+}
+}
+if(insp>=0){
+var got=[],miss=[];
+for(i=0;i<list.length;i++)(list[i].j===insp?got:miss).push(eid(list[i].n));
+la='C'+(insp+1)+' 在这 '+list.length+' 条里收到 '+got.length+' 条：'+(got.length?got.join(' · '):'一条没有');
+lb='漏掉 '+miss.length+' 条：'+(miss.length?miss.join(' · '):'一条没漏')+'；'+
+(sel===0?'C2/C3 连上来是被拒，不是排队':sel===1?'待命那两个要等 active 掉线才接班':sel===2?'轮询人人有份，代价是同 key 不保序':'C3 的 hash range 里没有 key，一直空转');
+}else{
+la='本轮分发 '+s.disp+' 条：C1 '+s.recv[0]+'、C2 '+s.recv[1]+'、C3 '+s.recv[2]+'；空转 '+s.idle+' 个 · 顺序违例 '+s.vio+' 次';
+var why=(sd===undefined||sd===null)?((sa===undefined||sa===null)?'还没推出去，堵在 dispatcher 队头':'刚推出 '+eid(sn)+'，还在 C'+(sj+1)+' 手里')
+:(poison(sn)?'超时重投中，还没进 DLQ':(negack(sn)?'业务负向 ack，正重投':'在 C'+(sj+1)+' 手里没 ack'));
+if(sn>s.nNow)why='这条还没进场';
+lb='游标 '+posOf(s.mdp)+'，比最快那道慢 '+(s.backlog-mnb)+' 条；积压 '+(s.backlog>=BACK?'≥'+BACK:s.backlog)+' 条，卡在 '+eid(sn)+'：'+why;
+}
+S.text(la,28,554,10.5,'#3B3A34','left',0);
+S.text(lb,28,570,10.5,'#854F0B','left',0);
+});
+S.onTap(function(x,y,k){
+if(!k||k==='topic')return;
+if(k==='panel'){insp=-1;return;}
+var c0=k.charAt(0),ix=-1;
+if(c0==='l')ix=parseInt(k.slice(4),10);
+else if(c0==='d'||c0==='v')ix=parseInt(k.slice(1),10);
+if(ix>=0){pick(ix);return;}
+if(c0==='c'){var p=k.split('_');pick(parseInt(p[0].slice(1),10));insp=parseInt(p[1],10);}
+});
+S.link();
+window.__flowTick(PERIOD);
+})();
 function tick(now){
+var prev=phase;
 var dt=Math.min(50,now-last);last=now;
 if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
 if(mode==='step'&&stepTo!==null){
@@ -563,6 +1072,10 @@ var e=p*p*(3-2*p);
 phase=stepFrom+(stepTo-stepFrom)*e;
 if(p>=1){phase=((stepTo%PERIOD)+PERIOD)%PERIOD;stepTo=null;}
 }
+var dd=phase-prev;
+if(dd>PERIOD/2)dd-=PERIOD;else if(dd<-PERIOD/2)dd+=PERIOD;
+absPhase+=dd;
+if(window.__flowTick)window.__flowTick(absPhase);
 render(phase/PERIOD*PHASE_MAX+0.01);
 requestAnimationFrame(tick);
 }
