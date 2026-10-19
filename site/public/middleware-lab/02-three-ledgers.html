@@ -192,7 +192,7 @@ table.grid td.act{background:#FAEEDA}
 <button class="btn warn" onclick="nextStep()">下一步 ›</button>
 </span>
 </div>
-<p class="figcap">进度 0° = 写入到达，720° = 崩溃恢复完成；分步定格的是关键时刻，不代表真实耗时。<br>口径：8/8 是演示容量；maxEntriesPerLedger、writeQuorum/ackQuorum 以 broker.conf 为准；崩溃重投按至少一次处理。</p>
+<p class="figcap">进度 0° = 写入到达，720° = 崩溃恢复完成；分步定格的是关键时刻，不代表真实耗时。<br>口径：8/8 是演示容量；集群默认 E=2 / W=2 / A=2，画面第三个 Bookie 仅作 E=3 示例、默认不写入；崩溃重投按至少一次处理。</p>
 </div>
 </div>
 
@@ -310,6 +310,40 @@ table.grid td.act{background:#FAEEDA}
 <div class="sec-head"><span class="sec-num">5</span><h2>环境场景：谁在支撑这三本账</h2></div>
 <p class="sec-sub">三本账能各写各的，前提是环境里有这三套系统。</p>
 <div class="quote">「对事物的认识 = 空间属性 + 时间属性 + 环境属性（外在关系和依赖）。」</div>
+<figure class="figure">
+<div class="figtitle">元数据抽象 · config store / local store / 三种底座</div>
+<svg viewBox="0 0 920 300" role="img" aria-label="元数据存储抽象">
+<title>元数据存储抽象</title>
+<defs><marker id="m2sa" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker></defs>
+<rect x="24" y="34" width="260" height="76" rx="10" fill="#fff" stroke="#3B3A34"/>
+<text class="tn" x="38" y="56">config store</text>
+<text class="tag" x="38" y="76">tenant / cluster / namespace / resourcegroup</text>
+<text class="tag" x="38" y="94">/admin/policies</text>
+<rect x="24" y="170" width="260" height="76" rx="10" fill="#fff" stroke="#3B3A34"/>
+<text class="tn" x="38" y="192">local store</text>
+<text class="tag" x="38" y="212">dynamic-config / local-policies / load-report / topic</text>
+<text class="tag" x="38" y="230">/admin/local-policies</text>
+<rect x="340" y="82" width="190" height="96" rx="10" fill="#FFF6E8" stroke="#EF9F27"/>
+<text class="tn" x="435" y="106" text-anchor="middle">PulsarResources</text>
+<text class="tag" x="435" y="126" text-anchor="middle">两个视图，一套 MetadataStore</text>
+<text class="tag" x="435" y="146" text-anchor="middle">config URL 为空时回退 local</text>
+<path d="M340 110 L284 72" stroke="#C46A0A" stroke-width="1.4" fill="none" marker-end="url(#m2sa)"/>
+<path d="M340 150 L284 208" stroke="#C46A0A" stroke-width="1.4" fill="none" marker-end="url(#m2sa)"/>
+<text class="tag" x="312" y="88" text-anchor="middle" fill="#854F0B">创建</text>
+<text class="tag" x="600" y="24" fill="#8A877C">底层实现</text>
+<rect x="600" y="36" width="290" height="54" rx="9" fill="#fff" stroke="#3B3A34"/>
+<text class="tn" x="614" y="56">ZooKeeper</text>
+<text class="tag" x="614" y="76">递归 watch · znode CAS · ephemeral lock</text>
+<rect x="600" y="104" width="290" height="54" rx="9" fill="#fff" stroke="#3B3A34"/>
+<text class="tn" x="614" y="124">RocksDB</text>
+<text class="tag" x="614" y="144">本地 TransactionDB · 版本 CAS · 无跨节点 watch</text>
+<rect x="600" y="172" width="290" height="54" rx="9" fill="#fff" stroke="#3B3A34"/>
+<text class="tn" x="614" y="192">Oxia</text>
+<text class="tag" x="614" y="212">原生通知 · 序列键 · 二级索引</text>
+<text class="tag" x="24" y="274" fill="#6B695F">CAS：put(path, value, expectedVersion) · children/exists 缓存 5m/10m · 同步读 ≤30s</text>
+</svg>
+<figcaption class="figcap">读法：先看 PulsarResources 创建的两套 store，再看底层的三种实现。local 是 MetadataStoreExtended，config 只是 MetadataStore；代码里没有 ConfigurationMetadataStore 这个类。口径：Pulsar 5.1.0-SNAPSHOT，路径与实现以 pulsar-metadata / PulsarResources 为准。</figcaption>
+</figure>
 <div class="envcards">
 <div class="env"><b>BookKeeper 集群</b><span>数据账的物理载体；磁盘、复制、恢复都在这。</span></div>
 <div class="env"><b>元数据存储</b><span>索引账与游标位点；ZK / RocksDB / Oxia 都能当底座。</span></div>
@@ -388,6 +422,7 @@ H+='<path d="M458 352 L458 382" stroke="#C46A0A" stroke-width="1.5" marker-end="
 // bookies
 H+='<g id="bkPanel"><rect x="248" y="382" width="420" height="112" rx="14" fill="#FBFAF6" stroke="#B4B2A9" stroke-width="1.4" stroke-dasharray="6 5"/>'+tx(458,398,'BookKeeper：entry 复制到 writeQuorum 个 Bookie','tn','middle')+'</g>';
 for(var b=0;b<3;b++){var bx=264+b*136;H+='<g id="bk'+b+'">'+box(bx,418,112,48,8,'#ffffff','#3B3A34')+tx(bx+56,438,'Bookie '+(b+1),'tn','middle')+tx(bx+56,456,'ledger 副本','ts','middle')+'</g>';H+='<circle id="b'+b+'" cx="'+(bx+56)+'" cy="476" r="5" fill="#D3D1C7" stroke="#B4B2A9" stroke-width="1"/>';}
+H+=tx(458,510,'默认 E=2 / W=2 / A=2；第三个 Bookie 仅作 E=3 示例，默认不写入','ts','middle','#854F0B');
 // metadata
 H+='<g id="metaBox">'+box(692,84,284,248,10,'#ffffff','#3B3A34')+tx(708,108,'元数据存储','tn')+tx(708,128,'/managed-ledgers/tenant/ns/topic','ts')+'</g>';
 H+='<rect id="metaGlow" x="700" y="138" width="268" height="180" rx="8" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.4" opacity="0"/>';
