@@ -86,6 +86,39 @@ table.grid td.act{background:#FAEEDA}
 .summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
 .backtop{position:fixed;right:22px;bottom:22px;z-index:20}
 #eng .hl,#eng .hl *{stroke:#D96C06 !important}
+
+/* agent-lab shared layer v1.4 */
+.method-chain{display:grid;grid-template-columns:repeat(3,max-content);justify-content:start;gap:8px 10px;align-items:center}
+.method-chain .marr{display:none}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;margin:8px 4px 0;font-size:12px;color:#6B695F}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:12px;height:10px;border-radius:3px;display:inline-block;border:1px solid #D3D1C7;background:#fff}
+.legend .sw-amber{background:#FFF6E8;border-color:#EF9F27}
+.legend .sw-green{background:#EAF3DE;border-color:#639922}
+.legend .sw-red{background:#FCEBEB;border-color:#E24B4A}
+.legend .sw-dash{border-style:dashed;border-color:#B4B2A9}
+.legend .sw-line{width:16px;height:0;border:0;border-top:2px solid #C46A0A;border-radius:0;background:none}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.warn{background:#FFF6E8;border-color:#EF9F27}
+.chip.off{background:#F5F4EF;color:#8A877C}
+.subview{margin:8px 0 4px;background:#ffffff;border:1px dashed #D3D1C7;border-radius:10px;padding:8px 10px}
+.subview .viewtitle{font-size:12px;font-weight:600;color:#854F0B;margin-bottom:4px}
+.subview .subcap{font-size:12px;color:#6B695F;margin:6px 2px 0;line-height:1.6}
+.phase-note{font-size:12px;color:#8A877C;margin:8px 4px 0;line-height:1.6}
+.tablewrap{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 0 12px;padding-bottom:2px;scrollbar-width:thin}
+.tablewrap table.grid{width:100%}
+#scene [opacity],#scene2 [opacity]{transition:opacity .28s ease}
+#scene rect,#scene circle,#scene path,#scene2 rect,#scene2 circle,#scene2 path{transition:fill .24s ease,stroke .24s ease,opacity .24s ease}
+#tok,#tokT{transition:none}
+@media (prefers-reduced-motion: reduce){#scene [opacity],#scene2 [opacity],#scene rect,#scene circle,#scene path,#scene2 rect,#scene2 circle,#scene2 path{transition:none}}
+@media (max-width:640px){.method-chain{grid-template-columns:repeat(2,max-content)}}
+
 </style>
 </head>
 <body>
@@ -124,6 +157,52 @@ table.grid td.act{background:#FAEEDA}
 <text class="ts" x="985" y="24" text-anchor="end">琥珀色 = 当前活跃工位 / 采纳路径</text>
 <g id="scene"></g>
 </svg>
+<div class="legend">
+<span><i class="sw-amber"></i>琥珀 = 活跃工位 / 当前轮</span>
+<span><i class="sw-green"></i>绿 = Continue / Finish</span>
+<span><i class="sw-red"></i>红 = Retry / Replan / Error</span>
+</div>
+<div class="readout">
+<span class="ro">相位 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">关键量 <b id="roKey">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="subview">
+<div class="viewtitle">第二视图 · 双轮账本 · 预算与事件时间轴（与主图同步）</div>
+<svg id="eng2" viewBox="0 0 1000 190" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>双轮预算与事件流时间轴</title>
+<g id="scene2">
+<text class="th" x="500" y="18" text-anchor="middle">双轮账本 · 预算与事件时间轴</text>
+<text class="ts" x="500" y="35" text-anchor="middle">横轴 = 全局相位 0–720° · 440° 轮次边界 · 预算每轮只降不升</text>
+<text id="v2_turn" class="tb" x="950" y="48" text-anchor="end" fill="#854F0B">轮次 1/2 · 预算 100%</text>
+<text class="ts" x="96" y="52" fill="#854F0B">预算余量</text>
+<path d="M90 56 L615.5 56 L615.5 86 L950 86 L950 96 L90 96 Z" fill="#FAC775" opacity="0.14"/>
+<path d="M90 56 L615.5 56 L615.5 86 L950 86" stroke="#C46A0A" stroke-width="2" fill="none"/>
+<text class="ts" x="84" y="60" text-anchor="end">100%</text>
+<text class="ts" x="84" y="90" text-anchor="end">75%</text>
+<line x1="615.5" y1="50" x2="615.5" y2="160" stroke="#B4B2A9" stroke-width="1" stroke-dasharray="4 4"/>
+<text class="ts" x="620" y="50" fill="#8A877C">轮次边界 440°</text>
+<rect id="v2_r1" x="90" y="110" width="525.5" height="20" rx="5" fill="#F5F4EF" stroke="#ECEAE2"/>
+<rect id="v2_r2" x="615.5" y="134" width="334.5" height="20" rx="5" fill="#F5F4EF" stroke="#ECEAE2"/>
+<text class="ts" x="100" y="124">第 1 轮 · Think → Action → Observation</text>
+<text class="ts" x="625" y="148">第 2 轮 · 超时 → 重试 → Finish</text>
+<g id="v2_e0" opacity="0.35"><line x1="388.6" y1="104" x2="388.6" y2="132" stroke="#EF9F27" stroke-width="1.4"/><circle cx="388.6" cy="110" r="3" fill="#EF9F27"/><text class="ts" x="388.6" y="100" text-anchor="middle">Start(1)</text></g>
+<g id="v2_e1" opacity="0.35"><line x1="508.1" y1="104" x2="508.1" y2="132" stroke="#EF9F27" stroke-width="1.4"/><circle cx="508.1" cy="110" r="3" fill="#EF9F27"/><text class="ts" x="508.1" y="100" text-anchor="middle">Obs(1)</text></g>
+<g id="v2_e2" opacity="0.35"><line x1="844.9" y1="128" x2="844.9" y2="156" stroke="#EF9F27" stroke-width="1.4"/><circle cx="844.9" cy="134" r="3" fill="#EF9F27"/><text class="ts" x="844.9" y="126" text-anchor="middle">Timeout</text></g>
+<g id="v2_e3" opacity="0.35"><line x1="926.4" y1="128" x2="926.4" y2="156" stroke="#639922" stroke-width="1.4"/><circle cx="926.4" cy="134" r="3" fill="#639922"/><text class="ts" x="926.4" y="126" text-anchor="middle">Finish</text></g>
+<line id="v2_play" x1="90" y1="46" x2="90" y2="170" stroke="#C46A0A" stroke-width="1.4" stroke-dasharray="3 3" opacity="0.8"/>
+<circle id="v2_dot" cx="90" cy="164" r="4" fill="#C46A0A"/>
+<line x1="90" y1="164" x2="950" y2="164" stroke="#3B3A34"/>
+<line x1="90" y1="164" x2="90" y2="170" stroke="#3B3A34"/><text class="ts" x="90" y="184" text-anchor="middle">0°</text>
+<line x1="305" y1="164" x2="305" y2="170" stroke="#3B3A34"/><text class="ts" x="305" y="184" text-anchor="middle">180°</text>
+<line x1="520" y1="164" x2="520" y2="170" stroke="#3B3A34"/><text class="ts" x="520" y="184" text-anchor="middle">360°</text>
+<line x1="735" y1="164" x2="735" y2="170" stroke="#3B3A34"/><text class="ts" x="735" y="184" text-anchor="middle">540°</text>
+<line x1="950" y1="164" x2="950" y2="170" stroke="#3B3A34"/><text class="ts" x="950" y="184" text-anchor="middle">720°</text>
+</g>
+</svg>
+<div class="subcap">读法：先看预算在哪一度掉档，再看第 2 轮的超时与重试标记。事件流只追加不覆盖；副图与主图同相位。</div>
+</div>
 <div class="ctrl">
 <button class="btn" id="engBtn">暂停</button>
 <span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
@@ -138,13 +217,14 @@ table.grid td.act{background:#FAEEDA}
 <button class="btn warn" onclick="nextStep()">下一步 ›</button>
 </span>
 </div>
+<p class="phase-note">相位口径：0° = 读取状态；720° = Finish 后回到起点。440° 是轮次边界，632–655° 超时重试；副图与主图同相位。</p>
 </div>
 </div>
 
 <section>
 <div class="sec-head"><span class="sec-num">1</span><h2>表象观察：先把它当黑盒</h2></div>
 <p class="sec-sub">第一步不拆机器，只看它对外表现出什么行为。</p>
-<div class="quote">「对事物的观察包括了静态结构 + 动态生命周期 + 环境场景三个方面的内容。」<i>—— 人月聊IT · 思维系列</i></div>
+<div class="quote">「对事物的观察包括了静态结构 + 动态生命周期 + 环境场景三个方面的内容。」</div>
 <p>从外部看，一个执行中的 Agent 做的事只有一件：<b>一句目标进来，一个结果出去；中间是一圈一圈的「想一步、做一步、看一步」</b>。每一圈都可能调用工具、改写状态。至于圈内怎么想、什么时候该停，暂时不用管——先把输入和输出看清楚：</p>
 <div class="flow">
 <span class="node">目标 + 上下文（输入）</span><span class="arr">→</span>
@@ -158,7 +238,7 @@ table.grid td.act{background:#FAEEDA}
 <section>
 <div class="sec-head"><span class="sec-num">2</span><h2>静态分解：它由什么组成</h2></div>
 <p class="sec-sub">打开黑盒，沿空间维度拆解。点部件卡片，动画中对应部分会亮成琥珀色。</p>
-<div class="quote">「它由什么构成？核心方法是分解、分类、结构化——分解需符合 MECE 法则，同层必须粒度一致。」<i>—— 人月聊IT · 思维系列</i></div>
+<div class="quote">「它由什么构成？核心方法是分解、分类、结构化——分解需符合 MECE 法则，同层必须粒度一致。」</div>
 <p>一个最小可用的 TAO Runtime 可按功能分成<b>五组</b>：</p>
 <div class="partgroup">
 <div class="gname">循环本体组 —— 负责「一圈怎么走」</div>
@@ -201,9 +281,9 @@ table.grid td.act{background:#FAEEDA}
 <section>
 <div class="sec-head"><span class="sec-num">3</span><h2>动态分析：它如何运转</h2></div>
 <p class="sec-sub">盯住那个琥珀色令牌。用动画下方的 9 个步骤点逐帧走完一次任务。</p>
-<div class="quote">「它如何演变与运作？关注时间轴上的发展规律、行为模式和内部流程。核心方法是流程分析、行为追溯。」<i>—— 人月聊IT · 思维系列</i></div>
+<div class="quote">「它如何演变与运作？关注时间轴上的发展规律、行为模式和内部流程。核心方法是流程分析、行为追溯。」</div>
 <p><b>操作：</b>点击动画下方步骤条上的圆点（或「下一步」按钮），画面会定格在对应时刻。建议完整走两遍：第一遍只看令牌绕圈，第二遍同时看右侧六个出口哪个在亮、预算条怎么掉。</p>
-<table class="grid">
+<div class="tablewrap"><table class="grid">
 <tr><th>阶段</th><th>时刻</th><th>活跃工位</th><th>预算余量</th><th>这一步在干什么</th></tr>
 <tr><td>① 读取状态</td><td>0°–70°</td><td class="act">状态库</td><td>100%</td><td>循环第一步不是想，是读：五态就位，ControlState 记账</td></tr>
 <tr><td>② Think #1</td><td>110°–190°</td><td class="act">Think</td><td>100%</td><td>目标未完成、有可推进动作 → Continue 出口</td></tr>
@@ -214,16 +294,16 @@ table.grid td.act{background:#FAEEDA}
 <tr><td>⑦ Action #2</td><td>620°–660°</td><td class="hot">Action</td><td>75%</td><td>第一次超时（黄灯≠没执行）→ 退避重试 → 第二次成功</td></tr>
 <tr><td>⑧ Observation #2</td><td>660°–690°</td><td class="act">Observation</td><td>75%</td><td>进展按槽位填充计：填上一个槽位算一步，不靠感觉</td></tr>
 <tr><td>⑨ Think #3 → Finish</td><td>700°–720°</td><td class="hot">Think → 出口</td><td>75%</td><td>停止判断：成功标准已满足 → Finish；系统验证过才收尾</td></tr>
-</table>
+</table></div>
 <p>两个容易错过、但值得在分步模式里细看的点：① <b>第二轮的超时是「黄灯」，不是「没执行」</b>——网络超时不代表远端没执行，UNKNOWN 状态要先拿幂等键查外部真实结果，而不是立刻重试；② 预算条每一步都在掉，<b>ControlState 是唯一不能省的状态</b>——没有它，循环停不停全看模型自觉。</p>
 </section>
 
 <section>
 <div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件如何协同出「可恢复的执行」</h2></div>
 <p class="sec-sub">把第 2 节的「结构」和第 3 节的「流程」叠在一起——这才是理解的完成态。</p>
-<div class="quote">「动静融合的关键是建立映射：将组成部件与操作步骤一一对应，理解各部件如何协同产生外在行为。系统 = 元素 + 连接 + 目标。」<i>—— 人月聊IT · 思维系列</i></div>
+<div class="quote">「动静融合的关键是建立映射：将组成部件与操作步骤一一对应，理解各部件如何协同产生外在行为。系统 = 元素 + 连接 + 目标。」</div>
 <p>映射表：<b>每个部件在每个阶段里承担什么角色</b>。竖着看是一个阶段的全体协同，横着看是一个部件的完整职责。</p>
-<table class="grid">
+<div class="tablewrap"><table class="grid">
 <tr><th>部件 ＼ 阶段</th><th>① 读状态</th><th>② Think</th><th>③ Action</th><th>④ Observation</th><th>⑤ 更新</th><th>⑨ 收尾</th></tr>
 <tr><td>状态库</td><td class="hot">被读取</td><td class="act">被引用（目标锚点）</td><td>参数来源</td><td class="act">写入事实</td><td class="hot">落账</td><td>被验证</td></tr>
 <tr><td>Think</td><td>—</td><td class="hot">四类判断、选出口</td><td>—</td><td>—</td><td>—</td><td class="hot">Finish 判断</td></tr>
@@ -232,14 +312,14 @@ table.grid td.act{background:#FAEEDA}
 <tr><td>预算四件套</td><td>读取余量</td><td>检查</td><td class="act">每轮扣减</td><td>—</td><td class="hot">记账</td><td>余量结算</td></tr>
 <tr><td>六个出口</td><td>—</td><td class="hot">Continue 亮</td><td>—</td><td>—</td><td>—</td><td class="hot">Finish 亮</td></tr>
 <tr><td>事件流</td><td>读快照</td><td>—</td><td class="act">StepStarted</td><td>StepCompleted</td><td class="hot">追加写入</td><td>终态事件先落盘</td></tr>
-</table>
+</table></div>
 <p>点题一句：<b>「崩了能接着跑」这个外在行为，不是任何单个部件的属性，而是「状态外置 + 事件追加 + 双账本」整体协同涌现的</b>。朴素 ReAct 把执行权整个交给概率模型，日志全绿也能把钱出两次；把循环翻译成状态、事件、闸门与账本之后，同样一个模型才能安全地跑长任务。对称设计的代价也要说清：事件流只进不出，日志会膨胀——所以压缩必须带 replacement_history 式的完整快照，而不是打一个截断标记。</p>
 </section>
 
 <section>
 <div class="sec-head"><span class="sec-num">5</span><h2>环境场景：它依赖什么才能工作</h2></div>
 <p class="sec-sub">主体之外，还有一圈支撑系统。</p>
-<div class="quote">「对事物的认识 = 空间属性 + 时间属性 + 环境属性（外在关系和依赖）。」<i>—— 人月聊IT · 思维系列</i></div>
+<div class="quote">「对事物的认识 = 空间属性 + 时间属性 + 环境属性（外在关系和依赖）。」</div>
 <div class="envcards">
 <div class="env"><b>模型服务</b><span>变迁引擎本身。它的概率性、延迟、限流策略，全部透过预算与熔断层被计价管理。</span></div>
 <div class="env"><b>工具与外部系统</b><span>Action 的真正落点。每个工具自带副作用等级、幂等要求、超时上限的强类型声明。</span></div>
@@ -264,6 +344,7 @@ table.grid td.act{background:#FAEEDA}
 <p>· 结构：T/A/O + 状态更新、状态库五态、六个出口、预算四件套、事件流。</p>
 <p>· 行为：每轮「读状态 → 想 → 做 → 看 → 记账」；超时走黄灯重试；成功标准满足才 Finish。</p>
 <p>· 协同：终止权外置 + 事件追加 + 双账本，才让同一个概率模型敢跑长任务。</p>
+<p>· 边界与简化：预算按轮次离散步进演示；真实 token / 金额按调用累计，超时与重试的实际耗时未按比例绘制。</p>
 </div>
 
 </div>
@@ -453,6 +534,108 @@ r.setAttribute('stroke',evOn[v]?'#EF9F27':'#D3D1C7');
 }
 requestAnimationFrame(tick);
 }
+/* agent-lab shared instruments + second view */
+(function(){
+var roPhase=document.getElementById('roPhase');
+var roStep=document.getElementById('roStep');
+var roKey=document.getElementById('roKey');
+var chipBox=document.getElementById('stateChips');
+var chipEls={};
+var CHIPS=[{k:'pos',l:'当前工位'},{k:'turn',l:'轮次'},{k:'budget',l:'预算'},{k:'exit',l:'出口'},{k:'tape',l:'事件流'},{k:'stop',l:'终止权'}];
+CHIPS.forEach(function(c){
+var s=document.createElement('span');s.className='chip';s.innerHTML=c.l+' <b>--</b>';
+chipBox.appendChild(s);chipEls[c.k]=s;
+});
+function setChip(k,v,cls){
+var n=chipEls[k];if(!n)return;
+var b=n.querySelector('b');
+if(b&&b.textContent!==v)b.textContent=v;
+n.classList.remove('on','warn','off');
+if(cls)n.classList.add(cls);
+}
+function setT(id,v){var n=document.getElementById(id);if(n&&n.textContent!==v)n.textContent=v;}
+function setA(id,k,v){var n=document.getElementById(id);if(n)n.setAttribute(k,v);}
+function setO(id,v){var n=document.getElementById(id);if(n)n.setAttribute('opacity',v.toFixed(2));}
+function ss(t){t=Math.max(0,Math.min(1,t));return t*t*(3-2*t);}
+function lr(a,b,t){return a+(b-a)*t;}
+function cl(v,a,b){return Math.max(a,Math.min(b,v));}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function stageIndex(th){var si=0;for(var i=0;i<STEPS.length;i++){if(th>=STEPS[i].d)si=i;}return si;}
+function stationName(t){
+if(t<110)return '读取状态';
+if(t<250)return 'Think #1';
+if(t<350)return 'Action #1';
+if(t<440)return 'Observation #1';
+if(t<510)return '状态更新';
+if(t<620)return 'Think #2';
+if(t<660)return 'Action #2';
+if(t<700)return 'Observation #2';
+return 'Think #3 → Finish';
+}
+function renderSide(th){
+var t=norm(th),x=90+t/720*860,turn=t<440?1:2,bud=t<440?100:75;
+setA('v2_play','x1',x.toFixed(1));setA('v2_play','x2',x.toFixed(1));setA('v2_dot','cx',x.toFixed(1));
+setT('v2_turn','轮次 '+turn+'/2 · 预算 '+bud+'%');
+setA('v2_r1','fill',turn===1?'#FFF6E8':'#F5F4EF');setA('v2_r1','stroke',turn===1?'#EF9F27':'#ECEAE2');
+setA('v2_r2','fill',turn===2?'#FFF6E8':'#F5F4EF');setA('v2_r2','stroke',turn===2?'#EF9F27':'#ECEAE2');
+setO('v2_e0',t>=250?1:0.35);setO('v2_e1',t>=350?1:0.35);setO('v2_e2',t>=632?1:0.35);setO('v2_e3',t>=700?1:0.35);
+}
+function keyAt(t){
+if(t<440)return '轮次 1/2 · 预算 100%';
+if(t<700)return '轮次 2/2 · 预算 75%';
+return 'Finish · 待验证';
+}
+function chipsAt(t){
+var turn=t<440?'1/2':'2/2';
+var exit=t>=700?'Finish':(t>=632?'Retry':(t>=250?'Continue':'Continue'));
+var ev=t>=700?'8 条':(t>=632?'6 条':(t>=440?'3 条':(t>=350?'2 条':(t>=250?'1 条':'0 条'))));
+return [
+['pos',stationName(t),t>=110?'on':'off'],
+['turn',turn,turn==='2/2'?'on':'off'],
+['budget',t<440?'100%':'75%',t<440?'on':'warn'],
+['exit',exit,exit==='Finish'?'on':'warn'],
+['tape',ev,ev==='8 条'?'on':'warn'],
+['stop','外置','on']
+];
+}
+function updateShared(th){
+var t=norm(th);
+var pr=Math.round(t)%720;
+if(roPhase.textContent!==(pr+'\u00b0'))roPhase.textContent=pr+'\u00b0';
+var si=stageIndex(t);if(mode==='step'&&stepIdx>=0)si=stepIdx;
+var st=STEPS[si]?STEPS[si].t:'\u2014';
+if(roStep.textContent!==st)roStep.textContent=st;
+var kv=keyAt(t);if(roKey.textContent!==kv)roKey.textContent=kv;
+var cs=chipsAt(t);
+for(var i=0;i<cs.length;i++)setChip(cs[i][0],cs[i][1],cs[i][2]);
+renderSide(t);
+}
+var AS={ease:null,last:performance.now(),DUR:900};
+var origGoStep=window.goStep;
+window.goStep=function(i){
+var from=phase;
+origGoStep(i);
+var to=phase,delta=to-from;
+if(!reduced&&Math.abs(delta)<=PERIOD/4&&Math.abs(delta)>0.01){
+phase=from;AS.ease={from:from,to:to,elapsed:0};
+}else{AS.ease=null;}
+};
+var origTick=tick;
+tick=function(now){
+if(typeof now!=='number')now=performance.now();
+var dt=Math.min(50,Math.max(0,now-AS.last));AS.last=now;
+if(mode==='auto')AS.ease=null;
+if(AS.ease){
+AS.ease.elapsed=Math.min(AS.DUR,AS.ease.elapsed+dt);
+var p=AS.ease.elapsed/AS.DUR;
+phase=AS.ease.from+(AS.ease.to-AS.ease.from)*ss(p);
+if(p>=1){phase=AS.ease.to;AS.ease=null;}
+}
+origTick(now);
+updateShared(phase/PERIOD*PHASE_MAX);
+};
+})();
+
 requestAnimationFrame(tick);
 document.querySelectorAll('.part').forEach(function(b){
 b.onclick=function(){

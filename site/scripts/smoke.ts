@@ -231,10 +231,21 @@ async function main(): Promise<void> {
       expect: ['互动原理实验室', '进入实验室', 'Pulsar'],
     },
     {
+      name: 'Pulsar 教程：客户端与协议',
+      route: '/middleware/tutorial/06-client-protocol',
+      expect: ['客户端与协议', 'CommandSend', 'Protobuf', 'Schema'],
+    },
+    {
+      name: 'Pulsar 教程：主题与复制',
+      route: '/middleware/tutorial/07-topics-replication',
+      expect: ['主题与复制', '非持久化', '跨地域复制', 'Replicated Subscription'],
+    },
+    {
       name: 'Pulsar 实验室首页（第 1 章）',
       route: '/middleware/lab',
       expect: [
-        '第 1 / 7 章',
+        '第 1 / 9 章',
+        '9 章',
         '一条消息的旅程',
         'middleware-lab/01-message-journey.html',
         '网页全屏',
@@ -244,17 +255,27 @@ async function main(): Promise<void> {
     {
       name: 'Pulsar 实验室章节页（第 5 章）',
       route: '/middleware/lab/05-four-borders',
-      expect: ['第 5 / 7 章', '四道边界', 'middleware-lab/05-four-borders.html', '上一章'],
+      expect: ['第 5 / 9 章', '四道边界', 'middleware-lab/05-four-borders.html', '上一章'],
     },
     {
       name: 'Pulsar 实验室章节页（第 6 章 · 连接器）',
       route: '/middleware/lab/06-io-connector',
-      expect: ['第 6 / 7 章', '连接器', 'middleware-lab/06-io-connector.html', '上一章'],
+      expect: ['第 6 / 9 章', '连接器', 'middleware-lab/06-io-connector.html', '上一章'],
     },
     {
       name: 'Pulsar 实验室章节页（第 7 章 · 数据的一生）',
       route: '/middleware/lab/07-data-lifecycle',
-      expect: ['第 7 / 7 章', '数据的一生', 'middleware-lab/07-data-lifecycle.html', '上一章'],
+      expect: ['第 7 / 9 章', '数据的一生', 'middleware-lab/07-data-lifecycle.html', '上一章'],
+    },
+    {
+      name: 'Pulsar 实验室章节页（第 8 章 · 客户端与协议）',
+      route: '/middleware/lab/08-client-protocol',
+      expect: ['第 8 / 9 章', '客户端与协议', 'middleware-lab/08-client-protocol.html', '上一章'],
+    },
+    {
+      name: 'Pulsar 实验室章节页（第 9 章 · 主题与复制）',
+      route: '/middleware/lab/09-topics-replication',
+      expect: ['第 9 / 9 章', '主题与复制', 'middleware-lab/09-topics-replication.html', '上一章'],
     },
     // 单段未知路径会被当作「轨道不存在」，给出可操作的提示而不是裸 404
     { name: '未知轨道', route: '/not-exist-track', expect: ['没有找到这条轨道'] },

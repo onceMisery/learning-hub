@@ -86,6 +86,39 @@ table.grid td.act{background:#FAEEDA}
 .summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
 .backtop{position:fixed;right:22px;bottom:22px;z-index:20}
 #eng .hl,#eng .hl *{stroke:#D96C06 !important}
+
+/* agent-lab shared layer v1.4 */
+.method-chain{display:grid;grid-template-columns:repeat(3,max-content);justify-content:start;gap:8px 10px;align-items:center}
+.method-chain .marr{display:none}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;margin:8px 4px 0;font-size:12px;color:#6B695F}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:12px;height:10px;border-radius:3px;display:inline-block;border:1px solid #D3D1C7;background:#fff}
+.legend .sw-amber{background:#FFF6E8;border-color:#EF9F27}
+.legend .sw-green{background:#EAF3DE;border-color:#639922}
+.legend .sw-red{background:#FCEBEB;border-color:#E24B4A}
+.legend .sw-dash{border-style:dashed;border-color:#B4B2A9}
+.legend .sw-line{width:16px;height:0;border:0;border-top:2px solid #C46A0A;border-radius:0;background:none}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.warn{background:#FFF6E8;border-color:#EF9F27}
+.chip.off{background:#F5F4EF;color:#8A877C}
+.subview{margin:8px 0 4px;background:#ffffff;border:1px dashed #D3D1C7;border-radius:10px;padding:8px 10px}
+.subview .viewtitle{font-size:12px;font-weight:600;color:#854F0B;margin-bottom:4px}
+.subview .subcap{font-size:12px;color:#6B695F;margin:6px 2px 0;line-height:1.6}
+.phase-note{font-size:12px;color:#8A877C;margin:8px 4px 0;line-height:1.6}
+.tablewrap{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 0 12px;padding-bottom:2px;scrollbar-width:thin}
+.tablewrap table.grid{width:100%}
+#scene [opacity],#scene2 [opacity]{transition:opacity .28s ease}
+#scene rect,#scene circle,#scene path,#scene2 rect,#scene2 circle,#scene2 path{transition:fill .24s ease,stroke .24s ease,opacity .24s ease}
+#tok,#tokT{transition:none}
+@media (prefers-reduced-motion: reduce){#scene [opacity],#scene2 [opacity],#scene rect,#scene circle,#scene path,#scene2 rect,#scene2 circle,#scene2 path{transition:none}}
+@media (max-width:640px){.method-chain{grid-template-columns:repeat(2,max-content)}}
+
 </style>
 </head>
 <body>
@@ -125,6 +158,63 @@ table.grid td.act{background:#FAEEDA}
 <text class="ts" x="985" y="40" text-anchor="end">琥珀 = 概率域（相关即可）</text>
 <g id="scene"></g>
 </svg>
+<div class="legend">
+<span><i class="sw-red"></i>红框 / 红段 = 约束强制在场</span>
+<span><i class="sw-amber"></i>琥珀 = 概率域返回</span>
+<span><i class="sw-dash"></i>灰虚线 = 未发生的查询</span>
+</div>
+<div class="readout">
+<span class="ro">相位 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">关键量 <b id="roKey">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="subview">
+<div class="viewtitle">第二视图 · 四路返回时序 · 谁先到、谁强制（与主图同步）</div>
+<svg id="eng2" viewBox="0 0 1000 210" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>四路召回与合并预算时间轴</title>
+<g id="scene2">
+<text class="th" x="500" y="18" text-anchor="middle">四路返回时序 · 谁先到、谁强制</text>
+<text class="ts" x="500" y="35" text-anchor="middle">横轴 = 全局相位 0–720° · S1 强制进窗（帽 40%）· 其余按名次填</text>
+<text id="v2_win" class="tb" x="950" y="48" text-anchor="end" fill="#854F0B">窗口占用 0%</text>
+<text class="tb" x="84" y="68" text-anchor="end">S1 规则</text>
+<text class="tb" x="84" y="90" text-anchor="end">S2 精确</text>
+<text class="tb" x="84" y="112" text-anchor="end">S3 向量</text>
+<text class="tb" x="84" y="134" text-anchor="end">S4 图谱</text>
+<line id="v2_lane0" x1="90" y1="64" x2="950" y2="64" stroke="#ECEAE2" stroke-width="1"/>
+<line id="v2_lane1" x1="90" y1="86" x2="950" y2="86" stroke="#ECEAE2" stroke-width="1"/>
+<line id="v2_lane2" x1="90" y1="108" x2="950" y2="108" stroke="#ECEAE2" stroke-width="1"/>
+<line id="v2_lane3" x1="90" y1="130" x2="950" y2="130" stroke="#ECEAE2" stroke-width="1"/>
+<rect id="v2_l0" x="185.6" y="58" width="0" height="12" rx="4" fill="#FCEBEB" stroke="#E24B4A"/>
+<rect id="v2_l1" x="185.6" y="80" width="0" height="12" rx="4" fill="#F5F4EF" stroke="#B4B2A9"/>
+<rect id="v2_l2" x="185.6" y="102" width="0" height="12" rx="4" fill="#FFF6E8" stroke="#EF9F27"/>
+<rect id="v2_l3" x="185.6" y="124" width="0" height="12" rx="4" fill="#F5F4EF" stroke="#B4B2A9"/>
+<text class="ts" x="287" y="60" fill="#8A2A2A">强制进 · 0.38</text>
+<text class="ts" x="371" y="82" fill="#3B3A34">逐字命中</text>
+<text class="ts" x="383" y="104" fill="#854F0B">0.71 / 0.63</text>
+<text class="ts" x="371" y="126" fill="#3B3A34">最新值</text>
+<text class="tb" x="90" y="148">合并带预算（约束先抢）</text>
+<rect x="90" y="152" width="860" height="18" rx="4" fill="#F5F4EF" stroke="#ECEAE2"/>
+<rect id="v2_m0" x="90" y="152" width="0" height="18" rx="4" fill="#FCEBEB" stroke="#E24B4A"/>
+<rect id="v2_m1" x="434" y="152" width="0" height="18" rx="4" fill="#EAF3DE" stroke="#639922"/>
+<rect id="v2_m2" x="649" y="152" width="0" height="18" rx="4" fill="#FFF6E8" stroke="#EF9F27"/>
+<rect id="v2_m3" x="821" y="152" width="0" height="18" rx="4" fill="#EAF3DE" stroke="#639922"/>
+<text class="ts" x="262" y="165" text-anchor="middle">S1 ≤40%</text>
+<text class="ts" x="541.5" y="165" text-anchor="middle">S2 25%</text>
+<text class="ts" x="735" y="165" text-anchor="middle">S3 20%</text>
+<text class="ts" x="885.5" y="165" text-anchor="middle">S4 15%</text>
+<line id="v2_play" x1="90" y1="46" x2="90" y2="182" stroke="#C46A0A" stroke-width="1.4" stroke-dasharray="3 3" opacity="0.8"/>
+<circle id="v2_dot" cx="90" cy="176" r="4" fill="#C46A0A"/>
+<line x1="90" y1="176" x2="950" y2="176" stroke="#3B3A34"/>
+<line x1="90" y1="176" x2="90" y2="182" stroke="#3B3A34"/><text class="ts" x="90" y="196" text-anchor="middle">0°</text>
+<line x1="305" y1="176" x2="305" y2="182" stroke="#3B3A34"/><text class="ts" x="305" y="196" text-anchor="middle">180°</text>
+<line x1="520" y1="176" x2="520" y2="182" stroke="#3B3A34"/><text class="ts" x="520" y="196" text-anchor="middle">360°</text>
+<line x1="735" y1="176" x2="735" y2="182" stroke="#3B3A34"/><text class="ts" x="735" y="196" text-anchor="middle">540°</text>
+<line x1="950" y1="176" x2="950" y2="182" stroke="#3B3A34"/><text class="ts" x="950" y="196" text-anchor="middle">720°</text>
+</g>
+</svg>
+<div class="subcap">读法：先看哪一路先返回、哪一路强制置顶，再看合并带的 40% 约束帽如何被填满。</div>
+</div>
 <div class="ctrl">
 <button class="btn" id="engBtn">暂停</button>
 <span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
@@ -139,13 +229,14 @@ table.grid td.act{background:#FAEEDA}
 <button class="btn warn" onclick="nextStep()">下一步 ›</button>
 </span>
 </div>
+<p class="phase-note">相位口径：0° = Query Planning 开始；720° = 生成与闭环结束。四路并发 80°、合并 300°、入窗 360°；副图与主图同相位。</p>
 </div>
 </div>
 
 <section>
 <div class="sec-head"><span class="sec-num">1</span><h2>表象观察：先把它当黑盒</h2></div>
 <p class="sec-sub">第一步不拆机器，只看它对外表现出什么行为。</p>
-<div class="quote">「对事物的观察包括了静态结构 + 动态生命周期 + 环境场景三个方面的内容。」<i>—— 人月聊IT · 思维系列</i></div>
+<div class="quote">「对事物的观察包括了静态结构 + 动态生命周期 + 环境场景三个方面的内容。」</div>
 <p>从外部看，检索系统做的事只有一件：<b>一个问题进来，一组排好序、带着来源的证据出去</b>。它不生成答案，它决定模型「凭什么下判断」。好的检索和坏的检索，在调用方看来都是一次普通查询——差别只在答案的因果链能不能追到「哪一版索引里的哪个 chunk」。</p>
 <div class="flow">
 <span class="node">Query（含缺口）</span><span class="arr">→</span>
@@ -159,7 +250,7 @@ table.grid td.act{background:#FAEEDA}
 <section>
 <div class="sec-head"><span class="sec-num">2</span><h2>静态分解：它由什么组成</h2></div>
 <p class="sec-sub">打开黑盒，沿空间维度拆解。点部件卡片，动画中对应部分会亮成琥珀色。</p>
-<div class="quote">「它由什么构成？核心方法是分解、分类、结构化——分解需符合 MECE 法则，同层必须粒度一致。」<i>—— 人月聊IT · 思维系列</i></div>
+<div class="quote">「它由什么构成？核心方法是分解、分类、结构化——分解需符合 MECE 法则，同层必须粒度一致。」</div>
 <p>分路召回管线可按功能分成<b>五组</b>：</p>
 <div class="partgroup">
 <div class="gname">Query 组 —— 负责「先知道缺什么」</div>
@@ -205,9 +296,9 @@ table.grid td.act{background:#FAEEDA}
 <section>
 <div class="sec-head"><span class="sec-num">3</span><h2>动态分析：它如何运转</h2></div>
 <p class="sec-sub">盯住那些移动的卡片。用动画下方的 9 个步骤点逐帧走完一次完整检索。</p>
-<div class="quote">「它如何演变与运作？关注时间轴上的发展规律、行为模式和内部流程。核心方法是流程分析、行为追溯。」<i>—— 人月聊IT · 思维系列</i></div>
+<div class="quote">「它如何演变与运作？关注时间轴上的发展规律、行为模式和内部流程。核心方法是流程分析、行为追溯。」</div>
 <p><b>操作：</b>点击动画下方步骤条上的圆点（或「下一步」按钮），画面会定格在对应时刻。建议完整走两遍：第一遍只看红框卡片走哪条路，第二遍同时看合并带的预算段怎么按优先级填。</p>
-<table class="grid">
+<div class="tablewrap"><table class="grid">
 <tr><th>阶段</th><th>时刻</th><th>S1 规则</th><th>S3 向量</th><th>合并带</th><th>这一步在干什么</th></tr>
 <tr><td>① Query Planning</td><td>0°–80°</td><td>—</td><td>—</td><td>—</td><td>把「复述问题」改成「描述信息缺口」：缺的是数据库操作规范</td></tr>
 <tr><td>② 四路并发</td><td>80°–160°</td><td class="act">发起</td><td class="act">发起</td><td>—</td><td>四个通道同时查；各路 Top-K 不必一致，别为配置表好看设同一个 K</td></tr>
@@ -218,16 +309,16 @@ table.grid td.act{background:#FAEEDA}
 <tr><td>⑦ 充分性判断</td><td>420°–480°</td><td colspan="3" class="act">六问过一遍</td><td>各部分有证据吗 / 能支撑结论吗 / 冲突吗 / 缺限定吗 / 还有有效信息吗</td></tr>
 <tr><td>⑧ 最小充分</td><td>480°–560°</td><td colspan="3" class="hot">第一个目标即停</td><td>「判断适不适合」查完就收；价格、优惠券、库存一次都没查</td></tr>
 <tr><td>⑨ 生成与闭环</td><td>560°–720°</td><td colspan="3" class="act">红线可见下生成</td><td>模型写原生 SQL；bad case 回流测试集——同一个坑只踩一次</td></tr>
-</table>
+</table></div>
 <p>两个容易错过、但值得在分步模式里细看的点：① 第 ⑤ 阶段红框卡片是<b>穿过合并带直接置顶</b>的——越是保命的内容，越不该跟偏好抢名次；② 第 ⑧ 阶段<b>「没发生的查询」被显式画了出来</b>（灰色虚线框）——它们不是被优化掉了，是根本不该发生，这就是最小充分检索和省着查的区别。</p>
 </section>
 
 <section>
 <div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件如何协同出「该在场的在场」</h2></div>
 <p class="sec-sub">把第 2 节的「结构」和第 3 节的「流程」叠在一起——这才是理解的完成态。</p>
-<div class="quote">「动静融合的关键是建立映射：将组成部件与操作步骤一一对应，理解各部件如何协同产生外在行为。系统 = 元素 + 连接 + 目标。」<i>—— 人月聊IT · 思维系列</i></div>
+<div class="quote">「动静融合的关键是建立映射：将组成部件与操作步骤一一对应，理解各部件如何协同产生外在行为。系统 = 元素 + 连接 + 目标。」</div>
 <p>映射表：<b>每个部件在每个阶段里承担什么角色</b>。竖着看是一个阶段的全体协同，横着看是一个部件的完整职责。</p>
-<table class="grid">
+<div class="tablewrap"><table class="grid">
 <tr><th>部件 ＼ 阶段</th><th>① 规划</th><th>② 并发</th><th>③④ 各路返回</th><th>⑤ 合并</th><th>⑥ 入窗</th><th>⑦⑧ 判断</th></tr>
 <tr><td>Query Planning</td><td class="hot">描述缺口</td><td>产出 Query Set</td><td>—</td><td>—</td><td>—</td><td>决定查不查</td></tr>
 <tr><td>S1 规则路</td><td>读触发条件</td><td class="act">发起</td><td class="hot">红线命中</td><td class="hot">先抢 40% 帽</td><td class="hot">置顶进窗</td><td>被看见 ≠ 被遵守</td></tr>
@@ -236,14 +327,14 @@ table.grid td.act{background:#FAEEDA}
 <tr><td>S4 图谱路</td><td>—</td><td class="act">发起</td><td class="act">状态最新值</td><td>按名次填</td><td>证据卡</td><td>—</td></tr>
 <tr><td>合并带预算</td><td>—</td><td>—</td><td>候选汇入</td><td class="hot">优先级填充</td><td class="act">容量核算</td><td>决定是否迭代</td></tr>
 <tr><td>充分性判断</td><td>—</td><td>—</td><td>—</td><td>—</td><td>证据齐备</td><td class="hot">够则停 / 缺则查</td></tr>
-</table>
+</table></div>
 <p>点题一句：<b>「保命红线六周后仍在场」这个外在行为，不是任何一个检索器的属性，而是「写入分类 + 读取分路 + 优先级合并」整体协同涌现的</b>。把同一条规则倒进向量池，它的生死由余弦相似度决定——那是把确定域扔进了概率筛子，像拿尺子量温度。反过来，分路架构也有它的价格：规则路依赖 domain 抽取，抽错了全线跳过——所以兜底要按「抽错也不至于全废」来设计：多值宽口径注入、按动作类型触发、约束漏注入计入审计。</p>
 </section>
 
 <section>
 <div class="sec-head"><span class="sec-num">5</span><h2>环境场景：它依赖什么才能工作</h2></div>
 <p class="sec-sub">主体之外，还有一圈支撑系统。</p>
-<div class="quote">「对事物的认识 = 空间属性 + 时间属性 + 环境属性（外在关系和依赖）。」<i>—— 人月聊IT · 思维系列</i></div>
+<div class="quote">「对事物的认识 = 空间属性 + 时间属性 + 环境属性（外在关系和依赖）。」</div>
 <div class="envcards">
 <div class="env"><b>写入侧供应链</b><span>采集、解析、分片、补元数据、入库校验。没有 IndexManifest 和 golden_set 回归，索引连「能不能切线上」都答不了。</span></div>
 <div class="env"><b>检索基础设施</b><span>规则引擎 / 倒排索引 / 向量库 / 图谱。先一百万缩到一万，再谈向量查询——高频过滤条件提前建索引。</span></div>
@@ -268,6 +359,7 @@ table.grid td.act{background:#FAEEDA}
 <p>· 结构：Query Planning + 四路召回 + RRF 融合 + 优先级预算 + 证据卡 + 最小充分。</p>
 <p>· 行为：约束走触发条件强制进，偏好细节走向量按名次填；充分性够就停，缺什么才查什么。</p>
 <p>· 协同：写入分类 × 读取分路 × 优先级合并，三件事齐了，「该在场的必须到场」才成立。</p>
+<p>· 边界与简化：四路返回时序被压缩到同一时间轴；真实检索延迟差异很大，演示只保留因果关系。</p>
 </div>
 
 </div>
@@ -347,7 +439,7 @@ H+='<g id="s4Card" opacity="0"><rect x="440" y="380" width="156" height="40" rx=
 // 红线卡（三段旅程：S1 → 合并带 → 窗口置顶）
 H+='<g id="redCard"><rect x="440" y="76" width="156" height="48" rx="7" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.8"/>'
 +'<text class="tb" x="448" y="94" fill="#8A2A2A">禁止使用 ORM</text>'
-+'<text class="ts" x="448" y="108" fill="#8A2A2A">force_recall · domain=database</text>'
++'<text class="ts" x="448" y="108" fill="#8A2A2A">force_recall · database</text>'
 +'<text class="ts" x="448" y="122" fill="#8A877C">相似度 0.38 · 不算余弦</text></g>';
 // 合并带
 H+='<g id="mgBox"><rect x="618" y="72" width="178" height="368" rx="10" fill="#FBFAF6" stroke="#3B3A34" stroke-width="1.4"/>'
@@ -402,6 +494,7 @@ var el={};
 for(var i=0;i<4;i++){el['segf'+i]=document.getElementById('segf'+i);el['fan'+i]=document.getElementById('fan'+i);}
 for(var q=0;q<6;q++){el['qp'+q]=document.getElementById('qp'+q);}
 el.winBar=document.getElementById('winBar');el.winTxt=document.getElementById('winTxt');
+var redTxt=el.redCard.querySelectorAll('text'),profTxt=el.profCard.querySelectorAll('text'),structTxt=el.structCard.querySelectorAll('text');
 var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
 var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
 var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -476,7 +569,7 @@ el.structCard.setAttribute('opacity',(s3in*(th<360?1:1)).toFixed(2));
 place(el.redCard,HOME_RED,[
 {t:160,x:440,y:76},{t:330,x:626,y:118},{t:400,x:832,y:122},{t:720,x:832,y:122}
 ],th);
-el.redCard.setAttribute('opacity',th>=150?1:0);
+el.redCard.setAttribute('opacity',th>=150&&th<400?1:0);
 // 画像 / 结构卡：S3 → 合并带候选池 → 窗口 win1/win2
 place(el.profCard,HOME_PROF,[
 {t:240,x:440,y:272},{t:360,x:626,y:300},{t:420,x:832,y:184},{t:720,x:832,y:184}
@@ -484,6 +577,9 @@ place(el.profCard,HOME_PROF,[
 place(el.structCard,HOME_STRUCT,[
 {t:240,x:440,y:298},{t:360,x:626,y:326},{t:420,x:832,y:234},{t:720,x:832,y:234}
 ],th);
+function hideMoveTxt(nodes,on){for(var ti=0;ti<nodes.length;ti++)nodes[ti].setAttribute('opacity',on?1:0);}
+hideMoveTxt(redTxt,th<395?1:0);hideMoveTxt(profTxt,th<415?1:0);hideMoveTxt(structTxt,th<415?1:0);
+if(th>=420){el.profCard.setAttribute('opacity',0);el.structCard.setAttribute('opacity',0);}
 // 合并段按优先级填充：S1(300-330) S2(330-350) S3(350-375) S4(375-400)
 var segT=[[300,330],[330,350],[350,375],[375,400]];
 for(var s=0;s<4;s++){
@@ -511,6 +607,112 @@ g.setAttribute('opacity',on?1:0.55);
 }
 requestAnimationFrame(tick);
 }
+/* agent-lab shared instruments + second view */
+(function(){
+var roPhase=document.getElementById('roPhase');
+var roStep=document.getElementById('roStep');
+var roKey=document.getElementById('roKey');
+var chipBox=document.getElementById('stateChips');
+var chipEls={};
+var CHIPS=[{k:'s1',l:'S1 规则'},{k:'s2',l:'S2 精确'},{k:'s3',l:'S3 向量'},{k:'s4',l:'S4 图谱'},{k:'merge',l:'合并带'},{k:'window',l:'窗口'}];
+CHIPS.forEach(function(c){
+var s=document.createElement('span');s.className='chip';s.innerHTML=c.l+' <b>--</b>';
+chipBox.appendChild(s);chipEls[c.k]=s;
+});
+function setChip(k,v,cls){
+var n=chipEls[k];if(!n)return;
+var b=n.querySelector('b');
+if(b&&b.textContent!==v)b.textContent=v;
+n.classList.remove('on','warn','off');
+if(cls)n.classList.add(cls);
+}
+function setT(id,v){var n=document.getElementById(id);if(n&&n.textContent!==v)n.textContent=v;}
+function setA(id,k,v){var n=document.getElementById(id);if(n)n.setAttribute(k,v);}
+function setO(id,v){var n=document.getElementById(id);if(n)n.setAttribute('opacity',v.toFixed(2));}
+function ss(t){t=Math.max(0,Math.min(1,t));return t*t*(3-2*t);}
+function lr(a,b,t){return a+(b-a)*t;}
+function cl(v,a,b){return Math.max(a,Math.min(b,v));}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function stageIndex(th){var si=0;for(var i=0;i<STEPS.length;i++){if(th>=STEPS[i].d)si=i;}return si;}
+function laneName(t){
+if(t<80)return 'Query Planning';
+if(t<160)return '四路并发';
+if(t<240)return 'S1 命中';
+if(t<300)return 'S3 返回';
+if(t<360)return '优先级合并';
+if(t<420)return '证据入窗';
+if(t<480)return '充分性判断';
+if(t<560)return '最小充分';
+return '生成与闭环';
+}
+function renderSide(th){
+var t=norm(th),x=90+t/720*860;
+setA('v2_play','x1',x.toFixed(1));setA('v2_play','x2',x.toFixed(1));setA('v2_dot','cx',x.toFixed(1));
+var rets=[160,230,240,230],ids=['v2_l0','v2_l1','v2_l2','v2_l3'];
+for(var i=0;i<4;i++){
+var end=90+Math.min(t,rets[i])/720*860,w=Math.max(0,end-185.6);
+setA(ids[i],'width',w.toFixed(1));
+setA('v2_lane'+i,'stroke',t>=80&&t<rets[i]+20?'#EF9F27':'#ECEAE2');
+setA('v2_lane'+i,'stroke-width',t>=80&&t<rets[i]+20?'2.2':'1');
+}
+var segs=[[300,330,344,'v2_m0'],[330,350,215,'v2_m1'],[350,375,172,'v2_m2'],[375,400,129,'v2_m3']];
+for(var j=0;j<4;j++){var p=cl((t-segs[j][0])/(segs[j][1]-segs[j][0]),0,1);setA(segs[j][3],'width',(segs[j][2]*ss(p)).toFixed(1));}
+var cap=Math.round(42*ss(cl((t-360)/60,0,1)));
+setT('v2_win','窗口占用 '+cap+'%');
+}
+function keyAt(t){
+return '窗口 '+Math.round(42*ss(cl((t-360)/60,0,1)))+'% · '+laneName(t);
+}
+function chipsAt(t){
+function lane(ret){return t>=ret?'已返回':(t>=80?'检索中':'待命');}
+var cap=Math.round(42*ss(cl((t-360)/60,0,1)));
+return [
+['s1',t>=160?'强制进':lane(999),t>=160?'on':(t>=80?'warn':'off')],
+['s2',lane(230),t>=230?'on':(t>=80?'warn':'off')],
+['s3',lane(240),t>=240?'on':(t>=80?'warn':'off')],
+['s4',lane(230),t>=230?'on':(t>=80?'warn':'off')],
+['merge',t>=400?'已入窗':(t>=300?'填充中':'待命'),t>=400?'on':(t>=300?'warn':'off')],
+['window',cap+'%',cap>0?'on':'off']
+];
+}
+function updateShared(th){
+var t=norm(th);
+var pr=Math.round(t)%720;
+if(roPhase.textContent!==(pr+'\u00b0'))roPhase.textContent=pr+'\u00b0';
+var si=stageIndex(t);if(mode==='step'&&stepIdx>=0)si=stepIdx;
+var st=STEPS[si]?STEPS[si].t:'\u2014';
+if(roStep.textContent!==st)roStep.textContent=st;
+var kv=keyAt(t);if(roKey.textContent!==kv)roKey.textContent=kv;
+var cs=chipsAt(t);
+for(var i=0;i<cs.length;i++)setChip(cs[i][0],cs[i][1],cs[i][2]);
+renderSide(t);
+}
+var AS={ease:null,last:performance.now(),DUR:900};
+var origGoStep=window.goStep;
+window.goStep=function(i){
+var from=phase;
+origGoStep(i);
+var to=phase,delta=to-from;
+if(!reduced&&Math.abs(delta)<=PERIOD/4&&Math.abs(delta)>0.01){
+phase=from;AS.ease={from:from,to:to,elapsed:0};
+}else{AS.ease=null;}
+};
+var origTick=tick;
+tick=function(now){
+if(typeof now!=='number')now=performance.now();
+var dt=Math.min(50,Math.max(0,now-AS.last));AS.last=now;
+if(mode==='auto')AS.ease=null;
+if(AS.ease){
+AS.ease.elapsed=Math.min(AS.DUR,AS.ease.elapsed+dt);
+var p=AS.ease.elapsed/AS.DUR;
+phase=AS.ease.from+(AS.ease.to-AS.ease.from)*ss(p);
+if(p>=1){phase=AS.ease.to;AS.ease=null;}
+}
+origTick(now);
+updateShared(phase/PERIOD*PHASE_MAX);
+};
+})();
+
 requestAnimationFrame(tick);
 document.querySelectorAll('.part').forEach(function(b){
 b.onclick=function(){

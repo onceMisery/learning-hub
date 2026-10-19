@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>客户端与协议 · Pulsar 互动原理实验室 第 8 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:920px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:680px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:500;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:12px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:500;fill:#1F1E1A}
+.tag{font-size:10.5px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:68px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+.modebar{display:flex;align-items:center;gap:8px;margin:6px 4px 0;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.modebar .mlabel{font-weight:600;color:#3B3A34}
+.modebtn{padding:5px 12px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:12.5px;cursor:pointer;font-family:inherit}
+.modebtn:hover{border-color:#888780}
+.modebtn.on{background:#FFF6E8;border-color:#EF9F27;color:#854F0B;font-weight:600}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .outbranch{display:inline-flex;flex-direction:column;align-items:flex-start;gap:6px}
+.flow .outline{display:inline-flex;align-items:center;gap:8px}
+.flow .flownote{font-size:12px;color:#6B695F;font-weight:600;margin-right:4px}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:9px 10px;text-align:center}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *,#eng2 .hl,#eng2 .hl *{stroke:#D96C06 !important}
+#scene [opacity]{transition:opacity .28s ease}
+#tok,#tokT,#pulse{transition:none}
+@media (prefers-reduced-motion: reduce){#scene [opacity]{transition:none}}
+.frame2{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figure{margin:14px 0 16px;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:12px 14px}
+.figure .figtitle{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:6px}
+.figure svg{width:100%;height:auto;display:block}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+.subview{margin:8px 0 4px;background:#ffffff;border:1px dashed #D3D1C7;border-radius:10px;padding:8px 10px}
+.subview .viewtitle{font-size:12px;font-weight:600;color:#854F0B;margin-bottom:4px}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：客户端与协议</a>
+  <span class="idx">第 8 / 9 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · 命令、帧与 Schema</div>
+<h1>客户端与协议：sendAsync 之后，线上到底发生了什么</h1>
+<p>同一段 Java 代码，在线上会被翻译成一串命令：lookup、连接、建 producer、发送、收 ack；消费侧又是另一组反向命令。这页把客户端栈、命令方向和帧格式摊开，让你看到 sendAsync 之后真正发生了什么。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span>
+<span class="mnode">② 静态分解</span>
+<span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span>
+<span class="mnode">⑤ 环境场景</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 560" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>客户端与 Broker 的命令序列</title>
+<defs>
+<pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+<line x1="0" y1="0" x2="0" y2="8" stroke="#B4B2A9" stroke-width="0.7"/>
+</pattern>
+<marker id="flw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/>
+</marker>
+<marker id="flwG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/>
+</marker>
+<marker id="flwR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/>
+</marker>
+</defs>
+<text class="th" x="500" y="24" text-anchor="middle">客户端与 Broker 的命令序列</text>
+<text class="ts" x="500" y="44" text-anchor="middle">琥珀 = 请求 / 发送；绿 = 响应 / 消费；竖向虚线 = 当前命令时间</text>
+<text class="ts" x="985" y="24" text-anchor="end">琥珀 = 请求 / 发送</text>
+<text class="ts" x="985" y="40" text-anchor="end">绿 = 响应 / 消费</text>
+<g id="scene"></g>
+</svg>
+
+<div class="subview">
+<div class="viewtitle">第二视图 · 计数器与状态（与主图同一相位）</div>
+<svg id="eng2" viewBox="0 0 1000 230" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>客户端计数器与状态</title>
+<g id="scene2"></g>
+</svg>
+</div>
+
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 轮 / 7 秒</span>
+</div>
+
+<div class="readout">
+<span class="ro">进度 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">关键量 <b id="roKey">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav">
+<button class="btn" onclick="prevStep()">‹ 上一步</button>
+<button class="btn warn" onclick="nextStep()">下一步 ›</button>
+</span>
+</div>
+<p class="figcap">进度 0° = 建立连接，720° = 消费 ack；命令位置是时间示意，不代表真实 RTT。<br>口径：Pulsar 5.1.0-SNAPSHOT；默认值来自 Producer/Consumer/ClientConfigurationData、broker.conf 与 PulsarApi.proto；批处理与内存读数为示意值。</p>
+</div>
+</div>
+
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：客户端只看见一个 sendAsync</h2></div>
+<p class="sec-sub">先不管类，只看从应用到线上，信息被翻译了几次。</p>
+<div class="quote">「对事物的观察包括了静态结构 + 动态生命周期 + 环境场景三个方面的内容。」</div>
+<p>应用看到的是一个消息对象和 <code>sendAsync</code>；客户端看到的是 pending 队列、批次、sequenceId；线上看到的是 <code>CommandSend</code>、<code>MessageMetadata</code> 和一段 payload；Broker 看到的是 entry，最后才落到 Bookie 的 ledger。</p>
+<div class="flow">
+<span class="node">sendAsync</span><span class="arr">→</span>
+<span class="node">ProducerImpl：pending / batch</span><span class="arr">→</span>
+<span class="node">ClientCnx：命令帧</span><span class="arr">→</span>
+<span class="node">Broker：entry / ledger</span><span class="arr">→</span>
+<span class="node">sendReceipt</span>
+</div>
+<p>三个常见误判：把 entry 当成 message；把 payload 当成 Protobuf；把 <code>sendAsync</code> 返回当成 Broker 已落盘。后面的图和帧解剖会逐条拆开。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：客户端栈、命令与帧</h2></div>
+<p class="sec-sub">先看两张静态图，再点部件卡片——动画中对应部分会亮成琥珀色。</p>
+<div class="quote">「它由什么构成？核心方法是分解、分类、结构化——分解需符合 MECE 法则，同层必须粒度一致。」</div>
+<figure class="figure">
+<div class="figtitle">帧解剖 · 控制帧与发送帧</div>
+<svg viewBox="0 0 920 250" role="img" aria-label="Pulsar 命令帧结构">
+<title>控制帧与发送帧</title>
+<text class="tn" x="30" y="28">控制帧（LOOKUP / CONNECT / PRODUCER / SUBSCRIBE / FLOW / ACK）</text>
+<rect x="30" y="44" width="90" height="32" rx="6" fill="#FFF6E8" stroke="#EF9F27"/><text class="tag" x="75" y="65" text-anchor="middle">totalSize</text>
+<rect x="128" y="44" width="80" height="32" rx="6" fill="#FFF6E8" stroke="#EF9F27"/><text class="tag" x="168" y="65" text-anchor="middle">cmdSize</text>
+<rect x="216" y="44" width="260" height="32" rx="6" fill="#ffffff" stroke="#3B3A34"/><text class="tag" x="346" y="65" text-anchor="middle">BaseCommand（Protobuf）</text>
+<text class="ts" x="500" y="65" fill="#6B695F">totalSize 不含自身，含后面的全部字节</text>
+<text class="tn" x="30" y="122">发送帧（SEND / MESSAGE）</text>
+<rect x="30" y="138" width="72" height="30" rx="5" fill="#FFF6E8" stroke="#EF9F27"/><text class="tag" x="66" y="158" text-anchor="middle">totalSize</text>
+<rect x="110" y="138" width="62" height="30" rx="5" fill="#FFF6E8" stroke="#EF9F27"/><text class="tag" x="141" y="158" text-anchor="middle">cmdSize</text>
+<rect x="180" y="138" width="142" height="30" rx="5" fill="#ffffff" stroke="#3B3A34"/><text class="tag" x="251" y="158" text-anchor="middle">Command</text>
+<rect x="330" y="138" width="48" height="30" rx="5" fill="#EAF3DE" stroke="#639922"/><text class="tag" x="354" y="158" text-anchor="middle">magic</text>
+<rect x="386" y="138" width="62" height="30" rx="5" fill="#EAF3DE" stroke="#639922"/><text class="tag" x="417" y="158" text-anchor="middle">CRC32C</text>
+<rect x="456" y="138" width="74" height="30" rx="5" fill="#FFF6E8" stroke="#EF9F27"/><text class="tag" x="493" y="158" text-anchor="middle">metaSize</text>
+<rect x="538" y="138" width="150" height="30" rx="5" fill="#ffffff" stroke="#3B3A34"/><text class="tag" x="613" y="158" text-anchor="middle">MessageMetadata</text>
+<rect x="696" y="138" width="194" height="30" rx="5" fill="#F5F4EF" stroke="#B4B2A9"/><text class="tag" x="793" y="158" text-anchor="middle">payload（任意字节）</text>
+<text class="ts" x="30" y="202" fill="#6B695F">CRC 只覆盖 metaSize + metadata + payload，不覆盖前面的 command；magic 0x0e01 表示带 Crc32c，0x0e02 表示 broker-entry-metadata。</text>
+<text class="ts" x="30" y="224" fill="#6B695F">控制命令靠 requestId 关联响应；CommandSend 没有 requestId，靠 producerId + sequenceId 匹配 SEND_RECEIPT。</text>
+</svg>
+<figcaption class="figcap">读法：先看控制帧的“长度 + 命令”，再看发送帧多出的 magic/CRC/metadata/payload；最后记住两类命令的关联键不同。</figcaption>
+</figure>
+<figure class="figure">
+<div class="figtitle">Schema 决策树 · 注册、版本与兼容性</div>
+<svg viewBox="0 0 920 260" role="img" aria-label="Schema 注册与兼容性决策树">
+<title>Schema 注册与兼容性</title>
+<rect x="28" y="52" width="150" height="56" rx="9" fill="#fff" stroke="#3B3A34"/><text class="tn" x="103" y="76" text-anchor="middle">producer 建连</text><text class="tag" x="103" y="96" text-anchor="middle">CommandProducer + schema</text>
+<path d="M178 80 L238 80" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#f8a)"/>
+<rect x="238" y="52" width="175" height="56" rx="9" fill="#FFF6E8" stroke="#EF9F27"/><text class="tn" x="325" y="76" text-anchor="middle">Broker 校验 / 注册</text><text class="tag" x="325" y="96" text-anchor="middle">handleProducer</text>
+<path d="M413 80 L473 80" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#f8a)"/>
+<rect x="473" y="52" width="170" height="56" rx="9" fill="#fff" stroke="#3B3A34"/><text class="tn" x="558" y="76" text-anchor="middle">hash 已在缓存？</text><text class="tag" x="558" y="96" text-anchor="middle">同 schema 直接复用</text>
+<path d="M643 80 L703 80" stroke="#639922" stroke-width="1.5" fill="none" marker-end="url(#f8g)"/>
+<rect x="703" y="52" width="190" height="56" rx="9" fill="#EAF3DE" stroke="#639922"/><text class="tn" x="798" y="76" text-anchor="middle">回 schemaVersion</text><text class="tag" x="798" y="96" text-anchor="middle">写入 MessageMetadata</text>
+<path d="M558 108 L558 148" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#f8a)"/>
+<rect x="443" y="148" width="230" height="58" rx="9" fill="#FFF6E8" stroke="#EF9F27"/><text class="tn" x="558" y="172" text-anchor="middle">CommandGetOrCreateSchema</text><text class="tag" x="558" y="192" text-anchor="middle">未缓存 / 多 schema / 自动更新</text>
+<path d="M443 177 L383 177" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#f8a)"/>
+<rect x="200" y="148" width="183" height="58" rx="9" fill="#fff" stroke="#3B3A34"/><text class="tn" x="291" y="172" text-anchor="middle">兼容性检查</text><text class="tag" x="291" y="192" text-anchor="middle">FULL / BACKWARD / FORWARD</text>
+<path d="M200 177 L140 177" stroke="#E24B4A" stroke-width="1.5" fill="none" marker-end="url(#f8r)"/>
+<text class="tag" x="30" y="132" text-anchor="start" fill="#8A2A2A">不兼容 → IncompatibleSchema</text>
+<text class="ts" x="28" y="238" fill="#6B695F">协议门槛：GetOrCreateSchema 需要 v15；ack receipt 需要 v17；AutoConsume schema 需要 v21。Broker 只宣告 min(server, client)。</text>
+<defs>
+<marker id="f8a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="f8g" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="f8r" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+</svg>
+<figcaption class="figcap">读法：从 producer 建连开始，先看 schema 是否已在缓存；未缓存才走 GetOrCreateSchema，再做兼容性检查。协议版本不够时，连命令都不可用。</figcaption>
+</figure>
+<div class="partgroup">
+<div class="gname">客户端与 Broker</div>
+<div class="parts">
+<button class="part" data-part="client"><b>Java 客户端</b><span>ProducerImpl 管 pending/批，ConsumerImpl 管 receiverQueue，ClientCnx 管连接与 requestId。</span></button>
+<button class="part" data-part="broker"><b>Broker</b><span>ServerCnx 解析命令，Producer 校验/去重，PersistentTopic 写 ManagedLedger。</span></button>
+<button class="part" data-part="protocol"><b>命令序列</b><span>lookup → connect → producer → send → receipt；消费侧 subscribe → flow → message → ack。</span></button>
+<button class="part" data-part="schema"><b>Schema</b><span>随 CommandProducer 注册；未缓存时 GetOrCreateSchema；版本写进 MessageMetadata。</span></button>
+<button class="part" data-part="batching"><b>批处理</b><span>默认 1000 条 / 128KB / 1ms；一条 CommandSend 可以装多条 message。</span></button>
+<button class="part" data-part="consumer"><b>消费信用</b><span>receiverQueue 默认 1000；消费掉一半发 Flow 还许可，ack 默认攒 100ms/1000 条。</span></button>
+</div>
+</div>
+<p class="hint">静态图回答“帧里有什么、schema 怎么走”；动画回答“命令在时间上怎么排”。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：十个命令走完一次往返</h2></div>
+<p class="sec-sub">用 10 个步骤点看命令方向、关键字段和响应关系。</p>
+<div class="quote">「它如何演变与运作？关注时间轴上的发展规律、行为模式和内部流程。核心方法是流程分析、行为追溯。」</div>
+<table class="grid">
+<tr><th>阶段</th><th>方向</th><th>命令</th><th>关键点</th></tr>
+<tr><td>① lookup</td><td>客户端 → Broker</td><td>CommandLookupTopic</td><td>requestId 关联响应；owner 可能 Redirect</td></tr>
+<tr><td>② 响应</td><td>Broker → 客户端</td><td>LookupResponse</td><td>Connect 或 Redirect；正常流程</td></tr>
+<tr><td>③ 握手</td><td>客户端 → Broker</td><td>CommandConnect</td><td>协议版本、认证、客户端版本</td></tr>
+<tr><td>④ 协商</td><td>Broker → 客户端</td><td>CommandConnected</td><td>min(server, client)、maxMessageSize、feature flags</td></tr>
+<tr><td>⑤ 建 producer</td><td>客户端 → Broker</td><td>CommandProducer</td><td>producerId、schema、epoch</td></tr>
+<tr><td>⑥ schema 版本</td><td>Broker → 客户端</td><td>ProducerSuccess</td><td>producerName、schemaVersion、topicEpoch</td></tr>
+<tr><td>⑦ 发送</td><td>客户端 → Broker</td><td>CommandSend</td><td>sequenceId、numMessages、metadata + payload</td></tr>
+<tr><td>⑧ 写账本</td><td>Broker 内部</td><td>PersistentTopic → ML</td><td>entry 写 writeQuorum 个 Bookie</td></tr>
+<tr><td>⑨ 回执</td><td>Broker → 客户端</td><td>CommandSendReceipt</td><td>producerId + sequenceId 匹配；批共享 highestSequenceId</td></tr>
+<tr><td>⑩ 消费</td><td>双向</td><td>Subscribe / Flow / Message / Ack</td><td>信用链和 ack 分组；消费侧反向命令</td></tr>
+</table>
+<p>两个最容易看漏的点：<b>① CommandSend 没有 requestId</b>，它靠 producerId + sequenceId 匹配回执；<b>② 一条 CommandSend 可能对应多条 message</b>，因为客户端默认开批处理。看 Broker 的写入指标时，别把“1 条 entry”当成“1 条消息”。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：命令 × 方向 × 状态</h2></div>
+<p class="sec-sub">把命令序列和帧解剖叠起来，才能定位“卡在哪一层”。</p>
+<div class="quote">「动静融合的关键是建立映射：将组成部件与操作步骤一一对应，理解各部件如何协同产生外在行为。」</div>
+<table class="grid">
+<tr><th>现象</th><th>更可能的原因</th><th>先看哪里</th></tr>
+<tr><td>sendAsync future 超时</td><td>30s 内没收到 SEND_RECEIPT；或批一直没触发</td><td>sendTimeout、pending/批次、Broker/Bookie 写延迟</td></tr>
+<tr><td>Broker 只写了 1 条</td><td>客户端把 100 条合成了一个 entry</td><td>num_messages、highest_sequence_id、批配置</td></tr>
+<tr><td>producer 创建失败</td><td>schema 不兼容、topic 不存在、权限不足</td><td>ProducerSuccess 错误、schema registry 日志</td></tr>
+<tr><td>消费端解析失败</td><td>consumer schema 与消息 schemaVersion 不匹配</td><td>MessageMetadata.schema_version、AutoConsume</td></tr>
+<tr><td>升级客户端后行为变了</td><td>协议版本/feature flags 不同</td><td>CommandConnected 的版本与能力</td></tr>
+</table>
+<p>点题一句：<b>客户端协议不是“发字节”，而是“命令 + 元数据 + payload 三层”</b>。命令决定动作，元数据决定怎么解释 payload，payload 才是业务数据。三层任何一层错位，都会表现成“消息发不出去或消费不了”。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：协议之外还得有什么</h2></div>
+<p class="sec-sub">命令能跑通，前提是这些系统在环境里就位。</p>
+<div class="quote">「对事物的认识 = 空间属性 + 时间属性 + 环境属性（外在关系和依赖）。」</div>
+<div class="envcards">
+<div class="env"><b>DNS / serviceUrl</b><span>客户端只认 serviceUrl；地址解析失败，lookup 连第一步都走不到。</span></div>
+<div class="env"><b>Proxy / 认证</b><span>Proxy 做 TLS/鉴权/转发；CommandConnect 带认证信息，权限错误在最前面被拒。</span></div>
+<div class="env"><b>Schema registry 存储</b><span>默认 BookkeeperSchemaStorage；schema 定位在元数据，数据在 BookKeeper。</span></div>
+<div class="env"><b>协议版本</b><span>v15 GetOrCreateSchema、v17 ack receipt、v21 AutoConsume；老客户端只协商到 min。</span></div>
+<div class="env"><b>Broker / Bookie</b><span>SEND_RECEIPT 背后是 writeQuorum/ackQuorum；Bookie 慢会放大 sendTimeout。</span></div>
+<div class="env"><b>监控</b><span>pendingMessages、批次大小、schemaVersion、协议版本、sendReceipt 延迟。</span></div>
+</div>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">能说清“命令、帧、payload 三层”，才算真的懂。</p>
+<div id="quiz"></div>
+</section>
+
+
+<div class="summary">
+<h2>一页带走</h2>
+<p class="chant">命令管动作，metadata 管解释，payload 才是数据；sendReceipt 只认 producerId + sequenceId，批处理让一条命令装很多条消息。</p>
+<p>· 客户端不是“直接发消息”：pending + 批次 + ClientCnx 命令帧，才到 Broker。</p>
+<p>· 控制命令靠 requestId；CommandSend 靠 producerId + sequenceId 匹配回执。</p>
+<p>· 一条 CommandSend 可能装多条 message；批默认 1000 条 / 128KB / 1ms。</p>
+<p>· Schema 随 CommandProducer 注册，未缓存才走 GetOrCreateSchema；版本写进 MessageMetadata。</p>
+<p>· payload 不是 Protobuf；协议版本 v15/v17/v21 决定命令能力。</p>
+<p>· 边界与简化：本页为原理示意；默认值/阈值/时序以 Pulsar 5.1.0-SNAPSHOT 的配置与源码为准；异常、重试与批处理细节未展开。</p>
+
+</div>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+
+<script>
+(function(){
+var PERIOD=7600,PHASE_MAX=720;
+var STEPS=[{d:0,t:'lookup',x:'客户端先向任意 Broker 发 CommandLookupTopic，拿 topic 的 owner 地址。'},
+{d:72,t:'Redirect / Connect',x:'Broker 回 LookupResponse；owner 不是当前 Broker 就 Redirect，客户端带 authoritative=true 重试。'},
+{d:144,t:'连接握手',x:'ClientCnx 发 CommandConnect，带协议版本、认证信息和客户端版本。'},
+{d:216,t:'协议协商',x:'Broker 回 CommandConnected，带 min(server, client) 协议版本、最大消息大小和 feature flags。'},
+{d:288,t:'建 producer',x:'CommandProducer 带 producerId、schema；Broker 注册/校验 schema，回 producer 名字。'},
+{d:360,t:'schema 版本',x:'ProducerSuccess 回 schemaVersion；客户端缓存，后续消息在 MessageMetadata 里带版本。'},
+{d:432,t:'sendAsync / 批',x:'消息先进 pending + 批次；默认 1000 条、128KB 或 1ms 触发，不保证一条消息一个命令。'},
+{d:504,t:'写账本',x:'SEND 帧到 Broker：ServerCnx → Producer → PersistentTopic → ManagedLedger → Bookie quorum。'},
+{d:576,t:'回执',x:'Broker 回 CommandSendReceipt；producerId + sequenceId 匹配，批内消息共享 highestSequenceId。'},
+{d:648,t:'消费命令',x:'消费侧反向：CommandSubscribe + Flow，Broker 推 CommandMessage，客户端再发 CommandAck。'}];
+var PARTS={client:['clientBox','clientProducer','clientConsumer','clientCnx'],
+broker:['brokerBox','brokerCnx','brokerProducer','brokerTopic','ledgerTag'],
+protocol:['cmd0','cmd1','cmd2','cmd3','cmd4','cmd5','cmd6','cmd7','cmd8','cmd9','cmd10','seqCursor','seqDot'],
+schema:['cmd4','cmd5'],
+batching:['cmd6'],
+consumer:['cmd8','cmd9','cmd10','clientConsumer']};
+var CHIPS=[{k:'conn',l:'连接'},{k:'schema',l:'Schema'},{k:'batch',l:'批处理'},{k:'consume',l:'消费'},{k:'ack',l:'ack'}];
+var QUIZ=[{q:'sendAsync 返回后，Broker 一定已经写了一条消息吗？',opts:['一定，sendAsync 是同步写','不一定：消息可能还在 pending/批次里，或者已经发出但还没收到 sendReceipt','一定，future 完成就是落盘'],a:1,exp:'sendAsync 只表示入队成功；批处理会等条数/字节/时间，sendReceipt 才表示 Broker 完成写入。'},
+{q:'一条 CommandSend 里为什么可能装很多条消息？',opts:['因为 Broker 会把消息合并','因为客户端默认开批处理，1000 条 / 128KB / 1ms 触发，一条 entry 可以装多条 message','因为 Protobuf 必须打包'],a:1,exp:'batchingEnabled 默认 true；Broker 和 Bookie 看到的是 entry，消费者再按 batchIndex 拆开。'},
+{q:'producer 创建时 schema 走哪条命令？',opts:['先单独发 CommandGetOrCreateSchema，再发 CommandProducer','schema 随 CommandProducer 一起带过去；后续未缓存的 schema 才走 GetOrCreateSchema','schema 不上线，只在客户端内存'],a:1,exp:'CommandProducer 带 schema 字段，Broker 在 handleProducer 注册/校验并回 schemaVersion；GetOrCreateSchema 用于后续未缓存 schema。'},
+{q:'payload 是 Protobuf 吗？',opts:['是，整条消息都是 Protobuf','不一定：命令和 MessageMetadata 是 Protobuf，payload 是任意字节，由 Schema 解释','只有字符串是 Protobuf'],a:1,exp:'协议层包住的是命令和元数据；payload 可以是 Avro/JSON/字符串/图片，SchemaType 决定怎么解释。'},
+{q:'客户端协议版本不匹配时，最先应该看什么？',opts:['Bookie 磁盘','CommandConnected 里的协议版本与 feature flags；老客户端只协商到 min(server, client)','消费者线程数'],a:1,exp:'握手时 Broker 只宣告 min(server, client)；v15 才支持 GetOrCreateSchema，v17 才支持 ack receipt，v21 才带 AutoConsume schema。'}];
+function box(x,y,w,h,rx,fill,stroke,dash){return '<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="'+(rx||10)+'" fill="'+(fill||'#ffffff')+'" stroke="'+(stroke||'#3B3A34')+'" stroke-width="1.4"'+(dash?' stroke-dasharray="'+dash+'"':'')+'/>';}
+function tx(x,y,s,cls,anchor,fill){return '<text class="'+(cls||'ts')+'" x="'+x+'" y="'+y+'"'+(anchor?' text-anchor="'+anchor+'"':'')+(fill?' fill="'+fill+'"':'')+'>'+s+'</text>';}
+var H='';
+H+='<rect x="20" y="64" width="960" height="484" rx="14" fill="#FBFAF6" stroke="#ECEAE2"/>';
+H+='<g id="clientBox">'+box(40,64,220,86,12,'#ffffff','#3B3A34')+tx(150,86,'Java 客户端','tn','middle')+'</g>';
+H+='<g id="clientProducer">'+tx(150,108,'ProducerImpl · pending/batch','ts','middle')+'</g>';
+H+='<g id="clientConsumer">'+tx(150,126,'ConsumerImpl · receiverQueue','ts','middle')+'</g>';
+H+='<g id="clientCnx">'+tx(150,144,'ClientCnx · requestId/pending','ts','middle')+'</g>';
+H+='<g id="brokerBox">'+box(740,64,220,86,12,'#ffffff','#3B3A34')+tx(850,86,'Broker','tn','middle')+'</g>';
+H+='<g id="brokerCnx">'+tx(850,108,'ServerCnx · producerId','ts','middle')+'</g>';
+H+='<g id="brokerProducer">'+tx(850,126,'Producer · 校验/去重','ts','middle')+'</g>';
+H+='<g id="brokerTopic">'+tx(850,144,'PersistentTopic · ManagedLedger','ts','middle')+'</g>';
+H+='<line x1="150" y1="150" x2="150" y2="540" stroke="#D3D1C7" stroke-width="1.2" stroke-dasharray="5 5"/>';
+H+='<line x1="850" y1="150" x2="850" y2="540" stroke="#D3D1C7" stroke-width="1.2" stroke-dasharray="5 5"/>';
+function cmd(id,y,dir,color,label,dash,marker){
+  var attrs='stroke="'+color+'" stroke-width="1.7" fill="none" marker-end="url(#'+marker+')"'+(dash?' stroke-dasharray="5 4"':'');
+  H+='<path id="'+id+'" d="M'+(dir==='r'?150:850)+' '+y+' L'+(dir==='r'?850:150)+' '+y+'" '+attrs+' opacity="0.28"/>';
+  H+=tx(500,y-8,label,'tag','middle',color);
+}
+cmd('cmd0',176,'r','#C46A0A','CommandLookupTopic · requestId',false,'flw');
+cmd('cmd1',211,'l','#639922','LookupResponse · Connect / Redirect',false,'flwG');
+cmd('cmd2',246,'r','#C46A0A','CommandConnect · v21',false,'flw');
+cmd('cmd3',281,'l','#639922','CommandConnected · v21 / maxMessageSize',false,'flwG');
+cmd('cmd4',316,'r','#C46A0A','CommandProducer + schema',false,'flw');
+cmd('cmd5',351,'l','#639922','ProducerSuccess + schemaVersion',false,'flwG');
+cmd('cmd6',386,'r','#C46A0A','CommandSend · batch / sequenceId',false,'flw');
+H+='<text id="ledgerTag" class="tag" x="850" y="414" text-anchor="middle" fill="#854F0B" opacity="0.55">ServerCnx → Producer → ManagedLedger → Bookie</text>';
+cmd('cmd7',446,'l','#639922','CommandSendReceipt',false,'flwG');
+cmd('cmd8',481,'r','#C46A0A','CommandSubscribe + CommandFlow',false,'flw');
+cmd('cmd9',516,'l','#639922','CommandMessage · metadata + payload',false,'flwG');
+cmd('cmd10',535,'r','#639922','CommandAck',true,'flwG');
+H+='<line id="seqCursor" x1="80" y1="150" x2="920" y2="150" stroke="#C46A0A" stroke-width="1.4" stroke-dasharray="4 4" opacity="0.55"/>';
+H+='<circle id="seqDot" cx="80" cy="150" r="4" fill="#C46A0A"/>';
+document.getElementById('scene').innerHTML=H;
+var scene2El=document.getElementById('scene2');
+if(scene2El){var H2='';
+H2+='<rect x="24" y="26" width="952" height="178" rx="12" fill="#FBFAF6" stroke="#ECEAE2"/>';
+H2+=tx(40,48,'客户端内存在途','tn')+tx(160,36,'0','tag','start')+tx(900,36,'64MB','tag','end','#8A877C');
+H2+='<rect x="160" y="30" width="740" height="16" rx="8" fill="#F5F4EF" stroke="#D3D1C7"/>';
+H2+='<rect id="v2_mem" x="160" y="30" width="0" height="16" rx="8" fill="#EF9F27"/>';
+H2+=tx(40,88,'当前批','tn')+tx(900,76,'1000 条 / 128KB','tag','end','#8A877C');
+H2+='<rect x="160" y="70" width="740" height="16" rx="8" fill="#F5F4EF" stroke="#D3D1C7"/>';
+H2+='<rect id="v2_batch" x="160" y="70" width="0" height="16" rx="8" fill="#C46A0A"/>';
+H2+=tx(40,128,'receiverQueue','tn')+tx(900,116,'1000','tag','end','#8A877C');
+H2+='<rect x="160" y="110" width="740" height="16" rx="8" fill="#F5F4EF" stroke="#D3D1C7"/>';
+H2+='<rect id="v2_recv" x="160" y="110" width="0" height="16" rx="8" fill="#639922"/>';
+H2+=tx(40,168,'availablePermits','tn')+tx(900,156,'500','tag','end','#8A877C');
+H2+='<rect x="160" y="150" width="740" height="16" rx="8" fill="#F5F4EF" stroke="#D3D1C7"/>';
+H2+='<rect id="v2_perm" x="160" y="150" width="0" height="16" rx="8" fill="#4C7A1A"/>';
+H2+='<text id="v2_seq" class="tag" x="160" y="190" fill="#854F0B">sequenceId —</text>';
+H2+='<text id="v2_schema" class="tag" x="430" y="190" fill="#854F0B">schemaVersion —</text>';
+H2+='<text id="v2_proto" class="tag" x="700" y="190" fill="#4C7A1A">protocol v21 · ack 100ms/1000</text>';
+scene2El.innerHTML=H2;}
+var el={};
+document.querySelectorAll('#scene [id], #scene2 [id]').forEach(function(n){el[n.id]=n;});
+var CMD_ACTIVE={'0':['cmd0'],'1':['cmd1'],'2':['cmd2'],'3':['cmd3'],'4':['cmd4'],'5':['cmd5'],'6':['cmd6'],'7':['ledgerTag'],'8':['cmd7'],'9':['cmd8','cmd9','cmd10']};
+var CMD_ALL=['cmd0','cmd1','cmd2','cmd3','cmd4','cmd5','cmd6','cmd7','cmd8','cmd9','cmd10'];
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,STEP_DUR=900;
+var dots=[];
+for(var s=0;s<STEPS.length;s++){
+(function(n){
+var b=document.createElement('button');
+b.className='stepnode';
+b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+b.onclick=function(){goStep(n);};
+stepBar.appendChild(b);dots.push(b);
+})(s);
+}
+var chipBox=document.getElementById('stateChips'),chipEls={};
+CHIPS.forEach(function(c){
+var s=document.createElement('span');s.className='chip';
+s.innerHTML=c.l+' <b>--</b>';chipBox.appendChild(s);chipEls[c.k]=s;
+});
+function setChip(k,v){
+var n=chipEls[k];if(!n)return;var b=n.querySelector('b');
+if(b&&b.textContent!==v)b.textContent=v;
+n.classList.toggle('on',/^(开|是|已|完成|生效|放行|进行|2\/2|owner|markDelete)/.test(v));
+n.classList.toggle('off',/^(关|否|待命|—|未)/.test(v));
+}
+var stepIdx=-1;
+function setAuto(on){
+mode='auto';run=on;stepTo=null;btn.textContent=on?'暂停':'播放';
+if(on){stepIdx=-1;dots.forEach(function(d){d.classList.remove('on');});
+stepT.textContent='自动运转模式';
+stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格。';}
+}
+window.goStep=function(i){
+stepIdx=(i+STEPS.length)%STEPS.length;
+mode='step';run=false;
+var target=STEPS[stepIdx].d/PHASE_MAX*PERIOD,delta=target-phase;
+if(reduced||Math.abs(delta)>PERIOD/4){
+phase=target;stepTo=null;render(target/PERIOD*PHASE_MAX+0.01);
+}else{
+stepFrom=phase;stepTo=phase+delta;stepElapsed=0;render(phase/PERIOD*PHASE_MAX+0.01);
+}
+btn.textContent='继续自动运转';
+dots.forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+stepX.textContent=STEPS[stepIdx].x;
+};
+btn.textContent=run?'暂停':'播放';
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+function setOp(id,v){var n=typeof id==='string'?el[id]:id;if(n)n.setAttribute('opacity',v.toFixed(2));}
+function setText(id,s){var n=el[id]||document.getElementById(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setAttr(id,k,v){var n=el[id];if(n)n.setAttribute(k,v);}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){return t*t*(3-2*t);}
+
+function render(th){
+var pr=Math.round(((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX);
+setText('roPhase',pr+'°');
+var si=0;for(var ri=0;ri<STEPS.length;ri++){if(pr>=STEPS[ri].d)si=ri;}
+if(mode==='step'&&stepIdx>=0)si=stepIdx;
+setText('roStep',STEPS[si]?STEPS[si].t:'—');
+var si=0;for(var i=0;i<STEPS.length;i++){if(th>=STEPS[i].d)si=i;}
+var cy=150+Math.min(1,th/720)*380;
+setAttr('seqCursor','y1',cy.toFixed(1));setAttr('seqCursor','y2',cy.toFixed(1));setAttr('seqDot','cy',cy.toFixed(1));
+for(var ci=0;ci<CMD_ALL.length;ci++){var id=CMD_ALL[ci];var on=false;var act=CMD_ACTIVE[String(si)]||[];for(var ai=0;ai<act.length;ai++){if(act[ai]===id)on=true;}
+  setOp(id,on?1:(ci<si?0.62:0.28));
+}
+setOp('ledgerTag',(si===7)?1:0.55);
+setText('roKey', th<72?'lookup / requestId':th<144?'LookupResponse':th<216?'CommandConnect':th<288?'CommandConnected':th<360?'CommandProducer + schema':th<432?'ProducerSuccess + schemaVersion':th<504?'sendAsync / batch':th<576?'SEND / sequenceId':th<648?'SEND_RECEIPT':'Subscribe / Flow / Message / Ack');
+setChip('conn', th>=216?'已连接':'待命');
+setChip('schema', th>=360?'已注册':'待命');
+setChip('batch', th>=432?'已批量':'待命');
+setChip('consume', th>=648?'已订阅':'待命');
+setChip('ack', th>=648?'已 ack':'待命');
+
+var t=Math.max(0,Math.min(1,th/720));
+var mem=t<0.52?t/0.52*64:Math.max(0,64-(t-0.52)/0.48*48);
+var batch=th<300?0:Math.min(1000,Math.round((th-300)/260*1000));
+var recv=th<480?0:Math.min(1000,Math.round((th-480)/240*1000));
+var perm=th<520?0:Math.min(500,Math.round((th-520)/200*500));
+if(el['v2_mem'])el['v2_mem'].setAttribute('width',(mem/64*740).toFixed(1));
+if(el['v2_batch'])el['v2_batch'].setAttribute('width',(batch/1000*740).toFixed(1));
+if(el['v2_recv'])el['v2_recv'].setAttribute('width',(recv/1000*740).toFixed(1));
+if(el['v2_perm'])el['v2_perm'].setAttribute('width',(perm/500*740).toFixed(1));
+setText('v2_seq','sequenceId '+(th<380?'—':String(1000+Math.floor(th/10))));
+setText('v2_schema','schemaVersion '+(th<340?'—':'v'+(1+Math.floor((th-340)/120))));
+setText('v2_proto','protocol v21 · ack 100ms/1000');
+
+}
+function tick(now){
+var dt=Math.min(50,now-last);last=now;
+if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+if(mode==='step'&&stepTo!==null){
+stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);
+var p=stepElapsed/STEP_DUR;
+var e=p*p*(3-2*p);
+phase=stepFrom+(stepTo-stepFrom)*e;
+if(p>=1){phase=((stepTo%PERIOD)+PERIOD)%PERIOD;stepTo=null;}
+}
+render(phase/PERIOD*PHASE_MAX+0.01);
+requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+document.querySelectorAll('.part').forEach(function(b){
+b.onclick=function(){
+var ids=PARTS[b.getAttribute('data-part')]||[];
+ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+};
+});
+var BASE=(location.pathname.split('/middleware-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/middleware/lab';
+document.getElementById('lnkArt').href=BASE+'/middleware/tutorial/06-client-protocol';
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+var d=document.createElement('div');d.className='q';
+var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+h+='<div class="exp">'+it.exp+'</div>';
+d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+var b=e.target.closest('.opt');if(!b)return;
+var box2=b.parentElement;if(box2.classList.contains('done'))return;
+box2.classList.add('done');
+var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+box2.querySelectorAll('.opt').forEach(function(x){
+var xi=+x.getAttribute('data-oi');
+if(xi===QUIZ[qi].a)x.classList.add('right');
+else if(x===b)x.classList.add('wrong');
+});
+});
+})();
+</script>
+</body>
+</html>

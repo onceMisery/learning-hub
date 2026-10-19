@@ -87,6 +87,39 @@ table.grid td.act{background:#FAEEDA}
 .backtop{position:fixed;right:22px;bottom:22px;z-index:20}
 #eng .hl,#eng .hl *{stroke:#D96C06 !important}
 .cell{cursor:pointer}
+
+/* agent-lab shared layer v1.4 */
+.method-chain{display:grid;grid-template-columns:repeat(3,max-content);justify-content:start;gap:8px 10px;align-items:center}
+.method-chain .marr{display:none}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;margin:8px 4px 0;font-size:12px;color:#6B695F}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:12px;height:10px;border-radius:3px;display:inline-block;border:1px solid #D3D1C7;background:#fff}
+.legend .sw-amber{background:#FFF6E8;border-color:#EF9F27}
+.legend .sw-green{background:#EAF3DE;border-color:#639922}
+.legend .sw-red{background:#FCEBEB;border-color:#E24B4A}
+.legend .sw-dash{border-style:dashed;border-color:#B4B2A9}
+.legend .sw-line{width:16px;height:0;border:0;border-top:2px solid #C46A0A;border-radius:0;background:none}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.warn{background:#FFF6E8;border-color:#EF9F27}
+.chip.off{background:#F5F4EF;color:#8A877C}
+.subview{margin:8px 0 4px;background:#ffffff;border:1px dashed #D3D1C7;border-radius:10px;padding:8px 10px}
+.subview .viewtitle{font-size:12px;font-weight:600;color:#854F0B;margin-bottom:4px}
+.subview .subcap{font-size:12px;color:#6B695F;margin:6px 2px 0;line-height:1.6}
+.phase-note{font-size:12px;color:#8A877C;margin:8px 4px 0;line-height:1.6}
+.tablewrap{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 0 12px;padding-bottom:2px;scrollbar-width:thin}
+.tablewrap table.grid{width:100%}
+#scene [opacity],#scene2 [opacity]{transition:opacity .28s ease}
+#scene rect,#scene circle,#scene path,#scene2 rect,#scene2 circle,#scene2 path{transition:fill .24s ease,stroke .24s ease,opacity .24s ease}
+#tok,#tokT{transition:none}
+@media (prefers-reduced-motion: reduce){#scene [opacity],#scene2 [opacity],#scene rect,#scene circle,#scene path,#scene2 rect,#scene2 circle,#scene2 path{transition:none}}
+@media (max-width:640px){.method-chain{grid-template-columns:repeat(2,max-content)}}
+
 </style>
 </head>
 <body>
@@ -124,6 +157,64 @@ table.grid td.act{background:#FAEEDA}
 <text class="ts" x="500" y="44" text-anchor="middle">纵轴：七脉认知功能（管哪类资源） · 横轴：六式执行拓扑（错误怎么移动） · 点任意格子看它的工程后果</text>
 <g id="scene"></g>
 </svg>
+<div class="legend">
+<span><i class="sw-red"></i>红点 = 关键缺口坐标</span>
+<span><i class="sw-amber"></i>琥珀 = 当前游标 / 扫描格</span>
+<span><i class="sw-dash"></i>灰格 = 刻意留空 / 待定位</span>
+</div>
+<div class="readout">
+<span class="ro">相位 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">关键量 <b id="roKey">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="subview">
+<div class="viewtitle">第二视图 · 评审扫览 · 行/列覆盖与可靠性（与主图同步）</div>
+<svg id="eng2" viewBox="0 0 1000 210" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>七脉六式扫描与 Compound Error</title>
+<g id="scene2">
+<text class="th" x="500" y="18" text-anchor="middle">评审扫览 · 行/列覆盖与可靠性</text>
+<text class="ts" x="500" y="35" text-anchor="middle">左：七脉逐行、六式逐列扫描 · 右：0.95^n 乘法链 · 与主图共用同一相位</text>
+<text class="tb" x="70" y="52">七脉（纵轴）</text>
+<text class="tb" x="600" y="52">Compound Error · 0.95^n</text>
+<text id="v2_scan" class="tb" x="560" y="52" text-anchor="end" fill="#854F0B">扫描：第 1 / 7 脉</text>
+<text id="v2_rl0" class="ts" x="138" y="66" text-anchor="end">感知</text>
+<rect x="150" y="58" width="370" height="8" rx="3" fill="#F5F4EF" stroke="#ECEAE2"/><rect id="v2_rf0" x="150" y="58" width="0" height="8" rx="3" fill="#EF9F27"/>
+<text id="v2_rl1" class="ts" x="138" y="80" text-anchor="end">记忆</text>
+<rect x="150" y="72" width="370" height="8" rx="3" fill="#F5F4EF" stroke="#ECEAE2"/><rect id="v2_rf1" x="150" y="72" width="0" height="8" rx="3" fill="#EF9F27"/>
+<text id="v2_rl2" class="ts" x="138" y="94" text-anchor="end">推理</text>
+<rect x="150" y="86" width="370" height="8" rx="3" fill="#F5F4EF" stroke="#ECEAE2"/><rect id="v2_rf2" x="150" y="86" width="0" height="8" rx="3" fill="#EF9F27"/>
+<text id="v2_rl3" class="ts" x="138" y="108" text-anchor="end">行动</text>
+<rect x="150" y="100" width="370" height="8" rx="3" fill="#F5F4EF" stroke="#ECEAE2"/><rect id="v2_rf3" x="150" y="100" width="0" height="8" rx="3" fill="#EF9F27"/>
+<text id="v2_rl4" class="ts" x="138" y="122" text-anchor="end">反思</text>
+<rect x="150" y="114" width="370" height="8" rx="3" fill="#F5F4EF" stroke="#ECEAE2"/><rect id="v2_rf4" x="150" y="114" width="0" height="8" rx="3" fill="#EF9F27"/>
+<text id="v2_rl5" class="ts" x="138" y="136" text-anchor="end">协作</text>
+<rect x="150" y="128" width="370" height="8" rx="3" fill="#F5F4EF" stroke="#ECEAE2"/><rect id="v2_rf5" x="150" y="128" width="0" height="8" rx="3" fill="#EF9F27"/>
+<text id="v2_rl6" class="ts" x="138" y="150" text-anchor="end">治理</text>
+<rect x="150" y="142" width="370" height="8" rx="3" fill="#F5F4EF" stroke="#ECEAE2"/><rect id="v2_rf6" x="150" y="142" width="0" height="8" rx="3" fill="#EF9F27"/>
+<text class="tb" x="70" y="164">六式（横轴）</text>
+<rect id="v2_c0" x="150" y="170" width="56" height="18" rx="5" fill="#F5F4EF" stroke="#D3D1C7"/><text class="ts" x="178" y="183" text-anchor="middle">链式</text>
+<rect id="v2_c1" x="212" y="170" width="56" height="18" rx="5" fill="#F5F4EF" stroke="#D3D1C7"/><text class="ts" x="240" y="183" text-anchor="middle">路由</text>
+<rect id="v2_c2" x="274" y="170" width="56" height="18" rx="5" fill="#F5F4EF" stroke="#D3D1C7"/><text class="ts" x="302" y="183" text-anchor="middle">并行</text>
+<rect id="v2_c3" x="336" y="170" width="56" height="18" rx="5" fill="#F5F4EF" stroke="#D3D1C7"/><text class="ts" x="364" y="183" text-anchor="middle">编排</text>
+<rect id="v2_c4" x="398" y="170" width="56" height="18" rx="5" fill="#F5F4EF" stroke="#D3D1C7"/><text class="ts" x="426" y="183" text-anchor="middle">循环</text>
+<rect id="v2_c5" x="460" y="170" width="56" height="18" rx="5" fill="#F5F4EF" stroke="#D3D1C7"/><text class="ts" x="488" y="183" text-anchor="middle">层级</text>
+<path d="M600 64 L612.5 67.5 L625 71 L637.5 74.5 L650 78 L662.5 81.5 L675 85 L687.5 88.5 L700 92 L712.5 96 L725 100 L737.5 104 L750 108 L762.5 112 L775 116 L787.5 120 L800 124 L812.5 128 L825 132 L837.5 136 L850 140 L862.5 144 L875 148 L887.5 152 L900 156 L912.5 160 L925 164 L937.5 168 L950 172" stroke="#C46A0A" stroke-width="2" fill="none"/>
+<line x1="600" y1="60" x2="600" y2="176" stroke="#3B3A34"/>
+<line x1="600" y1="176" x2="950" y2="176" stroke="#3B3A34"/>
+<text class="ts" x="596" y="64" text-anchor="end">1.0</text>
+<text class="ts" x="596" y="176" text-anchor="end">0</text>
+<circle id="v2_ce10" cx="775" cy="96" r="6" fill="#fff" stroke="#EF9F27" stroke-width="2"/>
+<text class="ts" x="775" y="84" text-anchor="middle" fill="#854F0B">n=10 · 60%</text>
+<text class="ts" x="950" y="160" text-anchor="end" fill="#8A2A2A">n=20 · 36%</text>
+<rect id="v2_ce0" x="600" y="184" width="82" height="18" rx="5" fill="#F5F4EF" stroke="#D3D1C7"/><text class="ts" x="641" y="197" text-anchor="middle">减步数</text>
+<rect id="v2_ce1" x="688" y="184" width="82" height="18" rx="5" fill="#F5F4EF" stroke="#D3D1C7"/><text class="ts" x="729" y="197" text-anchor="middle">提单步</text>
+<rect id="v2_ce2" x="776" y="184" width="82" height="18" rx="5" fill="#F5F4EF" stroke="#D3D1C7"/><text class="ts" x="817" y="197" text-anchor="middle">加校验</text>
+<rect id="v2_ce3" x="864" y="184" width="82" height="18" rx="5" fill="#F5F4EF" stroke="#D3D1C7"/><text class="ts" x="905" y="197" text-anchor="middle">早失败</text>
+</g>
+</svg>
+<div class="subcap">读法：左图看扫描覆盖到第几行第几列，右图看链路变长时可靠性如何乘性衰减。</div>
+</div>
 <div class="ctrl">
 <button class="btn" id="engBtn">暂停</button>
 <span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
@@ -138,13 +229,14 @@ table.grid td.act{background:#FAEEDA}
 <button class="btn warn" onclick="nextStep()">下一步 ›</button>
 </span>
 </div>
+<p class="phase-note">相位口径：0° = 坐标系总览；720° = 扫览结束回到中心。七脉 60–140°、六式 140–220°、四个坐标 220–540°；副图与主图同相位。</p>
 </div>
 </div>
 
 <section>
 <div class="sec-head"><span class="sec-num">1</span><h2>表象观察：先把它当黑盒</h2></div>
 <p class="sec-sub">第一步不拆机器，只看它对外表现出什么行为。</p>
-<div class="quote">「对事物的观察包括了静态结构 + 动态生命周期 + 环境场景三个方面的内容。」<i>—— 人月聊IT · 思维系列</i></div>
+<div class="quote">「对事物的观察包括了静态结构 + 动态生命周期 + 环境场景三个方面的内容。」</div>
 <p>从外部看，这张坐标系做的事只有一件：<b>把一句形容词翻译成一个能被反驳的工程判断</b>。「感觉不够稳」没法执行；「推理 × 循环缺停止条件」是个能答的问题——「那停止条件你写在哪」。输入是任何 Agent 系统，输出是它的唯一地址、错误传播路径与升级路线。</p>
 <div class="flow">
 <span class="node">一个 Agent 系统（含含糊糊的介绍）</span><span class="arr">→</span>
@@ -158,7 +250,7 @@ table.grid td.act{background:#FAEEDA}
 <section>
 <div class="sec-head"><span class="sec-num">2</span><h2>静态分解：它由什么组成</h2></div>
 <p class="sec-sub">打开黑盒，沿空间维度拆解。点部件卡片，动画中对应部分会亮成琥珀色。</p>
-<div class="quote">「它由什么构成？核心方法是分解、分类、结构化——分解需符合 MECE 法则，同层必须粒度一致。」<i>—— 人月聊IT · 思维系列</i></div>
+<div class="quote">「它由什么构成？核心方法是分解、分类、结构化——分解需符合 MECE 法则，同层必须粒度一致。」</div>
 <p>双轴框架本身（作为一台「定位机器」）可按功能分成<b>四组</b>：</p>
 <div class="partgroup">
 <div class="gname">纵轴组 —— 负责「它在解哪类问题」</div>
@@ -191,9 +283,9 @@ table.grid td.act{background:#FAEEDA}
 <section>
 <div class="sec-head"><span class="sec-num">3</span><h2>动态分析：它如何运转</h2></div>
 <p class="sec-sub">盯住那个琥珀色游标。用动画下方的 9 个步骤点逐帧看完一次评审式扫览。</p>
-<div class="quote">「它如何演变与运作？关注时间轴上的发展规律、行为模式和内部流程。核心方法是流程分析、行为追溯。」<i>—— 人月聊IT · 思维系列</i></div>
+<div class="quote">「它如何演变与运作？关注时间轴上的发展规律、行为模式和内部流程。核心方法是流程分析、行为追溯。」</div>
 <p><b>操作：</b>点击动画下方步骤条上的圆点（或「下一步」按钮），画面会定格在对应扫览阶段；也<b>可以直接点矩阵里任意格子</b>，右侧详情卡会显示该坐标的工程后果（再点一次取消选择）。建议完整走两遍：第一遍只看游标扫过哪几行哪几列，第二遍同时读右侧详情卡。</p>
-<table class="grid">
+<div class="tablewrap"><table class="grid">
 <tr><th>阶段</th><th>时刻</th><th>游标位置</th><th>右侧详情</th><th>这一步在干什么</th></tr>
 <tr><td>① 坐标系总览</td><td>0°–60°</td><td class="act">矩阵中心</td><td>使用说明</td><td>42 个格子 = 7 脉 × 6 式；两轴必须正交，不正交就退化成分类表</td></tr>
 <tr><td>② 七脉扫览</td><td>60°–140°</td><td class="act">逐行下移</td><td>每脉管什么资源</td><td>感知管注意力、记忆管连续性、推理管不确定性、行动管可逆性、反思管校正、协作管分工、治理管信任</td></tr>
@@ -204,30 +296,30 @@ table.grid td.act{background:#FAEEDA}
 <tr><td>⑦ 坐标 ④</td><td>460°–540°</td><td class="hot">感知 × 并行</td><td class="hot">误聚合</td><td>「三份同源判断被当成三票」的地址：没有好的合并，只是把噪声并行化</td></tr>
 <tr><td>⑧ 三步卡</td><td>540°–620°</td><td class="act">底部</td><td>ASSESS→ROUTE→SELECT</td><td>十分钟出第一版：每脉打徽标、判主拓扑、每个 Heavy 落一个模式</td></tr>
 <tr><td>⑨ Compound Error</td><td>620°–720°</td><td class="act">回到中心</td><td class="hot">乘法链</td><td>0.95 串 10 步 ≈ 0.60；模式不沾「减步 / 提单步 / 加校验 / 早失败」就是装饰</td></tr>
-</table>
+</table></div>
 <p>两个容易错过、但值得在分步模式里细看的点：① 四个红色关键坐标<b>都是「缺约束」而不是「缺能力」</b>——评审的价值在指出空格，不在罗列名词；② 第 ⑧ 阶段三步卡的产出是<b>最小可行的稳定组合</b>，第一版就塞满矩阵的人，一般是不舍得删。</p>
 </section>
 
 <section>
 <div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件如何协同出「可讨论的架构」</h2></div>
 <p class="sec-sub">把第 2 节的「结构」和第 3 节的「流程」叠在一起——这才是理解的完成态。</p>
-<div class="quote">「动静融合的关键是建立映射：将组成部件与操作步骤一一对应，理解各部件如何协同产生外在行为。系统 = 元素 + 连接 + 目标。」<i>—— 人月聊IT · 思维系列</i></div>
+<div class="quote">「动静融合的关键是建立映射：将组成部件与操作步骤一一对应，理解各部件如何协同产生外在行为。系统 = 元素 + 连接 + 目标。」</div>
 <p>映射表：<b>每个部件在每个阶段里承担什么角色</b>。竖着看是一个阶段的全体协同，横着看是一个部件的完整职责。</p>
-<table class="grid">
+<div class="tablewrap"><table class="grid">
 <tr><th>部件 ＼ 阶段</th><th>① 总览</th><th>② 七脉</th><th>③ 六式</th><th>④-⑦ 坐标</th><th>⑧ 三步卡</th><th>⑨ 公理</th></tr>
 <tr><td>七脉（纵轴）</td><td class="act">行存在</td><td class="hot">逐行亮 + 管什么</td><td>列扫过的行</td><td>提供问题类型</td><td class="act">被打徽标</td><td>缺脉即失控</td></tr>
 <tr><td>六式（横轴）</td><td class="act">列存在</td><td>行扫过的列</td><td class="hot">逐列亮 + 错误怎么跑</td><td>提供错误路径</td><td class="act">判主拓扑</td><td>选拓扑即选错误</td></tr>
 <tr><td>关键坐标</td><td>红点预置</td><td>—</td><td>—</td><td class="hot">闪红 + 缺口</td><td>SELECT 的输入</td><td>约束优先项</td></tr>
 <tr><td>三步卡</td><td>—</td><td>—</td><td>—</td><td>缺口清单</td><td class="hot">逐格点亮</td><td>产出最小组合</td></tr>
 <tr><td>Compound Error</td><td>—</td><td>—</td><td>—</td><td>—</td><td>控制模式数 3~7</td><td class="hot">四问拷问</td></tr>
-</table>
+</table></div>
 <p>点题一句：<b>「评审五分钟后能吵起来」这个外在行为，不是任何一个部件的属性，而是「七脉 × 六式 × 缺口句式」整体协同涌现的</b>。「推理 × 循环没有停止条件」之所以是个好句子，是因为功能、拓扑、约束三样一齐摆出来，对方立刻能反驳你也能补你。对称设计在另一侧：<b>刻意留空也要给理由</b>——没做长期记忆，答「不需要」和答「忘了」，是两种完全不同的可信度。</p>
 </section>
 
 <section>
 <div class="sec-head"><span class="sec-num">5</span><h2>环境场景：它依赖什么才能工作</h2></div>
 <p class="sec-sub">主体之外，还有一圈支撑系统。</p>
-<div class="quote">「对事物的认识 = 空间属性 + 时间属性 + 环境属性（外在关系和依赖）。」<i>—— 人月聊IT · 思维系列</i></div>
+<div class="quote">「对事物的认识 = 空间属性 + 时间属性 + 环境属性（外在关系和依赖）。」</div>
 <div class="envcards">
 <div class="env"><b>教材双轴</b><span>《Agent 设计之美》用七认知功能 × 执行拓扑组织 28+ 设计模式——坐标系不是发明，是对一套真实模式库的编目。</span></div>
 <div class="env"><b>事故库</b><span>《生产排雷实战》20 讲线上真实事故。每个缺口句式最好都对照一次失守现场，才知道约束防的是什么。</span></div>
@@ -252,6 +344,7 @@ table.grid td.act{background:#FAEEDA}
 <p>· 结构：七脉（资源预算）× 六式（错误移动）+ 三步卡 + Compound Error 公理 + 刻意留空。</p>
 <p>· 行为：先扫行再扫列，四个红色坐标全是「缺约束」；ASSESS → ROUTE → SELECT 产出最小稳定组合。</p>
 <p>· 协同：功能 × 拓扑 × 缺口句式三样齐摆，评审才吵得准；空格也要给理由。</p>
+<p>· 边界与简化：42 格不逐一展开，只标四个常见缺口；Compound Error 假设单步成功率恒为 0.95。</p>
 </div>
 
 </div>
@@ -291,7 +384,7 @@ var PULSE=['感知','记忆','推理','行动','反思','协作','治理'];
 var PULSE_RES=['注意力：看到太多等于什么都没看到','连续性：每次都像初见，就没有成长','不确定性：全部深度思考一遍是浪费','可逆性：推理错了可重答，行动错了要补偿','校正：把错误尽早暴露，不是显得聪明','分工：切开上下文、工具、目标、责任','信任：强能力没有边界就是强事故'];
 var TOPO=['链式','路由','并行','编排','循环','层级'];
 var TOPO_ERR=['级联：链越长中间格式越重要，上游偏了下游不纠正','误派：分类器质量决定一切；价值在降平均成本不在抬上限','误聚合：关键在合并而非扇出，否则只是把噪声并行化','误分解：拆开的是依赖，攒起来的是复杂度','误复合：核心不是循环，是停止条件、评估信号、改动幅度','误放大：父上下文泄漏、权限继承过宽、低层失败雪崩'];
-var KEY=[[2,4,'停止条件','停太早标准含糊，停不下来为一丁点增益烧穿预算——要把「成功」写成可验证标准'],[6,1,'审批门','路由降低平均成本与风险，也降低高危动作的门槛；没有审批门，路由越快越危险'],[5,5,'子代理隔离','父上下文泄漏、权限继承过宽、低层失败雪崩——子 Agent 只该拿父的结论，不是经历'],[0,2,'合并策略','三份同源判断被当成三票，差异信息被折叠——没有好的合并，只是把噪声并行化']];
+var KEY=[[2,4,'停止条件','停太早标准含糊，停不下来烧穿预算'],[6,1,'审批门','路由降低平均成本，也降低高危门槛'],[5,5,'子代理隔离','父上下文泄漏、权限过宽、失败雪崩'],[0,2,'合并策略','三份同源判断被当成三票，差异被折叠']];
 var H='';
 // 矩阵外框与轴
 H+='<g id="mx"><rect x="70" y="84" width="540" height="392" rx="8" fill="#FBFAF6" stroke="#3B3A34" stroke-width="1.5"/>'
@@ -443,7 +536,7 @@ el.pTopoT.textContent='执行拓扑：'+TOPO[c]+'（能力与信息怎么流动�
 el.pTopoR.textContent=TOPO_ERR[c];
 var kk=keyMap[r+'_'+c];
 if(kk){el.pGapT.textContent='常见缺口：缺'+kk[0];el.pGapR.textContent=kk[1];el.pPhrase.textContent='评审句式：「'+PULSE[r]+' × '+TOPO[c]+' 缺 '+kk[0]+'」';}
-else{el.pGapT.textContent='常见缺口：—（暂无预设）';el.pGapR.textContent='这个格子的 PD 值取决于你的业务：把它对应的约束写出来，或给一个「不需要」的理由';el.pPhrase.textContent='评审句式：「'+PULSE[r]+' × '+TOPO[c]+' 缺 某个约束」';}
+else{el.pGapT.textContent='常见缺口：—（暂无预设）';el.pGapR.textContent='取决于业务：写出对应约束，或给「不需要」的理由';el.pPhrase.textContent='评审句式：「'+PULSE[r]+' × '+TOPO[c]+' 缺 某个约束」';}
 }
 function paintPanel(){
 if(userSel)setPanel(userSel.r,userSel.c);
@@ -487,6 +580,122 @@ scOn(el.sc2,th>=600);
 // 关键坐标闪红
 requestAnimationFrame(tick);
 }
+/* agent-lab shared instruments + second view */
+(function(){
+var roPhase=document.getElementById('roPhase');
+var roStep=document.getElementById('roStep');
+var roKey=document.getElementById('roKey');
+var chipBox=document.getElementById('stateChips');
+var chipEls={};
+var CHIPS=[{k:'rows',l:'纵轴'},{k:'cols',l:'横轴'},{k:'coord',l:'当前坐标'},{k:'gap',l:'缺口'},{k:'steps',l:'三步卡'},{k:'ce',l:'Compound Error'}];
+CHIPS.forEach(function(c){
+var s=document.createElement('span');s.className='chip';s.innerHTML=c.l+' <b>--</b>';
+chipBox.appendChild(s);chipEls[c.k]=s;
+});
+function setChip(k,v,cls){
+var n=chipEls[k];if(!n)return;
+var b=n.querySelector('b');
+if(b&&b.textContent!==v)b.textContent=v;
+n.classList.remove('on','warn','off');
+if(cls)n.classList.add(cls);
+}
+function setT(id,v){var n=document.getElementById(id);if(n&&n.textContent!==v)n.textContent=v;}
+function setA(id,k,v){var n=document.getElementById(id);if(n)n.setAttribute(k,v);}
+function setO(id,v){var n=document.getElementById(id);if(n)n.setAttribute('opacity',v.toFixed(2));}
+function ss(t){t=Math.max(0,Math.min(1,t));return t*t*(3-2*t);}
+function lr(a,b,t){return a+(b-a)*t;}
+function cl(v,a,b){return Math.max(a,Math.min(b,v));}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function stageIndex(th){var si=0;for(var i=0;i<STEPS.length;i++){if(th>=STEPS[i].d)si=i;}return si;}
+function scanState(t){
+if(t<60)return {r:-1,c:-1,txt:'扫描：准备'};
+if(t<140)return {r:Math.min(6,Math.floor((t-60)/11.43)),c:-1,txt:'扫描：第 '+Math.min(7,Math.floor((t-60)/11.43)+1)+' / 7 脉'};
+if(t<220)return {r:2,c:Math.min(5,Math.floor((t-140)/13.33)),txt:'扫描：第 '+Math.min(6,Math.floor((t-140)/13.33)+1)+' / 6 式'};
+if(t<300)return {r:2,c:4,txt:'坐标 ① 推理 × 循环'};
+if(t<380)return {r:6,c:1,txt:'坐标 ② 治理 × 路由'};
+if(t<460)return {r:5,c:5,txt:'坐标 ③ 协作 × 层级'};
+if(t<540)return {r:0,c:2,txt:'坐标 ④ 感知 × 并行'};
+if(t<620)return {r:-1,c:-1,txt:'三步卡：ASSESS → ROUTE → SELECT'};
+return {r:-1,c:-1,txt:'Compound Error：0.95^10 ≈ 60%'};
+}
+function renderSide(th){
+var t=norm(th),s=scanState(t);
+for(var i=0;i<7;i++){
+var p=cl((t-(60+i*11.43))/11.43,0,1);
+setA('v2_rf'+i,'width',(370*ss(p)).toFixed(1));
+setA('v2_rf'+i,'fill',i===s.r?'#EF9F27':(p>=1?'#639922':'#EF9F27'));
+setA('v2_rl'+i,'fill',i===s.r?'#854F0B':'#6B695F');
+}
+for(var c=0;c<6;c++){
+var on=t>=140&&t<220&&c<=s.c;
+var keySel=s.c===c&&t>=220;
+setA('v2_c'+c,'fill',on||keySel?'#FFF6E8':'#F5F4EF');
+setA('v2_c'+c,'stroke',on||keySel?'#EF9F27':'#D3D1C7');
+}
+setT('v2_scan',s.txt);
+setA('v2_ce10','fill',t>=620?'#EF9F27':'#ffffff');
+for(var k=0;k<4;k++){setA('v2_ce'+k,'fill',t>=620?'#FFF6E8':'#F5F4EF');setA('v2_ce'+k,'stroke',t>=620?'#EF9F27':'#D3D1C7');}
+}
+function keyAt(t){
+var s=scanState(t);
+if(s.r>=0&&s.c>=0&&t>=220)return PULSE[s.r]+' × '+TOPO[s.c];
+return s.txt;
+}
+function chipsAt(t){
+var s=scanState(t);
+var coord=(s.r>=0&&s.c>=0&&t>=220)?PULSE[s.r]+' × '+TOPO[s.c]:'—';
+var gap='—';
+if(t>=220&&t<300)gap='缺停止条件';
+else if(t>=300&&t<380)gap='缺审批门';
+else if(t>=380&&t<460)gap='缺子代理隔离';
+else if(t>=460&&t<540)gap='缺合并策略';
+return [
+['rows',t>=140?'已扫完 7 脉':(s.r>=0?PULSE[s.r]:'待命'),t>=140?'on':(s.r>=0?'warn':'off')],
+['cols',t>=220?'已扫完 6 式':(s.c>=0?TOPO[s.c]:'待命'),t>=220?'on':(s.c>=0?'warn':'off')],
+['coord',coord,coord==='—'?'off':'warn'],
+['gap',gap,gap==='—'?'off':'warn'],
+['steps',t>=540?(t<620?'ROUTE → SELECT':(t<720?'已出最小组合':'已出最小组合')):'待命',t>=620?'on':(t>=540?'warn':'off')],
+['ce',t>=620?'0.95^10 ≈ 60%':'待用',t>=620?'on':'off']
+];
+}
+function updateShared(th){
+var t=norm(th);
+var pr=Math.round(t)%720;
+if(roPhase.textContent!==(pr+'\u00b0'))roPhase.textContent=pr+'\u00b0';
+var si=stageIndex(t);if(mode==='step'&&stepIdx>=0)si=stepIdx;
+var st=STEPS[si]?STEPS[si].t:'\u2014';
+if(roStep.textContent!==st)roStep.textContent=st;
+var kv=keyAt(t);if(roKey.textContent!==kv)roKey.textContent=kv;
+var cs=chipsAt(t);
+for(var i=0;i<cs.length;i++)setChip(cs[i][0],cs[i][1],cs[i][2]);
+renderSide(t);
+}
+var AS={ease:null,last:performance.now(),DUR:900};
+var origGoStep=window.goStep;
+window.goStep=function(i){
+var from=phase;
+origGoStep(i);
+var to=phase,delta=to-from;
+if(!reduced&&Math.abs(delta)<=PERIOD/4&&Math.abs(delta)>0.01){
+phase=from;AS.ease={from:from,to:to,elapsed:0};
+}else{AS.ease=null;}
+};
+var origTick=tick;
+tick=function(now){
+if(typeof now!=='number')now=performance.now();
+var dt=Math.min(50,Math.max(0,now-AS.last));AS.last=now;
+if(mode==='auto')AS.ease=null;
+if(AS.ease){
+AS.ease.elapsed=Math.min(AS.DUR,AS.ease.elapsed+dt);
+var p=AS.ease.elapsed/AS.DUR;
+phase=AS.ease.from+(AS.ease.to-AS.ease.from)*ss(p);
+if(p>=1){phase=AS.ease.to;AS.ease=null;}
+}
+origTick(now);
+updateShared(phase/PERIOD*PHASE_MAX);
+};
+})();
+
 requestAnimationFrame(tick);
 document.querySelectorAll('.part').forEach(function(b){
 b.onclick=function(){

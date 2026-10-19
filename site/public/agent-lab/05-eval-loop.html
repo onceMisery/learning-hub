@@ -86,6 +86,39 @@ table.grid td.act{background:#FAEEDA}
 .summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
 .backtop{position:fixed;right:22px;bottom:22px;z-index:20}
 #eng .hl,#eng .hl *{stroke:#D96C06 !important}
+
+/* agent-lab shared layer v1.4 */
+.method-chain{display:grid;grid-template-columns:repeat(3,max-content);justify-content:start;gap:8px 10px;align-items:center}
+.method-chain .marr{display:none}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;margin:8px 4px 0;font-size:12px;color:#6B695F}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:12px;height:10px;border-radius:3px;display:inline-block;border:1px solid #D3D1C7;background:#fff}
+.legend .sw-amber{background:#FFF6E8;border-color:#EF9F27}
+.legend .sw-green{background:#EAF3DE;border-color:#639922}
+.legend .sw-red{background:#FCEBEB;border-color:#E24B4A}
+.legend .sw-dash{border-style:dashed;border-color:#B4B2A9}
+.legend .sw-line{width:16px;height:0;border:0;border-top:2px solid #C46A0A;border-radius:0;background:none}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.warn{background:#FFF6E8;border-color:#EF9F27}
+.chip.off{background:#F5F4EF;color:#8A877C}
+.subview{margin:8px 0 4px;background:#ffffff;border:1px dashed #D3D1C7;border-radius:10px;padding:8px 10px}
+.subview .viewtitle{font-size:12px;font-weight:600;color:#854F0B;margin-bottom:4px}
+.subview .subcap{font-size:12px;color:#6B695F;margin:6px 2px 0;line-height:1.6}
+.phase-note{font-size:12px;color:#8A877C;margin:8px 4px 0;line-height:1.6}
+.tablewrap{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 0 12px;padding-bottom:2px;scrollbar-width:thin}
+.tablewrap table.grid{width:100%}
+#scene [opacity],#scene2 [opacity]{transition:opacity .28s ease}
+#scene rect,#scene circle,#scene path,#scene2 rect,#scene2 circle,#scene2 path{transition:fill .24s ease,stroke .24s ease,opacity .24s ease}
+#tok,#tokT{transition:none}
+@media (prefers-reduced-motion: reduce){#scene [opacity],#scene2 [opacity],#scene rect,#scene circle,#scene path,#scene2 rect,#scene2 circle,#scene2 path{transition:none}}
+@media (max-width:640px){.method-chain{grid-template-columns:repeat(2,max-content)}}
+
 </style>
 </head>
 <body>
@@ -124,6 +157,44 @@ table.grid td.act{background:#FAEEDA}
 <text class="ts" x="985" y="24" text-anchor="end">琥珀 = 当前站点 / 活跃面板</text>
 <g id="scene"></g>
 </svg>
+<div class="legend">
+<span><i class="sw-amber"></i>琥珀 = 当前站点</span>
+<span><i class="sw-green"></i>绿 = 已通过 / 已回流</span>
+<span><i class="sw-red"></i>红 = 判失败 / 打回</span>
+</div>
+<div class="readout">
+<span class="ro">相位 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">关键量 <b id="roKey">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="subview">
+<div class="viewtitle">第二视图 · 闭环站点时间轴 · 信号如何变成回归用例（与主图同步）</div>
+<svg id="eng2" viewBox="0 0 1000 190" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>评估闭环站点与门禁状态</title>
+<g id="scene2">
+<text class="th" x="500" y="18" text-anchor="middle">闭环站点时间轴 · 信号如何变成回归用例</text>
+<text class="ts" x="500" y="35" text-anchor="middle">站点按事件顺序等距排列，角标为相位阈值 · 与主图共用同一相位</text>
+<text id="v2_stage" class="tb" x="950" y="48" text-anchor="end" fill="#854F0B">当前：线上运行</text>
+<line x1="90" y1="86" x2="950" y2="86" stroke="#ECEAE2" stroke-width="3"/>
+<line id="v2_prog" x1="90" y1="86" x2="90" y2="86" stroke="#EF9F27" stroke-width="3"/>
+<g id="v2_s0"><circle cx="90" cy="86" r="8" fill="#fff" stroke="#3B3A34" stroke-width="1.4"/><text class="tb" x="90" y="68" text-anchor="middle">线上运行</text><text class="ts" x="90" y="104" text-anchor="middle">0°</text></g>
+<g id="v2_s1"><circle cx="212.9" cy="86" r="8" fill="#fff" stroke="#3B3A34" stroke-width="1.4"/><text class="tb" x="212.9" y="68" text-anchor="middle">采集反馈</text><text class="ts" x="212.9" y="104" text-anchor="middle">70°</text></g>
+<g id="v2_s2"><circle cx="335.7" cy="86" r="8" fill="#fff" stroke="#3B3A34" stroke-width="1.4"/><text class="tb" x="335.7" y="68" text-anchor="middle">定位归因</text><text class="ts" x="335.7" y="104" text-anchor="middle">200°</text></g>
+<g id="v2_s3"><circle cx="458.6" cy="86" r="8" fill="#fff" stroke="#3B3A34" stroke-width="1.4"/><text class="tb" x="458.6" y="68" text-anchor="middle">修复</text><text class="ts" x="458.6" y="104" text-anchor="middle">340°</text></g>
+<g id="v2_s4"><circle cx="581.4" cy="86" r="8" fill="#fff" stroke="#3B3A34" stroke-width="1.4"/><text class="tb" x="581.4" y="68" text-anchor="middle">用例入库</text><text class="ts" x="581.4" y="104" text-anchor="middle">460°</text></g>
+<g id="v2_s5"><circle cx="704.3" cy="86" r="8" fill="#fff" stroke="#3B3A34" stroke-width="1.4"/><text class="tb" x="704.3" y="68" text-anchor="middle">回归</text><text class="ts" x="704.3" y="104" text-anchor="middle">580°</text></g>
+<g id="v2_s6"><circle cx="827.1" cy="86" r="8" fill="#fff" stroke="#3B3A34" stroke-width="1.4"/><text class="tb" x="827.1" y="68" text-anchor="middle">灰度</text><text class="ts" x="827.1" y="104" text-anchor="middle">660°</text></g>
+<g id="v2_s7"><circle cx="950" cy="86" r="8" fill="#fff" stroke="#3B3A34" stroke-width="1.4"/><text class="tb" x="950" y="68" text-anchor="middle">回线</text><text class="ts" x="950" y="104" text-anchor="middle">700°</text></g>
+<line id="v2_play" x1="90" y1="54" x2="90" y2="110" stroke="#C46A0A" stroke-width="1.2" stroke-dasharray="3 3" opacity="0.75"/>
+<g><rect x="90" y="126" width="200" height="48" rx="8" fill="#FBFAF6" stroke="#ECEAE2"/><text class="tb" x="102" y="144">双平面判分</text><text id="v2_plane" class="ts" x="102" y="162">待判</text></g>
+<g><rect x="310" y="126" width="200" height="48" rx="8" fill="#FBFAF6" stroke="#ECEAE2"/><text class="tb" x="322" y="144">门禁三态</text><text id="v2_gate" class="ts" x="322" y="162">待跑</text></g>
+<g><rect x="530" y="126" width="200" height="48" rx="8" fill="#FBFAF6" stroke="#ECEAE2"/><text class="tb" x="542" y="144">灰度再评估</text><text id="v2_canary" class="ts" x="542" y="162">待命</text></g>
+<g><rect x="750" y="126" width="200" height="48" rx="8" fill="#FBFAF6" stroke="#ECEAE2"/><text class="tb" x="762" y="144">回流计数</text><text id="v2_reflow" class="ts" x="762" y="162">0</text></g>
+</g>
+</svg>
+<div class="subcap">读法：站点按事件顺序等距排列，角标才是相位阈值；先看当前站点，再看四块判分 / 门禁 / 灰度 / 回流状态板。</div>
+</div>
 <div class="ctrl">
 <button class="btn" id="engBtn">暂停</button>
 <span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
@@ -138,13 +209,14 @@ table.grid td.act{background:#FAEEDA}
 <button class="btn warn" onclick="nextStep()">下一步 ›</button>
 </span>
 </div>
+<p class="phase-note">相位口径：0° = 线上运行；720° = 闭环回到线上。归因 200°、入库 460°、回归 580°、灰度 660°；副图与主图同相位。</p>
 </div>
 </div>
 
 <section>
 <div class="sec-head"><span class="sec-num">1</span><h2>表象观察：先把它当黑盒</h2></div>
 <p class="sec-sub">第一步不拆机器，只看它对外表现出什么行为。</p>
-<div class="quote">「对事物的观察包括了静态结构 + 动态生命周期 + 环境场景三个方面的内容。」<i>—— 人月聊IT · 思维系列</i></div>
+<div class="quote">「对事物的观察包括了静态结构 + 动态生命周期 + 环境场景三个方面的内容。」</div>
 <p>从外部看，评估系统做的事只有一件：<b>把一次线上的不满意，变成一条再也跑不掉的测试</b>。它不直接让 Agent 变聪明，它保证每一次「优化」都是可验证的改进而不是改动。输入是线上信号与 trace，输出是版本、阈值与回归报告。</p>
 <div class="flow">
 <span class="node">线上信号（点踩 / 纠正 / 异常）</span><span class="arr">→</span>
@@ -158,7 +230,7 @@ table.grid td.act{background:#FAEEDA}
 <section>
 <div class="sec-head"><span class="sec-num">2</span><h2>静态分解：它由什么组成</h2></div>
 <p class="sec-sub">打开黑盒，沿空间维度拆解。点部件卡片，动画中对应部分会亮成琥珀色。</p>
-<div class="quote">「它由什么构成？核心方法是分解、分类、结构化——分解需符合 MECE 法则，同层必须粒度一致。」<i>—— 人月聊IT · 思维系列</i></div>
+<div class="quote">「它由什么构成？核心方法是分解、分类、结构化——分解需符合 MECE 法则，同层必须粒度一致。」</div>
 <p>评估闭环可按功能分成<b>五组</b>：</p>
 <div class="partgroup">
 <div class="gname">指标组 —— 负责「什么叫好」</div>
@@ -201,9 +273,9 @@ table.grid td.act{background:#FAEEDA}
 <section>
 <div class="sec-head"><span class="sec-num">3</span><h2>动态分析：它如何运转</h2></div>
 <p class="sec-sub">盯住那个琥珀色令牌。用动画下方的 8 个步骤点逐帧走完一次完整闭环。</p>
-<div class="quote">「它如何演变与运作？关注时间轴上的发展规律、行为模式和内部流程。核心方法是流程分析、行为追溯。」<i>—— 人月聊IT · 思维系列</i></div>
+<div class="quote">「它如何演变与运作？关注时间轴上的发展规律、行为模式和内部流程。核心方法是流程分析、行为追溯。」</div>
 <p><b>操作：</b>点击动画下方步骤条上的圆点（或「下一步」按钮），画面会定格在对应时刻。建议完整走两遍：第一遍只看令牌走哪个站点，第二遍同时看中央六问链和右侧双平面判分台。</p>
-<table class="grid">
+<div class="tablewrap"><table class="grid">
 <tr><th>阶段</th><th>时刻</th><th>站点</th><th>关键面板</th><th>这一步在干什么</th></tr>
 <tr><td>① 线上运行</td><td>0°–70°</td><td class="act">运行中</td><td>埋点亮</td><td>Trace 落盘：Generation 带 model / prompt 版本，Score 挂质量信号</td></tr>
 <tr><td>② 采集反馈</td><td>70°–200°</td><td class="act">信号入队</td><td>九信号</td><td>用户点踩——最便宜的标注信号，赶在输入到达后立刻打标</td></tr>
@@ -213,16 +285,16 @@ table.grid td.act{background:#FAEEDA}
 <tr><td>⑥ 回归测试</td><td>580°–660°</td><td class="hot">跑回归</td><td>历史成功集</td><td>曾成功的用例变差即打回；门禁三态：先判方向再判显著</td></tr>
 <tr><td>⑦ 灰度与再评估</td><td>660°–700°</td><td class="act">影子转正</td><td>三组指标</td><td>约百次不劣于线上才转正；汇报要「目标 +8%、护栏持平、纠正率 −12%」三个数一起说</td></tr>
 <tr><td>⑧ 回到线上</td><td>700°–720°</td><td class="act">闭环</td><td>计数器 +1</td><td>同一个坑只踩一次——回流最重要的价值</td></tr>
-</table>
+</table></div>
 <p>两个容易错过、但值得在分步模式里细看的点：① 第 ③ 阶段六问链走到<b>第二问就断了</b>——槽位没抽出 budget_max，后面四环只是在一个空约束下跑，「系统全绿」与「决策正确」是两个世界；② 第 ⑥ 阶段回归用的不是「新用例集」而是<b>历史成功集 + 新用例</b>——只有曾成功的变差被打回，才发现「修一个坑挖一个新坑」。</p>
 </section>
 
 <section>
 <div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件如何协同出「可信的改进」</h2></div>
 <p class="sec-sub">把第 2 节的「结构」和第 3 节的「流程」叠在一起——这才是理解的完成态。</p>
-<div class="quote">「动静融合的关键是建立映射：将组成部件与操作步骤一一对应，理解各部件如何协同产生外在行为。系统 = 元素 + 连接 + 目标。」<i>—— 人月聊IT · 思维系列</i></div>
+<div class="quote">「动静融合的关键是建立映射：将组成部件与操作步骤一一对应，理解各部件如何协同产生外在行为。系统 = 元素 + 连接 + 目标。」</div>
 <p>映射表：<b>每个部件在每个阶段里承担什么角色</b>。竖着看是一个阶段的全体协同，横着看是一个部件的完整职责。</p>
-<table class="grid">
+<div class="tablewrap"><table class="grid">
 <tr><th>部件 ＼ 阶段</th><th>① 运行</th><th>② 采集</th><th>③ 归因</th><th>④ 修复</th><th>⑤ 入库</th><th>⑥ 回归</th><th>⑦ 灰度</th></tr>
 <tr><td>三层指标</td><td class="act">被采集</td><td>负向信号</td><td>定校准点</td><td>—</td><td>写进口径</td><td class="hot">三组并看</td><td class="hot">放行依据</td></tr>
 <tr><td>双平面判分</td><td>轨迹留痕</td><td>—</td><td class="hot">终态×轨迹</td><td>修什么有据</td><td>定义 expected</td><td>判定依据</td><td>—</td></tr>
@@ -230,14 +302,14 @@ table.grid td.act{background:#FAEEDA}
 <tr><td>六站点闭环</td><td class="hot">起点</td><td class="act">信号入队</td><td class="hot">断点定位</td><td class="act">滚动 patch</td><td class="hot">快照入库</td><td class="hot">门禁三态</td><td class="act">转正</td></tr>
 <tr><td>回流九信号</td><td>—</td><td class="hot">强信号优先</td><td>聚类输入</td><td>—</td><td class="act">活水来源</td><td>回归权重</td><td>—</td></tr>
 <tr><td>护栏 + 人审</td><td>红线布防</td><td>—</td><td>违规判定</td><td class="act">两保险之一</td><td>禁止集合</td><td class="act">阻断维度</td><td class="hot">不许自主改的清单</td></tr>
-</table>
+</table></div>
 <p>点题一句：<b>「同一个坑只踩一次」这个外在行为，不是任何一个部件的属性，而是「信号 + 归因 + 快照 + 门禁」整体协同涌现的</b>。其中有两个对称设计值得点名：双平面打分让「蒙对」无处遁形（终态与轨迹互相制衡）；护栏指标与人工审批让「刷分」无处下手（核心涨的同时关键指标不得明显恶化）。代价同样清晰：回流会带来噪声，所以只有强负反馈与异常样本优先入库；自动化的步子越大，越需要先回答「怎么算好」。</p>
 </section>
 
 <section>
 <div class="sec-head"><span class="sec-num">5</span><h2>环境场景：它依赖什么才能工作</h2></div>
 <p class="sec-sub">主体之外，还有一圈支撑系统。</p>
-<div class="quote">「对事物的认识 = 空间属性 + 时间属性 + 环境属性（外在关系和依赖）。」<i>—— 人月聊IT · 思维系列</i></div>
+<div class="quote">「对事物的认识 = 空间属性 + 时间属性 + 环境属性（外在关系和依赖）。」</div>
 <div class="envcards">
 <div class="env"><b>埋点与 Trace</b><span>Generation（model / promptName / promptVersion / usage / cost）与 Score 两个传统监控没有的对象。没有它，「这决策是谁在哪版指令下做的」无人回答。</span></div>
 <div class="env"><b>录放与 CI</b><span>事故卡带逐轮落盘，CI 零网络零随机回放。卡带耗尽必须抛错提示重录，绝不给虚假绿灯。</span></div>
@@ -262,6 +334,7 @@ table.grid td.act{background:#FAEEDA}
 <p>· 结构：三层指标 + 双平面判分 + Judge + 六站点闭环 + 回流九信号。</p>
 <p>· 行为：点踩入队 → 六问定位 → 滚动 patch → 快照入库 → 历史成功集回归 → 影子灰度 → 三组指标并看。</p>
 <p>· 协同：双平面让「蒙对」无处遁形，护栏 + 人审让「刷分」无处下手；同一个坑只踩一次。</p>
+<p>· 边界与简化：闭环按单个 case 演示；真实回流是批量的，灰度样本量与统计检验细节未展开。</p>
 </div>
 
 </div>
@@ -351,8 +424,9 @@ H+='<g id="p1"><rect x="808" y="106" width="164" height="60" rx="7" fill="#FCEBE
 +'<text class="ts" x="816" y="138">终态 ✓ · 轨迹 ✗ → 判失败</text>'
 +'<text class="ts" x="816" y="154" fill="#8A2A2A">禁止集合：未经校验不得调用</text></g>';
 H+='<text class="ts" x="634" y="188">只看输出：两遍都满足「回复含退款成功」→ 2 跑 2 过，绿灯</text>'
-+'<text class="ts" x="634" y="206" fill="#854F0B">终态 + 轨迹：第二遍直接挂 → 1/2。那个 100% 是把一次隐形失败记成了成绩</text>'
-+'<text class="ts" x="634" y="228">算分用机械态，解释用叙事态</text></g>';
++'<text class="ts" x="634" y="206" fill="#854F0B">终态 + 轨迹：第二遍直接挂 → 1/2</text>'
++'<text class="ts" x="634" y="222" fill="#854F0B">那个 100% 把一次隐形失败记成了成绩</text>'
++'<text class="ts" x="634" y="240">算分用机械态，解释用叙事态</text></g>';
 // 右侧：Judge 面板
 H+='<g id="jpanel"><rect x="620" y="260" width="360" height="152" rx="10" fill="#FBFAF6" stroke="#3B3A34" stroke-width="1.3"/>'
 +'<text class="tn" x="634" y="282">LLM-as-a-Judge</text>';
@@ -361,15 +435,15 @@ for(var j=0;j<5;j++){
 H+='<g id="ji'+j+'"><rect x="'+(634+j*70)+'" y="292" width="64" height="20" rx="5" fill="#F5F4EF" stroke="#D3D1C7" stroke-width="1"/>'
 +'<text class="ts" x="'+(666+j*70)+'" y="306" text-anchor="middle">'+ji[j]+'</text></g>';
 }
-H+='<text class="ts" x="634" y="334">四维输出：任务完成度 · 安全合规 · 轨迹质量 · 输出质量（不合成总分）</text>'
+H+='<text class="ts" x="634" y="334">四维输出：完成度 / 安全 / 轨迹 / 输出（不合成总分）</text>'
 +'<text class="ts" x="634" y="352">纪律一：异源——换厂家，或强评弱</text>'
 +'<text class="ts" x="634" y="370" fill="#854F0B">纪律二：外部事实通道——切断后仍放行错误，说明看的是文采</text>'
 +'<text class="ts" x="634" y="392">裁判自身故障记 error，不否决业务决策</text></g>';
 // 右侧：三组汇报
-H+='<g id="repBox"><rect x="620" y="428" width="360" height="72" rx="10" fill="#ffffff" stroke="#3B3A34" stroke-width="1.4"/>'
-+'<text class="tn" x="634" y="450">汇报要三个数一起说</text>'
-+'<text id="rep0" class="tb" x="634" y="472">下单转化 +8% · 退货率持平 · 用户纠正率 −12%</text>'
-+'<text id="rep1" class="ts" x="634" y="490" fill="#8A877C">而不是一句「满意度 +10%」</text></g>';
+H+='<g id="repBox"><rect x="620" y="418" width="360" height="72" rx="10" fill="#ffffff" stroke="#3B3A34" stroke-width="1.4"/>'
++'<text class="tn" x="634" y="440">汇报要三个数一起说</text>'
++'<text id="rep0" class="tb" x="634" y="462">下单转化 +8% · 退货率持平 · 用户纠正率 −12%</text>'
++'<text id="rep1" class="ts" x="634" y="480" fill="#8A877C">而不是一句「满意度 +10%」</text></g>';
 // 底部中：回流九信号
 H+='<g id="sigBox"><rect x="345" y="470" width="300" height="76" rx="8" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.2"/>'
 +'<text class="tb" x="357" y="490">回流九信号（强信号优先）</text>';
@@ -380,10 +454,10 @@ H+='<g id="sg'+s+'"><rect x="'+(357+(s%5)*57)+'" y="'+(498+Math.floor(s/5)*24)+'
 }
 H+='</g>';
 // 底部右：计数器
-H+='<g id="counter"><rect x="662" y="470" width="318" height="76" rx="8" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/>'
-+'<text class="tb" x="674" y="490" fill="#854F0B">同一个坑只踩一次</text>'
-+'<text id="cntT" class="tn" x="674" y="516">本轮闭环：已回流 1 个 case · 计数器 +1</text>'
-+'<text class="ts" x="674" y="534">剩下的事交给长期监控</text></g>';
+H+='<g id="counter"><rect x="662" y="496" width="318" height="56" rx="8" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/>'
++'<text class="tb" x="674" y="514" fill="#854F0B">同一个坑只踩一次</text>'
++'<text id="cntT" class="tn" x="674" y="532">本轮闭环：已回流 1 个 case · 计数器 +1</text>'
++'<text class="ts" x="674" y="546">剩下的事交给长期监控</text></g>';
 // 令牌
 H+='<circle id="tok" cx="130" cy="150" r="10" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/>';
 document.getElementById('scene').innerHTML=H;
@@ -499,6 +573,107 @@ r.setAttribute('fill',on?'#FFF6E8':'#ffffff');r.setAttribute('stroke',on?'#EF9F2
 setG(el.counter,th>=700?1:0.55);
 requestAnimationFrame(tick);
 }
+/* agent-lab shared instruments + second view */
+(function(){
+var roPhase=document.getElementById('roPhase');
+var roStep=document.getElementById('roStep');
+var roKey=document.getElementById('roKey');
+var chipBox=document.getElementById('stateChips');
+var chipEls={};
+var CHIPS=[{k:'pos',l:'当前站点'},{k:'chain',l:'六问链'},{k:'plane',l:'双平面'},{k:'gate',l:'门禁'},{k:'reflow',l:'回流'},{k:'canary',l:'灰度'}];
+CHIPS.forEach(function(c){
+var s=document.createElement('span');s.className='chip';s.innerHTML=c.l+' <b>--</b>';
+chipBox.appendChild(s);chipEls[c.k]=s;
+});
+function setChip(k,v,cls){
+var n=chipEls[k];if(!n)return;
+var b=n.querySelector('b');
+if(b&&b.textContent!==v)b.textContent=v;
+n.classList.remove('on','warn','off');
+if(cls)n.classList.add(cls);
+}
+function setT(id,v){var n=document.getElementById(id);if(n&&n.textContent!==v)n.textContent=v;}
+function setA(id,k,v){var n=document.getElementById(id);if(n)n.setAttribute(k,v);}
+function setO(id,v){var n=document.getElementById(id);if(n)n.setAttribute('opacity',v.toFixed(2));}
+function ss(t){t=Math.max(0,Math.min(1,t));return t*t*(3-2*t);}
+function lr(a,b,t){return a+(b-a)*t;}
+function cl(v,a,b){return Math.max(a,Math.min(b,v));}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function stageIndex(th){var si=0;for(var i=0;i<STEPS.length;i++){if(th>=STEPS[i].d)si=i;}return si;}
+var ST_D=[0,70,200,340,460,580,660,700];
+var ST_X=[90,212.9,335.7,458.6,581.4,704.3,827.1,950];
+var ST_N=['线上运行','采集反馈','定位归因','修复','用例入库','回归','灰度','回线'];
+function stIdx(t){var k=0;for(var i=0;i<ST_D.length;i++){if(t>=ST_D[i])k=i;}return k;}
+function stPos(t){
+var i=stIdx(t);if(i>=7)return 950;
+var u=ss((t-ST_D[i])/(ST_D[i+1]-ST_D[i]));return lr(ST_X[i],ST_X[i+1],u);
+}
+function renderSide(th){
+var t=norm(th),i=stIdx(t),x=stPos(t);
+setA('v2_prog','x2',x.toFixed(1));setA('v2_play','x1',x.toFixed(1));setA('v2_play','x2',x.toFixed(1));
+setT('v2_stage','当前：'+ST_N[i]);
+for(var k=0;k<8;k++){
+var c=document.querySelector('#v2_s'+k+' circle');
+if(!c)continue;
+if(k<i){c.setAttribute('r','8');c.setAttribute('fill','#EAF3DE');c.setAttribute('stroke','#639922');}
+else if(k===i){c.setAttribute('r','10');c.setAttribute('fill','#EF9F27');c.setAttribute('stroke','#D97E06');}
+else{c.setAttribute('r','8');c.setAttribute('fill','#ffffff');c.setAttribute('stroke','#3B3A34');}
+}
+setT('v2_plane',t>=260?'1/2 判对':'待判');
+setT('v2_gate',t>=580?(t<660?'回归中':'通过'):'待跑');
+setT('v2_canary',t>=660?'影子 → 转正':'待命');
+setT('v2_reflow',t>=460?'计数器 +1':'0');
+}
+function keyAt(t){var i=stIdx(t);return '站点 '+(i+1)+'/8 · '+ST_N[i];}
+function chipsAt(t){
+var i=stIdx(t);
+return [
+['pos',ST_N[i],i>=1?'on':'warn'],
+['chain',t>=200?(t>=320?'断在 ②':'定位中'):'待命',t>=200?(t>=320?'warn':'warn'):'off'],
+['plane',t>=260?'1/2 判对':'待判',t>=260?'on':'off'],
+['gate',t>=580?(t<660?'回归中':'通过'):'待跑',t>=660?'on':(t>=580?'warn':'off')],
+['reflow',t>=460?'1 case':'0',t>=460?'on':'off'],
+['canary',t>=660?'转正':'待命',t>=660?'on':'off']
+];
+}
+function updateShared(th){
+var t=norm(th);
+var pr=Math.round(t)%720;
+if(roPhase.textContent!==(pr+'\u00b0'))roPhase.textContent=pr+'\u00b0';
+var si=stageIndex(t);if(mode==='step'&&stepIdx>=0)si=stepIdx;
+var st=STEPS[si]?STEPS[si].t:'\u2014';
+if(roStep.textContent!==st)roStep.textContent=st;
+var kv=keyAt(t);if(roKey.textContent!==kv)roKey.textContent=kv;
+var cs=chipsAt(t);
+for(var i=0;i<cs.length;i++)setChip(cs[i][0],cs[i][1],cs[i][2]);
+renderSide(t);
+}
+var AS={ease:null,last:performance.now(),DUR:900};
+var origGoStep=window.goStep;
+window.goStep=function(i){
+var from=phase;
+origGoStep(i);
+var to=phase,delta=to-from;
+if(!reduced&&Math.abs(delta)<=PERIOD/4&&Math.abs(delta)>0.01){
+phase=from;AS.ease={from:from,to:to,elapsed:0};
+}else{AS.ease=null;}
+};
+var origTick=tick;
+tick=function(now){
+if(typeof now!=='number')now=performance.now();
+var dt=Math.min(50,Math.max(0,now-AS.last));AS.last=now;
+if(mode==='auto')AS.ease=null;
+if(AS.ease){
+AS.ease.elapsed=Math.min(AS.DUR,AS.ease.elapsed+dt);
+var p=AS.ease.elapsed/AS.DUR;
+phase=AS.ease.from+(AS.ease.to-AS.ease.from)*ss(p);
+if(p>=1){phase=AS.ease.to;AS.ease=null;}
+}
+origTick(now);
+updateShared(phase/PERIOD*PHASE_MAX);
+};
+})();
+
 requestAnimationFrame(tick);
 document.querySelectorAll('.part').forEach(function(b){
 b.onclick=function(){

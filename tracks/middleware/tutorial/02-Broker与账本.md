@@ -131,7 +131,7 @@ store.asyncUpdateLedgerIds(name, getManagedLedgerInfo(), ledgersStat, storeLedge
 
 几个容易被忽略的细节：
 
-**第一，ack 的时机。** 客户端收到 `sendReceipt`，意味着这条消息已经写到了 `ackQuorum` 个 Bookie 上，不是 `writeQuorum` 个，更不是全部。默认配置是 ensemble=3、writeQuorum=2、ackQuorum=2。ensemble 是这本 ledger 可用的 Bookie 池，writeQuorum 是每条 entry 实际写几份，ackQuorum 是收齐几个确认就算成功。所以每条消息只有两份副本，分别落在池子里的两个 Bookie 上；第三个 Bookie 是候选节点，不是这条消息的第三份拷贝。如果这两份所在的 Bookie 同时挂掉，这条消息就丢了。
+**第一，ack 的时机。** 客户端收到 `sendReceipt`，意味着这条消息已经写到了 `ackQuorum` 个 Bookie 上，不是 `writeQuorum` 个，更不是全部。集群默认是 ensemble=2、writeQuorum=2、ackQuorum=2（`conf/broker.conf:1417-1423`；standalone 是 1/1/1）。ensemble 是这本 ledger 分配到的 Bookie 集合，writeQuorum 是每条 entry 实际写几份，ackQuorum 是收齐几个确认就算成功。默认每条消息两份副本，两个都必须确认；没有第三个副本，也没有 standby。只有把 E 调到 3、W 仍为 2 时，才会出现一个在 ensemble 里但不在本次 writeQuorum 的第三个 Bookie——它不持有这条 entry 的副本，不是候补。如果两份副本所在的 Bookie 同时挂掉，这条消息就丢了。
 
 **第二，entry cache。** 写完成之后，消息会放进 `entryCache`，供追尾读使用。消费者如果读的是最新消息，通常不经过 Bookie，直接从 Broker 内存里拿。这就是为什么「刚发的消息立刻能消费到」，也是为什么 Broker 的内存配置会影响消费延迟。
 
@@ -143,13 +143,13 @@ store.asyncUpdateLedgerIds(name, getManagedLedgerInfo(), ledgersStat, storeLedge
 
 Pulsar 把 ledger 的复制交给了 BookKeeper。BookKeeper 的三个参数经常被混着用：
 
-| 参数 | 默认 | 含义 | 调大的代价 |
+| 参数 | 集群默认 | 含义 | 调大的代价 |
 | --- | --- | --- | --- |
-| ensembleSize | 3 | 一本 ledger 分布在几个 Bookie 上 | 更多 Bookie、更高恢复成本 |
-| writeQuorumSize | 2 | 每条 entry 写几份 | 更高写放大、更高延迟 |
-| ackQuorumSize | 2 | 收到几个 ack 才算成功 | 更高延迟、更低可用性 |
+| ensembleSize (E) | 2 | 一本 ledger 分配到几个 Bookie 上 | 更多 Bookie、更高恢复成本 |
+| writeQuorumSize (W) | 2 | 每条 entry 实际写几份 | 更高写放大、更高延迟 |
+| ackQuorumSize (A) | 2 | 收到几个 ack 才算成功 | 更高延迟、更低可用性 |
 
-约束是 `ackQuorum <= writeQuorum <= ensemble`。为什么 ack 可以小于 write？因为 BookKeeper 认为，只要这 `ackQuorum` 个副本还在，这条 entry 就能恢复；剩下的副本可以异步补齐。这是在延迟和耐久性之间做的折中。
+约束是 `ackQuorum <= writeQuorum <= ensemble`。默认 W=A=2，所以两个副本都必须确认，不存在「只等一个、另一个异步补」的窗口。为什么在非默认配置里 ack 可以小于 write？因为 BookKeeper 认为，只要这 `ackQuorum` 个副本还在，这条 entry 就能恢复；剩下的副本可以异步补齐。这是在延迟和耐久性之间做的折中。比如 E=3、W=3、A=2 时，第三条写入可以晚到；但 E=3、W=2、A=2 时第三个 Bookie 根本不在本次写集合里，它不是「异步补的第三份」。
 
 但如果 `ackQuorum < writeQuorum`，恢复时就需要判断哪些副本是最新的。BookKeeper 用 entry 的元数据和 ledger 的 lastAddConfirmed 来做这件事。Pulsar 侧不感知这个过程，只看到「打开 ledger 时可能触发恢复，恢复期间写会变慢」。
 
@@ -160,6 +160,14 @@ Pulsar 把 ledger 的复制交给了 BookKeeper。BookKeeper 的三个参数经�
 ## 五、元数据：账本的目录，不是配置中心
 
 Pulsar 的元数据存储有一套统一的 `MetadataStore` 接口，底层可以是 ZooKeeper、RocksDB（单机/本地）、Oxia，或者内存实现。接口本身不复杂：get / put / delete / exists，加上版本号做 CAS，加上通知机制。
+
+### 5.1 两套 store，不是一套
+
+`PulsarResources` 在启动时建两个视图：config store 放 tenant / cluster / namespace / resourcegroup（`PulsarResources.java:77-82`），local store 放 dynamic-config / local-policies / load-report / bookie / topic / loadbalance（`:90-98`）。生产环境里 config URL 为空会回退到 local（`ServiceConfiguration.java:4757-4767`）。
+
+这两个视图不是同一套能力：local store 是 `MetadataStoreExtended`，带 session 监听和锁；config store 只是普通 `MetadataStore`。代码里没有 `ConfigurationMetadataStore` 这个类，别把“配置存储”当成一个独立的实现类（`PulsarService.java:444-465`、`:1396-1413`）。
+
+### 5.2 账本与游标的路径
 
 对 managed ledger 来说，最重要的两个路径是：
 
@@ -194,6 +202,26 @@ store.put(path, content, Optional.of(expectedVersion));
 ```
 
 `expectedVersion` 不匹配就抛 `BadVersionException`。`ManagedCursorImpl` 收到这个异常后，会先确认自己还拥有这个 managed ledger，再重新读一次版本号重试。这个细节很重要：如果 ownership 已经丢了，重试只会覆盖新 owner 的写入，所以必须先检查归属。
+
+### 5.3 一个接口，三种底座
+
+`MetadataStore` 的核心方法有 `get`、`getChildren`、`exists`、`put`、`delete`、`registerListener`、`getMetadataCache`、`scanChildren`、`subscribeSequence`。**接口里没有 `set` / `compareAndSwap` / `acquireLock`**：CAS 就是 `put(path, value, expectedVersion)`，`expectedVersion=-1` 表示“只在不存在时创建”（`MetadataStore.java:159-168`）；`set` 在 `BaseResources` / `MetadataCacheImpl` 里做封装；锁在 `LockManager` / `ResourceLock` 里，是对一个临时节点的 CAS，不是公平队列。
+
+三种底座的差别在“怎么通知、怎么比较版本”：
+
+| 实现 | 通知 / 版本 | 适用 |
+| --- | --- | --- |
+| ZooKeeper | 持久递归 watch、znode version CAS、ephemeral 节点（`ZKMetadataStore.java:114`、`:543-584`） | 多节点共享、需要锁和会话 |
+| RocksDB | 本地 TransactionDB + 版本比较，没有跨节点 watch（`RocksdbMetadataStore.java:79`、`:600-611`） | 单机 / 本地元数据 |
+| Oxia | 原生通知、序列键、二级索引（`OxiaMetadataStore.java:128`、`:434`） | 远端元数据服务 |
+
+通知会进入 `AbstractMetadataStore` 的单线程 `eventExecutor`，再串行通知 listener，并失效 children / exists / MetadataCache（`AbstractMetadataStore.java:134`、`:426-438`）。所以 listener 里不能做重活，否则会堵住同一批通知。
+
+### 5.4 慢/挂时，什么先疼
+
+元数据是控制面，不是数据面。它慢下来时，先疼的是“新 topic 加载、ledger 切换、bundle 归属变更、配置写入”，已有 topic 的追尾读写通常还能靠缓存撑一段。
+
+几个具体数字：同步元数据读最多阻塞 30 秒（`PulsarResources.java:32`、`BaseResources.java:86`）；CAS 冲突重试从 5ms 退避到 3s，30 秒硬停（`MetadataCacheImpl.java:394-399`）；children / exists 缓存默认 5 分钟刷新、10 分钟过期，断连期间可能读到旧值（`AbstractMetadataStore.java:86`、`:185-190`、`:206-213`）。session 丢失会让 bundle 锁消失，新 owner 可以接管；如果配置成 `shutdown`，Broker 会直接退出（`OwnershipCache.java:292-295`、`ServiceConfiguration.java:1983`）。
 
 ---
 
@@ -282,8 +310,19 @@ if (ackType == AckType.Cumulative) {
 - `pulsar-broker/.../service/persistent/PersistentTopic.java`：`publishMessage()`（`:674`）、`asyncAddEntry()`（`:733`）、`addComplete()`（`:792`）
 - `managed-ledger/.../impl/ManagedLedgerImpl.java`：`asyncAddEntry()`（`:918`）、`internalAsyncAddEntry()`（`:978`）、`ledgerClosed()`（`:2252`）、`currentLedgerIsFull()`（`:4851`）、`asyncCreateLedger()`（`:5121`）
 - `managed-ledger/.../impl/OpAddEntry.java`：`initiate()`（`:129`）、`addComplete()`（`:207`）、`run()`（`:254`）
-- `managed-ledger/.../impl/ManagedLedgerConfig.java`：ensemble / quorum / 滚动阈值默认值（`:53` 起）
+- `conf/broker.conf`：`managedLedgerDefaultEnsembleSize` / `WriteQuorum` / `AckQuorum`（`:1417-1423`）
+- `pulsar-broker-common/.../ServiceConfiguration.java`：三个 quorum 字段的默认值（`:2568-2581`）
+- `managed-ledger/.../impl/ManagedLedgerConfig.java`：账本滚动阈值与交接批次默认值（`:53` 起）
 - `managed-ledger/.../impl/MetaStoreImpl.java`：`BASE_NODE`（`:68`）、`asyncUpdateCursorInfo()`（`:233`）
+- `pulsar-metadata/.../api/MetadataStore.java`：CAS `put(expectedVersion)`（`:159-168`）
+- `pulsar-metadata/.../impl/AbstractMetadataStore.java`：通知串行化（`:134`、`:426-438`）、children/exists 缓存（`:86`、`:185-190`、`:206-213`）
+- `pulsar-metadata/.../impl/ZKMetadataStore.java`：递归 watch（`:114`）、版本 CAS（`:543-584`）
+- `pulsar-metadata/.../impl/RocksdbMetadataStore.java`：本地 TransactionDB / 版本比较（`:79`、`:600-611`）
+- `pulsar-metadata/.../impl/oxia/OxiaMetadataStore.java`：原生通知 / 序列键（`:128`、`:434`）
+- `pulsar-broker-common/.../resources/PulsarResources.java`：config store（`:77-82`）与 local store（`:90-98`）
+- `pulsar-broker/.../namespace/OwnershipCache.java`：bundle 锁与 session 故障（`:115`、`:292-295`）
+- `pulsar-broker/.../PulsarService.java`：local/config store 创建（`:444-465`、`:1396-1413`）
+- `pulsar-broker-common/.../ServiceConfiguration.java`：config URL 回退（`:4757-4767`）、session 策略（`:1983`）
 - `managed-ledger/.../impl/ManagedCursorImpl.java`：`asyncMarkDelete()`（`:2294`）、`persistPositionMetaStore()`（`:3109`）、`doCreateNewMetadataLedger()`（`:3449`）
 - `pulsar-broker/.../service/persistent/PersistentSubscription.java`：`acknowledgeMessageAsync()`（`:471`）
 - `managed-ledger/.../impl/ManagedLedgerImpl.java`：`trimConsumedLedgersInBackground()`（`:3167`）—— 真正删 ledger 的后台任务

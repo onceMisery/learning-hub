@@ -12,7 +12,7 @@ export const MIDDLEWARE_LAB = {
   trackId: 'middleware',
   title: 'Pulsar 互动原理实验室',
   subtitle:
-    '七章动态图解：从一条消息的旅程，到三本账、订阅开关、函数循环、连接器、四道边界，最后是数据的一生。每页都能自动运转，也能按步骤定格。',
+    '九章动态图解：从一条消息的旅程，到三本账、订阅开关、函数循环、连接器、四道边界、客户端与协议、主题与复制，最后是数据的一生。每页都能自动运转，也能按步骤定格。',
   route: '/middleware/lab',
   baseDir: 'middleware-lab',
   chapters: [
@@ -71,6 +71,22 @@ export const MIDDLEWARE_LAB = {
       principle: 'ack 只记账、保留定边界、后台才真删：压缩改读视图，卸载改读路径',
       articleRoute: '/middleware/tutorial/02-broker-ledger',
       articleTitle: 'Broker 与账本：数据、索引、进度这三本账',
+    },
+    {
+      id: '08-client-protocol',
+      file: '08-client-protocol.html',
+      title: '客户端与协议',
+      principle: 'Java 客户端、Command/Protobuf 帧、Schema 注册与演进：一条消息在客户端和 Broker 之间怎样被编码',
+      articleRoute: '/middleware/tutorial/06-client-protocol',
+      articleTitle: '客户端与协议：sendAsync 之后，消息被翻译成了什么',
+    },
+    {
+      id: '09-topics-replication',
+      file: '09-topics-replication.html',
+      title: '主题与复制',
+      principle: '非持久化不落账本；跨地域复制用本地 cursor + 远程 producer，np 复制是 best-effort',
+      articleRoute: '/middleware/tutorial/07-topics-replication',
+      articleTitle: '主题与复制：非持久化不落账本，跨地域复制已提交的消息',
     },
   ] satisfies LabChapter[],
 } as const;

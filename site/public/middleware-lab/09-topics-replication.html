@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>主题与复制 · Pulsar 互动原理实验室 第 9 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:920px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:680px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:500;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:12px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:500;fill:#1F1E1A}
+.tag{font-size:10.5px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:68px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+.modebar{display:flex;align-items:center;gap:8px;margin:6px 4px 0;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.modebar .mlabel{font-weight:600;color:#3B3A34}
+.modebtn{padding:5px 12px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:12.5px;cursor:pointer;font-family:inherit}
+.modebtn:hover{border-color:#888780}
+.modebtn.on{background:#FFF6E8;border-color:#EF9F27;color:#854F0B;font-weight:600}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .outbranch{display:inline-flex;flex-direction:column;align-items:flex-start;gap:6px}
+.flow .outline{display:inline-flex;align-items:center;gap:8px}
+.flow .flownote{font-size:12px;color:#6B695F;font-weight:600;margin-right:4px}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:9px 10px;text-align:center}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *,#eng2 .hl,#eng2 .hl *{stroke:#D96C06 !important}
+#scene [opacity]{transition:opacity .28s ease}
+#tok,#tokT,#pulse{transition:none}
+@media (prefers-reduced-motion: reduce){#scene [opacity]{transition:none}}
+.frame2{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figure{margin:14px 0 16px;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:12px 14px}
+.figure .figtitle{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:6px}
+.figure svg{width:100%;height:auto;display:block}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+.subview{margin:8px 0 4px;background:#ffffff;border:1px dashed #D3D1C7;border-radius:10px;padding:8px 10px}
+.subview .viewtitle{font-size:12px;font-weight:600;color:#854F0B;margin-bottom:4px}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：主题与复制</a>
+  <span class="idx">第 9 / 9 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · 非持久化与跨地域</div>
+<h1>主题与复制：没有账本的消息，和跨集群的副本</h1>
+<p>同一套 API，persistent 把消息写进 ledger，non-persistent 只在内存里分发；同一套复制配置，persistent 用 cursor + backlog 续传，non-persistent 只能即发即走。这页把两条命运放在同一相位上对照。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span>
+<span class="mnode">② 静态分解</span>
+<span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span>
+<span class="mnode">⑤ 环境场景</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 560" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>主题与复制 · persistent 与 non-persistent</title>
+<defs>
+<pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+<line x1="0" y1="0" x2="0" y2="8" stroke="#B4B2A9" stroke-width="0.7"/>
+</pattern>
+<marker id="flw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/>
+</marker>
+<marker id="flwG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/>
+</marker>
+<marker id="flwR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/>
+</marker>
+</defs>
+<text class="th" x="500" y="24" text-anchor="middle">主题与复制 · persistent 与 non-persistent</text>
+<text class="ts" x="500" y="44" text-anchor="middle">主图 = persistent + geo replication；副图 = non-persistent 的即时分发与 drop</text>
+<text class="ts" x="985" y="24" text-anchor="end">琥珀 = 写入 / 复制</text>
+<text class="ts" x="985" y="40" text-anchor="end">绿 = 分发 / 消费</text>
+<g id="scene"></g>
+</svg>
+
+<div class="subview">
+<div class="viewtitle">第二视图 · 同一相位下的 non-persistent（没有 ledger / cursor）</div>
+<svg id="eng2" viewBox="0 0 1000 230" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>非持久化主题的即时分发</title>
+<defs>
+<marker id="n9a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="n9g" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="n9r" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<g id="scene2"></g>
+</svg>
+</div>
+
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 轮 / 7 秒</span>
+</div>
+
+<div class="readout">
+<span class="ro">进度 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">关键量 <b id="roKey">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav">
+<button class="btn" onclick="prevStep()">‹ 上一步</button>
+<button class="btn warn" onclick="nextStep()">下一步 ›</button>
+</span>
+</div>
+<p class="figcap">进度 0° = 集群/策略就绪，720° = 远端消费与快照；主图是 persistent，副图是 non-persistent，共用同一相位。<br>口径：Pulsar 5.1.0-SNAPSHOT；复制队列 1000、连接 16、快照 1s/30s/30 来自 ServiceConfiguration 与 broker.conf；主图为原理示意。</p>
+</div>
+</div>
+
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：同一套 API，两种命运</h2></div>
+<p class="sec-sub">先不拆类，只问一句：消费者断开后，这条消息还在不在？</p>
+<div class="quote">「对事物的观察包括了静态结构 + 动态生命周期 + 环境场景三个方面的内容。」</div>
+<p>persistent 和 non-persistent 的客户端 API 几乎一样：producer 发、consumer 收。但一个是“先记账再分发”，一个是“直接分发、没有账本”。这个差别在正常路径上看不出来，在消费者断开、Broker 重启、跨集群复制时才暴露。</p>
+<div class="flow">
+<span class="node">persistent：ledger + cursor</span>
+<span class="outbranch">
+<span class="outline"><span class="arr">→</span><span class="node">可重放 / 可续读</span></span>
+<span class="outline"><span class="arr">→</span><span class="node">复制可补 backlog</span></span>
+</span>
+<span class="node">non-persistent：直接分发</span>
+<span class="outbranch">
+<span class="outline"><span class="arr">→</span><span class="node">断开即丢</span></span>
+<span class="outline"><span class="arr">→</span><span class="node">复制 best-effort</span></span>
+</span>
+</div>
+<p>这一页的主图走 persistent，副图走 non-persistent；两条路径共用同一个相位，方便你对照“同一时刻，另一边在做什么”。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：账本、cursor、replicator</h2></div>
+<p class="sec-sub">先看选择图，再点部件卡片——动画中对应部分会亮成琥珀色。</p>
+<div class="quote">「它由什么构成？核心方法是分解、分类、结构化——分解需符合 MECE 法则，同层必须粒度一致。」</div>
+<figure class="figure">
+<div class="figtitle">选 persistent 还是 non-persistent？</div>
+<svg viewBox="0 0 920 280" role="img" aria-label="持久化与非持久化的选择">
+<title>主题类型与复制选择</title>
+<rect x="28" y="58" width="150" height="54" rx="9" fill="#fff" stroke="#3B3A34"/><text class="tn" x="103" y="82" text-anchor="middle">需要重放/续读？</text><text class="tag" x="103" y="100" text-anchor="middle">消费者断开后还要读吗</text>
+<path d="M178 84 L238 84" stroke="#639922" stroke-width="1.5" fill="none" marker-end="url(#p9g)"/><text class="tag" x="208" y="76" text-anchor="middle" fill="#4C7A1A">是</text>
+<rect x="238" y="58" width="150" height="54" rx="9" fill="#EAF3DE" stroke="#639922"/><text class="tn" x="313" y="82" text-anchor="middle">persistent</text><text class="tag" x="313" y="100" text-anchor="middle">ledger + cursor</text>
+<path d="M178 84 L178 188 L238 188" stroke="#E24B4A" stroke-width="1.5" fill="none" marker-end="url(#p9r)"/><text class="tag" x="190" y="150" fill="#8A2A2A">否</text>
+<rect x="238" y="162" width="150" height="54" rx="9" fill="#FFF6E8" stroke="#EF9F27"/><text class="tn" x="313" y="186" text-anchor="middle">non-persistent</text><text class="tag" x="313" y="204" text-anchor="middle">直接分发，无账本</text>
+<path d="M388 84 L448 84" stroke="#639922" stroke-width="1.5" fill="none" marker-end="url(#p9g)"/><text class="tag" x="418" y="76" text-anchor="middle" fill="#4C7A1A">多集群？</text>
+<rect x="448" y="58" width="210" height="54" rx="9" fill="#fff" stroke="#3B3A34"/><text class="tn" x="553" y="82" text-anchor="middle">cursor + backlog</text><text class="tag" x="553" y="100" text-anchor="middle">pulsar.repl.B · 可续传</text>
+<path d="M388 188 L448 188" stroke="#E24B4A" stroke-width="1.5" fill="none" marker-end="url(#p9r)"/><text class="tag" x="418" y="180" text-anchor="middle" fill="#8A2A2A">多集群？</text>
+<rect x="448" y="162" width="210" height="54" rx="9" fill="#FFF6E8" stroke="#EF9F27"/><text class="tn" x="553" y="186" text-anchor="middle">best-effort push</text><text class="tag" x="553" y="204" text-anchor="middle">链断/队列满 → drop</text>
+<text class="ts" x="28" y="252" fill="#6B695F">复制配置来自 namespace/topic 的 replication_clusters；它必须是 allowed_clusters 的子集。事务本身不跨集群。</text>
+<defs>
+<marker id="p9g" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="p9r" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+</svg>
+<figcaption class="figcap">读法：先回答“要不要重放”，再回答“要不要跨集群”。persistent 的复制可以补 backlog；non-persistent 的复制只是尽力转发。</figcaption>
+</figure>
+<div class="partgroup">
+<div class="gname">核心分工</div>
+<div class="parts">
+<button class="part" data-part="persistent"><b>persistent</b><span>ManagedLedger + cursor；ack 推进 markDelete，消费者断开可续读。</span></button>
+<button class="part" data-part="np"><b>non-persistent</b><span>没有 ledger/cursor；ack no-op，没有 permit 或 consumer 就 drop。</span></button>
+<button class="part" data-part="replicate"><b>Replicator</b><span>persistent 用 cursor 读本地 ledger；non-persistent 直接 push；远端 producer 是出口。</span></button>
+<button class="part" data-part="snapshot"><b>Replicated Subscription</b><span>用快照对齐多个集群的 ack；仍是至少一次。</span></button>
+<button class="part" data-part="policy"><b>复制策略</b><span>replication_clusters / allowed_clusters 在 config store；远端 URL 从 ClusterResources 读。</span></button>
+</div>
+</div>
+<p class="hint">主图和副图不是两个独立动画：它们共享同一个 phase，所以你能在同一时刻对照 persistent 和 non-persistent。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：八个阶段，两条命运</h2></div>
+<p class="sec-sub">用 8 个步骤点看发布、分发、断开、复制和断链。</p>
+<div class="quote">「它如何演变与运作？关注时间轴上的发展规律、行为模式和内部流程。核心方法是流程分析、行为追溯。」</div>
+<table class="grid">
+<tr><th>阶段</th><th>persistent</th><th>non-persistent</th><th>关键差别</th></tr>
+<tr><td>① 集群/策略</td><td>config store + replication_clusters</td><td>同样需要 policy</td><td>远端 URL 来自 ClusterResources</td></tr>
+<tr><td>② 本地发布</td><td>asyncAddEntry → ledger</td><td>publish → 直接分发</td><td>是否写账本</td></tr>
+<tr><td>③ 本地分发</td><td>dispatcher 按 permits 读 cursor</td><td>permits=0 / 无 consumer → drop</td><td>是否有 cursor/重投</td></tr>
+<tr><td>④ ack</td><td>markDelete 异步推进</td><td>ack no-op</td><td>是否有进度账</td></tr>
+<tr><td>⑤ 消费者断开</td><td>cursor 保留，可续读</td><td>订阅删除，消息丢失</td><td>重放能力</td></tr>
+<tr><td>⑥ 启动复制</td><td>cursor pulsar.repl.B @latest</td><td>直接 push 到远程 producer</td><td>是否有复制 backlog</td></tr>
+<tr><td>⑦ 远端写入</td><td>成功删 cursor，失败 rewind</td><td>不可写/队列满 → drop</td><td>至少一次 vs best-effort</td></tr>
+<tr><td>⑧ 快照/断链</td><td>backlog 增长，恢复续传</td><td>断链即丢</td><td>复制语义</td></tr>
+</table>
+<p>最该记住的是第 ⑤ 和第 ⑦：<b>persistent 的“断开”是延迟，non-persistent 的“断开”是丢消息；persistent 的“复制失败”是 backlog，non-persistent 的“复制失败”是 drop。</b>不要在 non-persistent 上做容灾假设。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：三种存储，三种承诺</h2></div>
+<p class="sec-sub">把主图的账本/游标和副图的即时分发叠起来看。</p>
+<div class="quote">「动静融合的关键是建立映射：将组成部件与操作步骤一一对应，理解各部件如何协同产生外在行为。」</div>
+<table class="grid">
+<tr><th>承诺</th><th>persistent</th><th>non-persistent</th></tr>
+<tr><td>消息还在吗</td><td class="hot">ledger 在，直到保留/删除</td><td>只在内存/分发瞬间</td></tr>
+<tr><td>能重放吗</td><td class="hot">能，cursor 可从位点续读</td><td>不能，无 cursor</td></tr>
+<tr><td>ack 有用吗</td><td>推进 markDelete</td><td>no-op</td></tr>
+<tr><td>复制能补吗</td><td class="hot">能，cursor + backlog</td><td>不能，链断即丢</td></tr>
+<tr><td>跨集群重复窗口</td><td>replicated subscription 快照缩小</td><td>没有 replicated subscription</td></tr>
+</table>
+<p>点题一句：<b>“持久化”不是一种存储实现，而是一组承诺：可重放、可续传、可对齐。</b>non-persistent 放弃这三项，换来更短路径和更低成本；它不是“性能更好的 persistent”，而是另一种取舍。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：复制依赖什么</h2></div>
+<p class="sec-sub">复制不是“打开开关”，它需要一整套集群元数据和远端连接。</p>
+<div class="quote">「对事物的认识 = 空间属性 + 时间属性 + 环境属性（外在关系和依赖）。」</div>
+<div class="envcards">
+<div class="env"><b>config store</b><span>tenant/cluster/namespace 策略；replication_clusters 与 allowed_clusters 必须匹配。</span></div>
+<div class="env"><b>ClusterResources</b><span>远端 brokerServiceUrl / brokerServiceUrlTls；没有 URL 就没有 replication client。</span></div>
+<div class="env"><b>replication client</b><span>每个远端一套 producer；连接数默认 16，队列默认 1000。</span></div>
+<div class="env"><b>replicated subscription</b><span>快照默认 1s、超时 30s、缓存 30；多集群 ack 对齐。</span></div>
+<div class="env"><b>本地保留策略</b><span>persistent 复制要留足 backlog 时间；ledger 被裁掉就补不回来。</span></div>
+<div class="env"><b>监控</b><span>replication backlog、replication delay、np msgDropRate、快照超时。</span></div>
+</div>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">能说清“持久化是承诺，不是实现”，才算真的懂。</p>
+<div id="quiz"></div>
+</section>
+
+
+<div class="summary">
+<h2>一页带走</h2>
+<p class="chant">persistent 先记账再分发，non-persistent 只分发不记账；复制 persistent 靠 cursor/backlog，non-persistent 靠尽力而为；快照只缩小重复窗口，不改至少一次。</p>
+<p>· non-persistent 没有 ledger/cursor：publish 立即分发，ack no-op，无 consumer/permit 或链断就 drop。</p>
+<p>· persistent 的 ack 推进 markDelete；消费者断开可续读；复制有 cursor + backlog，可续传。</p>
+<p>· non-persistent 复制是 best-effort：maxPending 1000、不阻塞、失败即丢；backlog 恒 0。</p>
+<p>· Replicated Subscription 用快照对齐多集群 ack；仍是至少一次，只缩小重复窗口。</p>
+<p>· Cluster Migration 是集群重定向，不是 geo-replication；事务不跨集群。</p>
+<p>· 边界与简化：本页为原理示意；默认值/阈值/时序以 Pulsar 5.1.0-SNAPSHOT 的配置与源码为准；异常、重试与批处理细节未展开。</p>
+
+</div>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+
+<script>
+(function(){
+var PERIOD=7600,PHASE_MAX=720;
+var STEPS=[{d:0,t:'集群与策略',x:'先有 cluster 元数据和 namespace/topic 的 replication_clusters；远端 URL 从 ClusterResources 读。'},
+{d:90,t:'本地发布',x:'persistent 写 ManagedLedger；non-persistent 只把 entry 交给 dispatcher/replicator，没有 ledger。'},
+{d:180,t:'本地分发',x:'persistent 由 dispatcher 按 permits 读 cursor；non-persistent 没有 permit 或没有 consumer 就直接 drop。'},
+{d:270,t:'ack',x:'persistent ack 推进 markDelete；non-persistent ack 是 no-op，没有位点可写。'},
+{d:360,t:'消费者断开',x:'persistent cursor 保留，回来可续读；non-persistent 订阅删除，消息丢失。'},
+{d:450,t:'启动复制',x:'persistent 建 cursor pulsar.repl.B，从本地 ledger 读；non-persistent 直接 push 给远程 producer。'},
+{d:540,t:'远端写入',x:'persistent 成功才删 cursor，失败 rewind；non-persistent 不可写/队列满即 drop。'},
+{d:630,t:'快照 / 断链',x:'replicated subscription 对齐 ack 快照；persistent 断链 backlog 增长，non-persistent 断链即丢。'}];
+var PARTS={persistent:['localTopic','ledger','bookies','localConsumer','cursorBar'],
+np:['npTopic','npDispatcher','npConsumer','npDrop'],
+replicate:['replicator','remoteProducer','remoteTopic','remoteConsumer'],
+snapshot:['snapshot'],
+policy:['policyBox','localCluster','remoteCluster']};
+var CHIPS=[{k:'persistent',l:'持久化'},{k:'np',l:'非持久化'},{k:'repl',l:'复制'},{k:'snapshot',l:'快照'},{k:'drop',l:'np drop'}];
+var QUIZ=[{q:'non-persistent topic 的 ack 做了什么？',opts:['推进 markDeletePosition','no-op：没有 cursor/位图，ack 不改变任何持久状态','写 cursor ledger'],a:1,exp:'NonPersistentSubscription.acknowledgeMessageAsync 是空实现；没有 cursor，也就没有重投和重放。'},
+{q:'non-persistent 的消费者断开后，重启能读到断开前的消息吗？',opts:['能，Broker 会缓存','不能：最后一个消费者离开会删订阅，没有 ledger/cursor 可续读','能，只要没 ack'],a:1,exp:'非持久化没有持久化位置；订阅删除后重新订阅是新订阅，Broker 没有历史。'},
+{q:'persistent 的 replicator 为什么断链后还能补？',opts:['因为 Broker 会把消息复制到本地磁盘两次','因为本地 cursor pulsar.repl.B 还在，backlog 可续读；成功发送才删 cursor','因为远程 producer 会回放'],a:1,exp:'复制是本地 cursor + 远程 producer；失败 rewind，成功才推进，所以至少一次且可续传。'},
+{q:'non-persistent 的跨地域复制是什么语义？',opts:['至少一次，可续传','best-effort：直接 push，producer 不可写/队列满就 drop，backlog 恒 0','exactly-once'],a:1,exp:'NonPersistentReplicator 没有 cursor，blockIfQueueFull(false)，失败即丢；不能当容灾。'},
+{q:'replicated subscription 对齐的是什么？',opts:['消息内容','各集群的 ack 快照；只推进到自己的快照位点，仍是至少一次','Schema 版本'],a:1,exp:'快照汇总各集群 last position，收到 UPDATE 只对本集群 position 做 cumulative ack，不跳过未到达的消息。'}];
+function box(x,y,w,h,rx,fill,stroke,dash){return '<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="'+(rx||10)+'" fill="'+(fill||'#ffffff')+'" stroke="'+(stroke||'#3B3A34')+'" stroke-width="1.4"'+(dash?' stroke-dasharray="'+dash+'"':'')+'/>';}
+function tx(x,y,s,cls,anchor,fill){return '<text class="'+(cls||'ts')+'" x="'+x+'" y="'+y+'"'+(anchor?' text-anchor="'+anchor+'"':'')+(fill?' fill="'+fill+'"':'')+'>'+s+'</text>';}
+var H='';
+H+='<g id="localCluster">'+box(20,64,440,460,14,'#FBFAF6','#B4B2A9','6 5')+tx(240,86,'集群 A · 本地','tn','middle')+'</g>';
+H+='<g id="remoteCluster">'+box(540,64,440,460,14,'#FBFAF6','#B4B2A9','6 5')+tx(760,86,'集群 B · 远端','tn','middle')+'</g>';
+H+='<g id="localClient">'+box(40,110,150,50,8,'#ffffff','#3B3A34')+tx(115,131,'Client A','tn','middle')+tx(115,149,'producer','tag','middle')+'</g>';
+H+='<g id="localTopic">'+box(230,110,200,50,8,'#ffffff','#3B3A34')+tx(330,131,'PersistentTopic','tn','middle')+tx(330,149,'orders','tag','middle')+'</g>';
+H+='<g id="ledger">'+box(250,190,160,46,8,'#FFF6E8','#EF9F27')+tx(330,210,'ManagedLedger','tn','middle')+tx(330,226,'L1 / L2','tag','middle')+'</g>';
+H+='<g id="bookies">'+box(250,256,160,46,8,'#EAF3DE','#639922')+tx(330,276,'Bookie ×2','tn','middle')+tx(330,292,'W=2 / A=2','tag','middle')+'</g>';
+H+='<g id="localConsumer">'+box(40,270,150,50,8,'#ffffff','#3B3A34')+tx(115,291,'Consumer A','tn','middle')+tx(115,309,'cursor','tag','middle')+'</g>';
+H+='<g id="cursorBar"><rect x="250" y="340" width="160" height="12" rx="6" fill="#F5F4EF" stroke="#D3D1C7"/><rect id="cursorFill" x="250" y="340" width="0" height="12" rx="6" fill="#639922"/>'+tx(250,332,'cursor markDelete','tag','start','#4C7A1A')+'</g>';
+H+='<g id="replicator">'+box(230,390,200,52,8,'#FFF6E8','#EF9F27')+tx(330,411,'Replicator','tn','middle')+tx(330,429,'cursor pulsar.repl.B','tag','middle')+'</g>';
+H+='<g id="backlogBar"><rect x="230" y="470" width="200" height="12" rx="6" fill="#F5F4EF" stroke="#D3D1C7"/><rect id="backlogFill" x="230" y="470" width="0" height="12" rx="6" fill="#E24B4A"/>'+tx(230,462,'replication backlog','tag','start','#8A2A2A')+'</g>';
+H+='<g id="policyBox">'+box(40,420,150,50,8,'#ffffff','#3B3A34')+tx(115,441,'config store','tn','middle')+tx(115,459,'replication_clusters=A,B','tag','middle')+'</g>';
+H+='<g id="remoteProducer">'+box(570,390,160,52,8,'#ffffff','#3B3A34')+tx(650,411,'远程 Producer','tn','middle')+tx(650,429,'sendAsync','tag','middle')+'</g>';
+H+='<g id="remoteTopic">'+box(750,110,200,50,8,'#ffffff','#3B3A34')+tx(850,131,'PersistentTopic','tn','middle')+tx(850,149,'orders (replica)','tag','middle')+'</g>';
+H+='<g id="remoteConsumer">'+box(750,270,200,50,8,'#ffffff','#3B3A34')+tx(850,291,'Consumer B','tn','middle')+tx(850,309,'cursor / snapshot','tag','middle')+'</g>';
+H+='<g id="snapshot">'+box(750,390,200,56,8,'#EFF6FF','#2563EB')+tx(850,412,'Replicated Subscription','tn','middle')+tx(850,430,'snapshot marker','tag','middle')+'</g>';
+H+='<path d="M190 135 L230 135" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#flw)"/>';
+H+='<path d="M330 160 L330 190" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#flw)"/>';
+H+='<path d="M330 236 L330 256" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#flw)"/>';
+H+='<path d="M260 160 L260 220 L115 220 L115 270" stroke="#639922" stroke-width="1.4" stroke-dasharray="4 4" fill="none" marker-end="url(#flwG)"/>';
+H+='<path d="M330 352 L330 390" stroke="#C46A0A" stroke-width="1.4" stroke-dasharray="4 4" fill="none" marker-end="url(#flw)"/>';
+H+='<path d="M430 416 L570 416" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#flw)"/>';
+H+='<path d="M650 390 L650 160 L750 160" stroke="#C46A0A" stroke-width="1.4" fill="none" marker-end="url(#flw)"/>';
+H+='<path d="M850 160 L850 270" stroke="#639922" stroke-width="1.5" fill="none" marker-end="url(#flwG)"/>';
+H+='<path d="M850 320 L850 390" stroke="#639922" stroke-width="1.4" stroke-dasharray="4 4" fill="none" marker-end="url(#flwG)"/>';
+H+='<path d="M115 420 L115 160 L230 160" stroke="#C46A0A" stroke-width="1.2" stroke-dasharray="4 4" fill="none" marker-end="url(#flw)" opacity="0.45"/>';
+H+='<text class="tag" x="440" y="410" fill="#854F0B">sendAsync</text>';
+H+='<text class="tag" x="700" y="220" fill="#854F0B">produce</text>';
+H+='<text class="tag" x="600" y="310" fill="#4C7A1A">dispatch</text>';
+H+='<text class="tag" x="860" y="360" fill="#4C7A1A">ack → snapshot</text>';
+H+='<circle id="tok" cx="115" cy="445" r="8" fill="#EF9F27" stroke="#D97E06" stroke-width="1.4"/>';
+document.getElementById('scene').innerHTML=H;
+var scene2El=document.getElementById('scene2');
+if(scene2El){var H2='';
+H2+='<rect x="20" y="26" width="960" height="180" rx="12" fill="#FBFAF6" stroke="#ECEAE2"/>';
+H2+='<g id="npClient">'+box(40,48,160,52,10,'#ffffff','#3B3A34')+tx(120,70,'Client','tn','middle')+tx(120,88,'producer / consumer','tag','middle')+'</g>';
+H2+='<g id="npTopic">'+box(240,48,190,52,10,'#ffffff','#3B3A34')+tx(335,70,'NonPersistentTopic','tn','middle')+tx(335,88,'内存 / 直接分发','tag','middle')+'</g>';
+H2+='<g id="npDispatcher">'+box(470,48,180,52,10,'#ffffff','#3B3A34')+tx(560,70,'Dispatcher','tn','middle')+tx(560,88,'permits / 无 cursor','tag','middle')+'</g>';
+H2+='<g id="npConsumer">'+box(690,48,160,52,10,'#ffffff','#3B3A34')+tx(770,70,'Consumer','tn','middle')+tx(770,88,'receiverQueue','tag','middle')+'</g>';
+H2+='<g id="npReplicator">'+box(470,132,180,52,10,'#FFF6E8','#EF9F27')+tx(560,154,'NonPersistentReplicator','tn','middle')+tx(560,172,'即发即走','tag','middle')+'</g>';
+H2+='<g id="npRemoteProducer">'+box(690,132,160,52,10,'#ffffff','#3B3A34')+tx(770,154,'远程 Producer','tn','middle')+tx(770,172,'maxPending 1000','tag','middle')+'</g>';
+H2+='<g id="npDrop">'+box(240,132,190,52,10,'#FCEBEB','#E24B4A')+tx(335,154,'drop','tn','middle','#8A2A2A')+'</g>';
+H2+='<text id="npDropT" class="tag" x="335" y="172" text-anchor="middle" fill="#8A2A2A">无 consumer / 无 permit / 链断</text>';
+H2+='<path d="M200 74 L240 74" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#n9a)"/>';
+H2+='<path d="M430 74 L470 74" stroke="#639922" stroke-width="1.5" fill="none" marker-end="url(#n9g)"/>';
+H2+='<path d="M650 74 L690 74" stroke="#639922" stroke-width="1.5" fill="none" marker-end="url(#n9g)"/>';
+H2+='<path d="M430 92 L430 132 L470 132" stroke="#C46A0A" stroke-width="1.4" stroke-dasharray="4 4" fill="none" marker-end="url(#n9a)"/>';
+H2+='<path d="M650 158 L690 158" stroke="#C46A0A" stroke-width="1.4" stroke-dasharray="4 4" fill="none" marker-end="url(#n9a)"/>';
+H2+='<path d="M335 100 L335 132" stroke="#E24B4A" stroke-width="1.4" stroke-dasharray="4 4" fill="none" marker-end="url(#n9r)"/>';
+H2+=tx(40,202,'无 ledger / 无 cursor / ack no-op：消费者断开即丢，backlog 恒 0','tag','start','#8A2A2A');
+H2+='<circle id="tok2" cx="120" cy="74" r="7" fill="#EF9F27" stroke="#D97E06" stroke-width="1.4"/>';
+scene2El.innerHTML=H2;}
+var el={};
+document.querySelectorAll('#scene [id], #scene2 [id]').forEach(function(n){el[n.id]=n;});
+var WP=[[0,115,445],[90,115,135],[180,330,135],[270,115,295],[360,330,346],[450,330,416],[540,650,416],[630,850,160],[720,850,418]];
+function tokPos(th){if(th>=700)return null;var i=0;while(i<WP.length-2&&th>WP[i+1][0])i++;var a=WP[i],b=WP[i+1];var t=Math.max(0,Math.min(1,(th-a[0])/(b[0]-a[0])));return[a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];}
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,STEP_DUR=900;
+var dots=[];
+for(var s=0;s<STEPS.length;s++){
+(function(n){
+var b=document.createElement('button');
+b.className='stepnode';
+b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+b.onclick=function(){goStep(n);};
+stepBar.appendChild(b);dots.push(b);
+})(s);
+}
+var chipBox=document.getElementById('stateChips'),chipEls={};
+CHIPS.forEach(function(c){
+var s=document.createElement('span');s.className='chip';
+s.innerHTML=c.l+' <b>--</b>';chipBox.appendChild(s);chipEls[c.k]=s;
+});
+function setChip(k,v){
+var n=chipEls[k];if(!n)return;var b=n.querySelector('b');
+if(b&&b.textContent!==v)b.textContent=v;
+n.classList.toggle('on',/^(开|是|已|完成|生效|放行|进行|2\/2|owner|markDelete)/.test(v));
+n.classList.toggle('off',/^(关|否|待命|—|未)/.test(v));
+}
+var stepIdx=-1;
+function setAuto(on){
+mode='auto';run=on;stepTo=null;btn.textContent=on?'暂停':'播放';
+if(on){stepIdx=-1;dots.forEach(function(d){d.classList.remove('on');});
+stepT.textContent='自动运转模式';
+stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格。';}
+}
+window.goStep=function(i){
+stepIdx=(i+STEPS.length)%STEPS.length;
+mode='step';run=false;
+var target=STEPS[stepIdx].d/PHASE_MAX*PERIOD,delta=target-phase;
+if(reduced||Math.abs(delta)>PERIOD/4){
+phase=target;stepTo=null;render(target/PERIOD*PHASE_MAX+0.01);
+}else{
+stepFrom=phase;stepTo=phase+delta;stepElapsed=0;render(phase/PERIOD*PHASE_MAX+0.01);
+}
+btn.textContent='继续自动运转';
+dots.forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+stepX.textContent=STEPS[stepIdx].x;
+};
+btn.textContent=run?'暂停':'播放';
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+function setOp(id,v){var n=typeof id==='string'?el[id]:id;if(n)n.setAttribute('opacity',v.toFixed(2));}
+function setText(id,s){var n=el[id]||document.getElementById(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setAttr(id,k,v){var n=el[id];if(n)n.setAttribute(k,v);}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){return t*t*(3-2*t);}
+
+function render(th){
+var pr=Math.round(((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX);
+setText('roPhase',pr+'°');
+var si=0;for(var ri=0;ri<STEPS.length;ri++){if(pr>=STEPS[ri].d)si=ri;}
+if(mode==='step'&&stepIdx>=0)si=stepIdx;
+setText('roStep',STEPS[si]?STEPS[si].t:'—');
+var p=tokPos(th);
+if(p){setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));setOp('tok',1);}else{setOp('tok',0);}
+var si=0;for(var i=0;i<STEPS.length;i++){if(th>=STEPS[i].d)si=i;}
+function o(id,on){setOp(id,on?1:0.5);}
+o('policyBox',si===0);o('localClient',si===1);o('localTopic',si>=1&&si<=2);o('ledger',si===1);o('bookies',si===1);
+o('localConsumer',si>=2&&si<=3);o('cursorBar',si>=2&&si<=4);o('replicator',si>=4&&si<=5);o('backlogBar',si>=4);
+o('remoteProducer',si>=5);o('remoteTopic',si>=6);o('remoteConsumer',si>=6);o('snapshot',si>=7);
+if(el['cursorFill'])el['cursorFill'].setAttribute('width',(th>=270?Math.min(160,(th-270)*1.2):0).toFixed(1));
+if(el['backlogFill'])el['backlogFill'].setAttribute('width',(th>=450?Math.min(200,(th-450)*0.8):0).toFixed(1));
+setText('roKey', th<90?'replication_clusters':th<180?'persistent 写账本':th<270?'dispatcher / permits':th<360?'ack / markDelete':th<450?'cursor 保留 / 断开':th<540?'replicator → 远端 producer':th<630?'remote write / ack':'snapshot / backlog / drop');
+setChip('persistent', th>=90?'已写入':'待命');
+setChip('np', th>=90?'已写入':'—');
+setChip('repl', th>=450?'已发送':'待命');
+setChip('snapshot', th>=630?'已对齐':'待命');
+setChip('drop', th>=180?'可能 drop':'—');
+
+var pos=th<90?[0,120,74]:th<180?[1,335,74]:th<270?[2,560,74]:th<360?[2,770,74]:th<450?[3,335,158]:th<540?[4,560,158]:th<630?[4,770,158]:[6,335,158];
+setAttr('tok2','cx',pos[1]);setAttr('tok2','cy',pos[2]);
+setOp('npTopic',th>=90?1:0.45);setOp('npDispatcher',th>=180?1:0.45);setOp('npConsumer',th>=180?1:0.45);
+setOp('npReplicator',th>=450?1:0.45);setOp('npRemoteProducer',th>=540?1:0.45);
+setOp('npDrop',(th>=180&&th<450)||th>=630?1:(th>=450?0.7:0.35));
+setText('npDropT',th>=630?'链断 / 远端不可写 → 直接丢':th>=450?'producer 队列满 → 丢':'无 consumer / 无 permit → drop');
+
+}
+function tick(now){
+var dt=Math.min(50,now-last);last=now;
+if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+if(mode==='step'&&stepTo!==null){
+stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);
+var p=stepElapsed/STEP_DUR;
+var e=p*p*(3-2*p);
+phase=stepFrom+(stepTo-stepFrom)*e;
+if(p>=1){phase=((stepTo%PERIOD)+PERIOD)%PERIOD;stepTo=null;}
+}
+render(phase/PERIOD*PHASE_MAX+0.01);
+requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+document.querySelectorAll('.part').forEach(function(b){
+b.onclick=function(){
+var ids=PARTS[b.getAttribute('data-part')]||[];
+ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+};
+});
+var BASE=(location.pathname.split('/middleware-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/middleware/lab';
+document.getElementById('lnkArt').href=BASE+'/middleware/tutorial/07-topics-replication';
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+var d=document.createElement('div');d.className='q';
+var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+h+='<div class="exp">'+it.exp+'</div>';
+d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+var b=e.target.closest('.opt');if(!b)return;
+var box2=b.parentElement;if(box2.classList.contains('done'))return;
+box2.classList.add('done');
+var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+box2.querySelectorAll('.opt').forEach(function(x){
+var xi=+x.getAttribute('data-oi');
+if(xi===QUIZ[qi].a)x.classList.add('right');
+else if(x===b)x.classList.add('wrong');
+});
+});
+})();
+</script>
+</body>
+</html>

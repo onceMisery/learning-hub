@@ -308,7 +308,7 @@ export function LabPage({ lab }: { lab: LabConfig }) {
                       </span>
                     </span>
                     {/* 未选中章节的原理句只在窄屏（横向卡片）显示；
-                        xl 下只给当前章留两行，其余压到单行标题，保证 7 章能在一屏内放下 */}
+                        xl 下只给当前章留两行，其余压到单行标题，保证 9 章能在一屏内放下 */}
                     <span
                       className={[
                         'mt-1 line-clamp-2 text-[11.5px] leading-[1.6] text-[var(--text-3)]',
