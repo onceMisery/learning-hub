@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>组内归一化与零方差死区 · Agent 运行原理实验室 第 10 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:920px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:680px}
+.method-chain{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:18px}
+.method-chain .mnode{background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 14px;font-size:13px;font-weight:500}
+.method-chain .marr{color:#C46A0A;font-weight:600}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:500;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:11.5px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:500;fill:#1F1E1A}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:76px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:11px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:9px 10px;text-align:center}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+.cell{cursor:pointer}
+
+/* agent-lab shared layer v1.4 */
+.method-chain{display:grid;grid-template-columns:repeat(3,max-content);justify-content:start;gap:8px 10px;align-items:center}
+.method-chain .marr{display:none}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;margin:8px 4px 0;font-size:12px;color:#6B695F}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:12px;height:10px;border-radius:3px;display:inline-block;border:1px solid #D3D1C7;background:#fff}
+.legend .sw-amber{background:#FFF6E8;border-color:#EF9F27}
+.legend .sw-green{background:#EAF3DE;border-color:#639922}
+.legend .sw-red{background:#FCEBEB;border-color:#E24B4A}
+.legend .sw-dash{border-style:dashed;border-color:#B4B2A9}
+.legend .sw-line{width:16px;height:0;border:0;border-top:2px solid #C46A0A;border-radius:0;background:none}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.warn{background:#FFF6E8;border-color:#EF9F27}
+.chip.off{background:#F5F4EF;color:#8A877C}
+.subview{margin:8px 0 4px;background:#ffffff;border:1px dashed #D3D1C7;border-radius:10px;padding:8px 10px}
+.subview .viewtitle{font-size:12px;font-weight:600;color:#854F0B;margin-bottom:4px}
+.subview .subcap{font-size:12px;color:#6B695F;margin:6px 2px 0;line-height:1.6}
+.phase-note{font-size:12px;color:#8A877C;margin:8px 4px 0;line-height:1.6}
+.tablewrap{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 0 12px;padding-bottom:2px;scrollbar-width:thin}
+.tablewrap table.grid{width:100%}
+#scene [opacity],#scene2 [opacity]{transition:opacity .28s ease}
+#scene rect,#scene circle,#scene path,#scene2 rect,#scene2 circle,#scene2 path{transition:fill .24s ease,stroke .24s ease,opacity .24s ease}
+#tok,#tokT{transition:none}
+@media (prefers-reduced-motion: reduce){#scene [opacity],#scene2 [opacity],#scene rect,#scene circle,#scene path,#scene2 rect,#scene2 circle,#scene2 path{transition:none}}
+@media (max-width:640px){.method-chain{grid-template-columns:repeat(2,max-content)}}
+
+/* 本页静态图专用（不改共享层） */
+.stepnode .lab2{white-space:normal;line-height:1.4;max-width:96px}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:8px 10px 4px;margin:0 0 12px}
+.figcap{font-size:12.5px;color:#6B695F;margin:6px 4px 10px;line-height:1.65}
+.figcap b{color:#854F0B}
+.stfig .hl,.stfig .hl *{stroke:#D96C06 !important}
+@media (max-width:640px){.steppanel{flex-wrap:wrap}.steppanel .sx{min-width:0}.steppanel .snav{margin-left:0}}
+
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：模型层边界</a>
+  <span class="idx">第 10 / 10 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · 动静结合认知法</div>
+<h1>组内归一化与零方差死区：一次 RL 更新到底改变了什么</h1>
+<p>GRPO 的一步只做四件事：<b>一组采样 → 一个均值 → 一次归一化 → 一次更新</b>。这页课把这条链摊开成一张会动的账本，并钉住那个最反直觉的死角——<b>组内方差为 0 时优势消失、这一步不产生梯度</b>。动画支持<b>自动运转</b>与<b>分步点击</b>两种模式，部件可以直接点亮，读数与副图始终同相位。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span><span class="marr">→</span>
+<span class="mnode">② 静态分解</span><span class="marr">→</span>
+<span class="mnode">③ 动态分析</span><span class="marr">→</span>
+<span class="mnode">④ 动静融合</span><span class="marr">→</span>
+<span class="mnode">⑤ 环境场景</span><span class="marr">→</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 560" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>组内归一化与零方差死区动画</title>
+<defs>
+<marker id="flw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/>
+</marker>
+</defs>
+<text class="th" x="500" y="24" text-anchor="middle">组内归一化与零方差死区 · 一次 RL 更新到底改变了什么</text>
+<text class="ts" x="500" y="43" text-anchor="middle">上：同一 prompt → G=16 条 rollout → 验证器 0/1 · 中：组均值与归一化 → 正负优势分离 · 右：策略位移与回路 · 副图同相位演一个 step 的时间账</text>
+<g id="scene"></g>
+</svg>
+<div class="legend">
+<span><i class="sw-amber"></i>琥珀 = 点亮中的分支 / 组均值线</span>
+<span><i class="sw-green"></i>绿 = 通过 · 正优势（多做）</span>
+<span><i class="sw-red"></i>红 = 失败 · 负优势 / 零方差死区</span>
+<span><i class="sw-dash"></i>虚线 = 归一化前缀 / 教学示意边界</span>
+<span><i class="sw-line"></i>橙线 = 一次更新推进与回路方向</span>
+</div>
+<div class="readout">
+<span class="ro">相位 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">关键量 <b id="roKey">--</b></span>
+<span class="ro">pass@k <b id="roPass">--</b></span>
+<span class="ro">优势 <b id="roAdv">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="subview">
+<div class="viewtitle">第二视图 · 一个 step 的时间账（与主图同 phase）</div>
+<svg id="eng2" viewBox="0 0 1000 210" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>一个 step 的时间账与墙钟</title>
+<g id="scene2">
+<text class="th" x="500" y="18" text-anchor="middle">一个 step 的时间账 · 横轴秒 · 16 条并行 rollout 的完成时刻</text>
+<text class="ts" x="500" y="34" text-anchor="middle">墙钟 = 最慢那条 ≈2,000s · 其后梯度与优化器 ≈600s · 条带长度是示意分布</text>
+<g id="v2_bars"></g>
+<line id="v2_grad" x1="708" y1="44" x2="708" y2="118" stroke="#EF9F27" stroke-width="1" opacity="0"/>
+<rect id="v2_gradbox" x="708" y="110" width="192" height="8" rx="3" fill="#FFF6E8" stroke="#EF9F27" stroke-width="0.8"/>
+<line x1="70" y1="118" x2="900" y2="118" stroke="#3B3A34" stroke-width="1.2"/>
+<line id="v2_wall" x1="708" y1="42" x2="708" y2="126" stroke="#C46A0A" stroke-width="2" stroke-dasharray="4 3"/>
+<text class="ts" x="712" y="52">墙钟 ≈2,000s</text>
+<text class="ts" x="804" y="106" text-anchor="middle">梯度≈600s</text>
+<text class="ts" x="70" y="134">0s</text>
+<text class="ts" x="229" y="134">500s</text>
+<text class="ts" x="388" y="134">1,000s</text>
+<text class="ts" x="548" y="134">1,500s</text>
+<text class="ts" x="708" y="134">2,000s</text>
+<text class="ts" x="900" y="134" text-anchor="end">2,600s</text>
+<text class="tb" x="70" y="156" id="v2_r1">一个 step ≈2,600s（≈43 分钟）</text>
+<text class="tb" x="360" y="156" id="v2_r2">100 steps ≈72 小时</text>
+<text class="ts" x="650" y="156" id="v2_r3">对照：SFT 转 RL 常需 10–100 倍时间</text>
+<text class="ts" x="70" y="176" id="v2_cap">吞吐瓶颈常在验证 worker，不在 GPU</text>
+<text class="ts" x="900" y="176" text-anchor="end">条带长度为示意分布，真实取决于任务与并发</text>
+<line id="v2_play" x1="70" y1="40" x2="70" y2="126" stroke="#D96C06" stroke-width="1.6" opacity="0.85"/>
+<rect id="v2_prog" x="70" y="192" width="0" height="6" rx="3" fill="#EF9F27"/>
+<text id="v2_scan" class="tb" x="70" y="206">扫描：采样进行中 · rollout 并行铺开</text>
+</g>
+</svg>
+<div class="subcap">读法：第一遍看 16 条条带如何<b>并行铺开</b>、橙虚线如何停在<b>最慢那条 ≈2,000s</b> 上（墙钟由最慢决定，不是由最快）；第二遍看其后深橙段（梯度与优化器 ≈600s）如何把 <b>2,000s 推到 2,600s</b>。口径：<b>条带长度是示意分布</b>，真实分布取决于任务轮数与并发度；2,000s/600s/43 分钟/72 小时来自正文第三节的量级举例，属书中给的量级，非本页实测。</div>
+</div>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 一次组内更新 / 4.6 秒</span>
+</div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格；也可以直接点部件卡，在图里点亮对应部件。</span>
+<span class="snav">
+<button class="btn" onclick="prevStep()">‹ 上一步</button>
+<button class="btn warn" onclick="nextStep()">下一步 ›</button>
+</span>
+</div>
+<p class="phase-note">相位口径：0° = 同一 prompt 的 G 条 rollout 开始采样；720° = 更新后的策略进入下一轮。验证打分 ~120°、组均值与归一化 ~220°、正负优势分离 ~300°、策略分布位移 ~380°、全 0 分支演示 ~470°、全 1 分支演示 ~540°、step 时间账与墙钟 ~600–660°、回到采样 ~700°；副图与主图共用同一个 phase。</p>
+<p class="phase-note"><b>数据口径</b>：本页数字来自正文第二、三、四节。<code>pass@k=1−(1−p)^k</code>、<code>pass^k=p^k</code> 及其在 p=0.6、k=5 处的 <b>99.0% / 7.8%</b> 是<b>公式逐帧计算</b>的结果；<code>组均值 4/16、正优势 ≈+1.73、负优势 ≈−0.58</code> 来自正文第三节「16 条并行 4 通过 12 失败」的算例；<code>墙钟≈2,000s、梯度≈600s、一个 step≈2,600s、100 steps≈72 小时、10–100 倍</code> 来自正文 3.2 节的<b>量级举例</b>；<code>4,000 token × 1e-3 → e⁴≈54.6</code> 来自 3.1 节。rollout 长度与耗时是<b>示意分布</b>，策略曲线位移是<b>教学示意</b>，不代表真实参数变化。</p>
+</div>
+</div>
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：先把它当黑盒</h2></div>
+<p class="sec-sub">第一步不拆训练框架，只看它对外表现出什么行为——尤其是「不动」的行为。</p>
+<div class="quote">「当你怀疑『训练没效果』时，先看去是不是所有 rollout 都同分。」——同分说明这一步压根没产生梯度，继续加 step 只会烧采样预算。</div>
+<p>从外部看，这台机器做的事只有一件：<b>把「同一个 prompt 下采出来的一组轨迹」翻译成「策略分布的一次位移」</b>。几个现场症状都不是「调参不够」，而是这一步在数学上就没有信号：训了 200 个 step，loss 在降、指标却不动；奖励维度加了五个，效果反而更差；把 batch 开大一点想快，训练当场变味。它们的共同形状是——<b>组内没有差异，就没有优势；没有优势，就没有梯度</b>。</p>
+<div class="flow">
+<span class="node">同一 prompt</span><span class="arr">→</span>
+<span class="node">G=16 条 rollout（黑盒）</span><span class="arr">→</span>
+<span class="node">组内归一化 · 优势</span><span class="arr">→</span>
+<span class="node">一次策略位移（主产物）</span>
+<span class="node">一个 step 的墙钟账（副产物）</span>
+</div>
+<p>黑盒观察还能看出两件事：其一，<b>梯度不是「有奖励」就有</b>——只给终点 0/1 时，一组全 0 或全 1，优势直接消失；其二，<b>「不动」有两种相反的病因</b>——全 0 是任务不可达，全 1 是验证器没区分度，处置完全相反。这两件事就是本页的全部机制线索。</p>
+<div class="figure">
+<svg id="figA" class="stfig" viewBox="0 0 1000 200" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>一次更新的静态分解管线</title>
+<text class="th" x="500" y="22" text-anchor="middle">一次更新 = 四件事 · 一组采样 → 一个均值 → 一次归一化 → 一次更新</text>
+<rect x="24" y="52" width="104" height="40" rx="8" fill="#ffffff" stroke="#3B3A34" stroke-width="1.3"/>
+<text class="tb" x="76" y="70" text-anchor="middle">同一 prompt</text>
+<text class="ts" x="76" y="84" text-anchor="middle">例：修复失败测试</text>
+<rect x="140" y="52" width="104" height="40" rx="8" fill="#FBFAF6" stroke="#3B3A34" stroke-width="1.3"/>
+<text class="tb" x="192" y="70" text-anchor="middle">采 G=16</text>
+<text class="ts" x="192" y="84" text-anchor="middle">并行 rollout</text>
+<rect x="256" y="52" width="104" height="40" rx="8" fill="#FBFAF6" stroke="#3B3A34" stroke-width="1.3"/>
+<text class="tb" x="308" y="70" text-anchor="middle">验证器</text>
+<text class="ts" x="308" y="84" text-anchor="middle">只给 0 / 1</text>
+<rect x="372" y="52" width="104" height="40" rx="8" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.3"/>
+<text class="tb" x="424" y="70" text-anchor="middle">组均值</text>
+<text class="ts" x="424" y="84" text-anchor="middle">4/16=0.25</text>
+<rect x="488" y="52" width="104" height="40" rx="8" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.3"/>
+<text class="tb" x="540" y="70" text-anchor="middle">归一化</text>
+<text class="ts" x="540" y="84" text-anchor="middle">减均值除σ</text>
+<rect x="604" y="52" width="104" height="40" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text class="tb" x="656" y="70" text-anchor="middle">优势 ±</text>
+<text class="ts" x="656" y="84" text-anchor="middle">+4 条 / −12 条</text>
+<rect x="720" y="52" width="104" height="40" rx="8" fill="#ffffff" stroke="#3B3A34" stroke-width="1.3"/>
+<text class="tb" x="772" y="70" text-anchor="middle">更新 π</text>
+<text class="ts" x="772" y="84" text-anchor="middle">抬升/压低</text>
+<rect x="836" y="52" width="104" height="40" rx="8" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.3"/>
+<text class="tb" x="888" y="70" text-anchor="middle">下一轮</text>
+<text class="ts" x="888" y="84" text-anchor="middle">π 进入采样</text>
+<text class="ts" x="308" y="120" text-anchor="middle">终点 0/1 = on-policy RL 的监督密度：一条轨迹只有终点一个标量</text>
+<text class="tb" x="500" y="150" text-anchor="middle">死区：一旦全 0 或全 1，组内方差为 0 → 优势消失 → 这一步不产生梯度</text>
+<text class="ts" x="500" y="176" text-anchor="middle">判据先于方法：先在留出集测 pass@k，近零则补底座（Mid-training / RAG），别硬上 RL</text>
+</svg>
+</div>
+<p class="figcap"><b>读法</b>：从左到右是一条更新链；琥珀色三段（组均值 / 归一化 / 下一轮）是「组内」发生的事，绿色一段是分离出的正负优势。<b>口径</b>：管线次序与「一组采样、一个均值、一次归一化、一次更新」取自正文第三节；数字 4/16、+4/−12 是该节算例。<b>顺带接上第 05 篇</b>：全 1 那个死角本质是<b>评估缺陷</b>，不是训练缺陷——判据链在参数层同样成立。</p>
+<p class="hint">口诀：loss 降而指标不动，先去看组内有没有差异，别急着加 step。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：它由什么组成</h2></div>
+<p class="sec-sub">打开黑盒，沿空间维度拆解。点部件卡片，动画中对应部分会亮成琥珀色。</p>
+<div class="quote">「它由什么构成？核心方法是分解、分类、结构化——分解需符合 MECE 法则，同层必须粒度一致。」</div>
+<p>这台机器按功能分成<b>三组七件</b>：采样组管「喂进去什么、打分打出什么」，归一化组管「一组分数怎么变成优势」，更新与死机组管「优势怎么改分布、什么时候改不动」。</p>
+<div class="partgroup">
+<div class="gname">采样组 —— 负责「同一 prompt 下采出可比较的一组」</div>
+<div class="parts">
+<button class="part" data-part="roll"><b>① 一组 rollout</b><span>同一个 prompt 采 G=16 条轨迹，并行铺开。GRPO 不需要单独的价值网络，它用「组内互相比」代替「跨时间估计」。这里的例子：修复一个失败测试，4 条通过、12 条失败。</span></button>
+<button class="part" data-part="verify"><b>② 验证器打分</b><span>每条交给验证器（跑测试 / 状态断言 / schema 校验），只给终点 0/1——这是 RLVR 最可靠的一档，因为不依赖判断。监督密度极低：一条轨迹一个标量。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">归一化组 —— 负责「一组分数 → 一条相对好坏」</div>
+<div class="parts">
+<button class="part" data-part="mean"><b>③ 组均值</b><span>均值 = 通过数 / G = 4/16 = 0.25。它是「这一组里大家平均水平」的唯一参照，不做绝对裁判，只做组内比较的零点。</span></button>
+<button class="part" data-part="var"><b>④ 组内方差</b><span>σ² = 组内离散度；0/1 组 4 通过时 σ≈0.433。<b>方差为 0 = 全同分 = 死区</b>：这是本页最该盯的一个量，它直接决定这一步有没有梯度。</span></button>
+<button class="part" data-part="adv"><b>⑤ 优势</b><span>优势 =（本条 reward − 组均值）/ σ。通过→(1−0.25)/0.433≈+1.73，失败→(0−0.25)/0.433≈−0.58。正负号决定「这条轨迹以后多做还是少做」。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">更新与死机组 —— 负责「优势怎么改分布、何时改不动」</div>
+<div class="parts">
+<button class="part" data-part="policy"><b>⑥ 策略位移</b><span>用优势加权更新 π：正优势抬升对应 token 概率、负优势压低。曲线位移是<b>教学示意</b>，不代表真实参数变化——但方向是实的：多做高分轨迹、少做低分轨迹。</span></button>
+<button class="part" data-part="dead"><b>⑦ 零方差死区</b><span>全 0：任务不可达 → 补 Mid-training 或改课程 / 部分奖励；全 1：验证器没区分度 → 先修评估。两者现象一样（无梯度），处置相反，绝不能用同一套「加预算」硬扛。</span></button>
+<button class="part" data-part="wall"><b>⑧ step 时间账</b><span>16 条并行时墙钟由最慢那条决定（≈2,000s），其后梯度与优化器（≈600s）→ 一个 step≈2,600s≈43 分钟。吞吐瓶颈常在验证 worker，不在 GPU。副图与主图同相位演这本账。</span></button>
+</div>
+</div>
+<p class="hint">静态分解只回答了「有什么」。同一条均值线，4 通过 12 失败时能分裂出正负优势，16 条全 0 时却什么都分不出来——必须切换到时间维度看它怎么坍缩——下一节。</p>
+<p class="hint">口诀：一组、一均、一归一、一更新；方差是命门，零方差即死区。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：它如何运转</h2></div>
+<p class="sec-sub">盯住 16 条 rollout 与那条均值线。用动画下方 9 个步骤点逐帧走完一次「组内归一化 → 更新 → 死区演示 → 时间账」。</p>
+<div class="quote">「它如何演变与运作？关注时间轴上的发展规律、行为模式和内部流程。核心方法是流程分析、行为追溯。」</div>
+<p><b>操作：</b>点步骤条圆点（或「下一步」）画面会定格在对应相位。建议走两遍：第一遍跟主链（采样 → 打分 → 归一化 → 正负分离 → 策略位移）；第二遍专看两块分支板如何点亮——470° 全 0 分支、540° 全 1 分支，其余时刻它们灰化。</p>
+<div class="figure">
+<svg id="figB" class="stfig" viewBox="0 0 1000 200" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>组内归一化的相位时间轴</title>
+<text class="th" x="500" y="20" text-anchor="middle">相位时间轴 · 0°= 同一 prompt 的 G 条 rollout 开始采样，720°= 更新后的策略进入下一轮</text>
+<rect x="60" y="52" width="128" height="14" rx="3" fill="#FBFAF6" stroke="#B4B2A9"/>
+<rect x="188" y="52" width="106" height="14" rx="3" fill="#FFF6E8" stroke="#EF9F27"/>
+<rect x="294" y="52" width="106" height="14" rx="3" fill="#FFF6E8" stroke="#EF9F27"/>
+<rect x="400" y="52" width="106" height="14" rx="3" fill="#EAF3DE" stroke="#639922"/>
+<rect x="506" y="52" width="106" height="14" rx="3" fill="#ffffff" stroke="#3B3A34"/>
+<rect x="612" y="52" width="85" height="14" rx="3" fill="#FCEBEB" stroke="#E24B4A"/>
+<rect x="697" y="52" width="85" height="14" rx="3" fill="#FCEBEB" stroke="#E24B4A"/>
+<rect x="782" y="52" width="94" height="14" rx="3" fill="#FAEEDA" stroke="#EF9F27"/>
+<rect x="876" y="52" width="64" height="14" rx="3" fill="#FFF6E8" stroke="#EF9F27"/>
+<line x1="60" y1="66" x2="940" y2="66" stroke="#3B3A34" stroke-width="1"/>
+<text class="tb" x="124" y="44" text-anchor="middle">采样</text>
+<text class="tb" x="241" y="44" text-anchor="middle">打分</text>
+<text class="tb" x="347" y="44" text-anchor="middle">归一化</text>
+<text class="tb" x="453" y="44" text-anchor="middle">分离</text>
+<text class="tb" x="559" y="44" text-anchor="middle">位移</text>
+<text class="tb" x="654" y="44" text-anchor="middle">全0</text>
+<text class="tb" x="739" y="44" text-anchor="middle">全1</text>
+<text class="tb" x="829" y="44" text-anchor="middle">时间账</text>
+<text class="tb" x="908" y="44" text-anchor="middle">回填</text>
+<text class="ts" x="60" y="82" text-anchor="middle">0°</text>
+<text class="ts" x="188" y="82" text-anchor="middle">120°</text>
+<text class="ts" x="294" y="82" text-anchor="middle">220°</text>
+<text class="ts" x="400" y="82" text-anchor="middle">300°</text>
+<text class="ts" x="506" y="82" text-anchor="middle">380°</text>
+<text class="ts" x="612" y="82" text-anchor="middle">470°</text>
+<text class="ts" x="697" y="82" text-anchor="middle">540°</text>
+<text class="ts" x="782" y="82" text-anchor="middle">630°</text>
+<text class="ts" x="876" y="82" text-anchor="middle">700°</text>
+<text class="ts" x="940" y="82" text-anchor="middle">720°</text>
+<text class="ts" x="60" y="108">主链：0° 采样铺开 · 120° 验证器 0/1 · 220° 组均值 0.25 + 归一化 · 300° 正负优势分离 · 380° 策略位移</text>
+<text class="ts" x="60" y="128">死区：470° 全 0（方差 0 · 优势消失 · 无梯度 → 补底座）· 540° 全 1（方差 0 · 无梯度 → 先修评估）</text>
+<text class="ts" x="60" y="148">时间账：630° 墙钟≈2,000s + 梯度≈600s = 一个 step≈2,600s（≈43 分钟）· 100 step≈72 小时（副图同相位）</text>
+<text class="tb" x="60" y="176">诊断顺序（一步比一步贵）：先看组内有没有差异 → 再看组内方差 → 最后才加采样预算</text>
+</svg>
+</div>
+<p class="figcap"><b>读法</b>：色带是阶段长度（对数节拍被等距压缩，见「边界与简化」），刻度单位是相位°；注意 470°/540° 两块红色死区段的<b>现象相同（无梯度）、处置相反</b>。<b>口径</b>：本轴与动画 STEPS 同一份数据，阶段区间逐条对应下方表格。</p>
+<div class="tablewrap"><table class="grid">
+<tr><th>阶段</th><th>相位</th><th>谁在场</th><th>定格读数</th><th>这一步在干什么</th></tr>
+<tr><td>① 采样铺开</td><td>0°–120°</td><td>prompt · 16 条 rollout</td><td>group 采样中</td><td>同一 prompt 采 G=16 条轨迹并行铺开；GRPO 靠「组内互比」省掉了单独的价值网络</td></tr>
+<tr><td>② 验证器打分</td><td>120°</td><td class="hot">验证器</td><td>4 个 1 / 12 个 0</td><td>每条只给终点 0/1（跑测试 / 断言 / schema）——RLVR 最可靠的一档，监督密度仅「一条轨迹一个标量」</td></tr>
+<tr><td>③ 组均值 · 归一化</td><td>220°</td><td class="hot">均值线 · σ</td><td>mean 0.25 · var 0.19</td><td>组均值 = 4/16 = 0.25；归一化优势 =(r−均值)/σ，把绝对分数变成组内相对好坏</td></tr>
+<tr><td>④ 正负优势分离</td><td>300°</td><td class="hot">优势条</td><td>+1.73 / −0.58</td><td>4 条正优势（多做）、12 条负优势（少做）；优势条长度 = 归一化后的大小，正条明显长于负条</td></tr>
+<tr><td>⑤ 策略位移</td><td>380°</td><td class="hot">策略曲线 · 更新</td><td>grad 有</td><td>用优势加权更新 π：抬升高分 token、压低低分 token；曲线位移为教学示意，不代表真实参数</td></tr>
+<tr><td>⑥ 全 0 分支</td><td>470°</td><td class="hot">死区板 · 底座</td><td>var 0 · grad 无</td><td>16 条全 0（pass@k 近零硬上 RL）：方差 0、优势消失、无梯度 → 补 Mid-training / 改课程 / 部分奖励，而非加 step</td></tr>
+<tr><td>⑦ 全 1 分支</td><td>540°</td><td class="hot">死区板 · 评估</td><td>var 0 · grad 无</td><td>16 条全 1：方差同样 0、优势消失，但没有梯度 ≠ 没问题——是验证器没区分度 → 先修评估，而非补底座</td></tr>
+<tr><td>⑧ step 时间账</td><td>630°</td><td class="act">副图墙钟</td><td>wall 2,600s</td><td>墙钟由最慢那条 ≈2,000s 决定 + 梯度 ≈600s = 一个 step≈2,600s≈43 分钟；100 step≈72 小时；瓶颈常在验证 worker</td></tr>
+<tr><td>⑨ 回填闭环</td><td>700°–720°</td><td class="act">回路 → 采样</td><td>π 进入下一轮</td><td>更新后的 π 进入下一轮采样；PPO 对照：多一个 critic，优势=折扣回报−V(s)，on-policy 要求 μ=π、ρ=1</td></tr>
+</table></div>
+<p>两个值得在分步模式里细看的点：① 第 ③ 步的归一化<b>不改变通过/失败的绝对判定</b>，只是把「分数」翻译成「组内相对好坏」——所以它天然要求组内有差异；② 第 ⑥⑦ 步现象一模一样（方差 0、无梯度），但一个是「模型根本做不到」、一个是「验证器分辨不出」，处置完全相反。</p>
+<p class="hint">口诀：0° 铺开，120° 打分，220° 归一，300° 分离，380° 位移，470° 全 0，540° 全 1，630° 算账，700° 回填。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：七件部件如何协同出「这一步到底改不改得动」</h2></div>
+<p class="sec-sub">把第 2 节的「结构」和第 3 节的「流程」叠在一起——这才是理解的完成态。</p>
+<div class="quote">「动静融合的关键是建立映射：将组成部件与操作步骤一一对应，理解各部件如何协同产生外在行为。系统 = 元素 + 连接 + 目标。」</div>
+<p>映射表：<b>每个部件在每个阶段里承担什么角色</b>。竖着看是一个阶段的全体协同，横着看是一个部件的完整职责。</p>
+<div class="tablewrap"><table class="grid">
+<tr><th>部件 ＼ 阶段</th><th>① 采样</th><th>② 打分</th><th>③④ 归一与分离</th><th>⑤ 位移</th><th>⑥⑦ 死区</th><th>⑧⑨ 账与回填</th></tr>
+<tr><td>① 一组 rollout</td><td class="hot">并行铺开</td><td>各交一条</td><td>提供组内样本</td><td>被加权</td><td class="hot">全 0 / 全 1 的载体</td><td>耗时=墙钟来源</td></tr>
+<tr><td>② 验证器</td><td>—</td><td class="hot">给 0/1</td><td>分数进均值</td><td>—</td><td class="hot">全 1 = 无区分度</td><td>CPU 瓶颈位</td></tr>
+<tr><td>③ 组均值</td><td>—</td><td>—</td><td class="hot">零点参照 0.25</td><td>决定抬/压</td><td class="hot">全同分→均值即分数</td><td>—</td></tr>
+<tr><td>④ 组内方差</td><td>—</td><td>—</td><td class="hot">归一化的除数 σ</td><td>缩放优势</td><td class="hot">=0 → 优势消失</td><td>命门指标</td></tr>
+<tr><td>⑤ 优势</td><td>—</td><td>—</td><td class="hot">+4 / −12</td><td class="hot">加权更新</td><td>恒为 0 → 无梯度</td><td>—</td></tr>
+<tr><td>⑥ 策略位移</td><td>被采样</td><td>—</td><td>—</td><td class="hot">抬升/压低</td><td>不动</td><td class="hot">→ 下一轮</td></tr>
+<tr><td>⑦ 死区板</td><td>—</td><td>—</td><td>—</td><td>—</td><td class="hot">全 0 补底座 / 全 1 修评估</td><td>先诊断再加预算</td></tr>
+</table></div>
+<p>三条 PPO 对照与数值细节必须一起看（正文 3.1 / 第三节）：<b>PPO 多一个 critic</b>——优势 = 折扣回报 − V(s)，重要性比率 ratio = exp(logπ − log μ_old)，再对 min(ratio·A, clip(ratio,1±ε)·A) 取保守值；<b>on-policy 要求采样策略 π 与更新时的 μ 一致，比率 ρ 才等于 1</b>。一旦数值失配就会伪装成「训练不稳」：<b>logprob 微差 → 概率比指数化 → 长前缀累积——4,000 token 各带 1e-3 偏差可累积到 e⁴ ≈ 54.6</b>；而<b>改 batch size 会改变计算归约、破坏 batch invariance，把本该 on-policy 的 RL 变成隐式 off-policy</b>。症状是比率尖峰、大量 token 被裁剪、响应长度突变，随后奖励与熵一起坍塌——处置是「更新之前先比 sampler 与 trainer 的 logprob」，这一步几乎免费。</p>
+<p>点题一句：<b>「这一步改不改得动」不是任何一个部件的属性，而是「组内有差异 × 方差不为零 × 优势被加权」三者协同涌现的</b>。三者少一件就换一种失守：只打分不归一，正负不可比；方差为 0 还硬更新，烧预算空转；把全 1 当全 0 去补底座，方向彻底反了。加奖励维度同理——每一维都要先能在<b>少量 rollout 里产生组内差异</b>，否则它只是噪声，或更糟：一个恒为 0 的维度把优势整体拽偏。</p>
+<p class="hint">口诀：能算出差异才谈更新；先组内差异、再方差、最后预算——顺序反了就是烧 GPU。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：它依赖什么才能工作</h2></div>
+<p class="sec-sub">主体之外，还有一圈支撑系统与前置判据。</p>
+<div class="quote">「对事物的认识 = 空间属性 + 时间属性 + 环境属性（外在关系和依赖）。」</div>
+<div class="envcards">
+<div class="env"><b>判据先于方法（pass@k）</b><span><code>pass@k = 1−(1−p)^k</code>、<code>pass^k = p^k</code>。p=0.6、k=5 时一个升到 99.0%、一个掉到 7.8%：近零说明正确策略不在分布里，硬上 RL 无事可放大，该补底座（Mid-training / RAG）。顺序：先排除不改权重 → 测 pass@k → 立协议 → 才上 RL。</span></div>
+<div class="env"><b>验证器 / 评估质量</b><span>全 1 是评估缺陷不是训练缺陷。隐藏测试必须模型改不了、写不了；每加一维奖励，先确认它能在少量 rollout 里产生组内差异，否则只是噪声或被钻空子的口子。</span></div>
+<div class="env"><b>采样并发与验证 worker</b><span>复杂 Agent rollout 几十轮工具调用，16 条并行的墙钟由最慢那条决定。当验证器是 CPU 程序（跑测试 / 解析 / schema）时，瓶颈常在验证 worker 数量，不在 GPU——扩 worker 有时比调学习率管用。</span></div>
+<div class="env"><b>PPO 的 critic 与 on-policy</b><span>PPO 用价值网络 V(s) 估优势，多一套 critic 训练负担；GRPO 用组内归一化替代它。on-policy 要求 μ=π 才有 ρ=1，任何「采样与训练不同步」都会退化成 off-policy。</span></div>
+<div class="env"><b>数值内核一致性</b><span>vLLM/SGLang 与 FSDP/Megatron 即使权重相同，也会因精度、归约顺序、并行布局、batch size、KV cache、fused kernel 给出不同 logprob。四件可执行事：先比 logprob、同步模板与 revision、存下 behavior logprob、对齐精度或显式 off-policy 修正并限 staleness。</span></div>
+<div class="env"><b>课程与部分奖励</b><span>全 0 的可执行出口：改课程（把任务拆到 p>0 的粒度）或给部分奖励（R = O + βΦ，Φ 由确定性规则逐动作计算，两路各自归一化再合并）。但 <b>R=O+βΦ 那组报告数字（违规 3.71→0.66、迭代 7.0→4.4）是论文 / 外部实现口径（书中实验 8-16 本地未跑），先测信号可达性再决定是否加维。</b></span></div>
+</div>
+<p><b>样本效率环境</b>：RL 贵，贵在「每次昂贵环境交互换来多少有效参数更新」。一条长度 T 的 on-policy RL 轨迹只有终点一个 0/1；换成 on-policy 蒸馏可把「1 个标量」变成「约 T 组逐 token 监督」，数学任务上所需步数约为纯 RL 的 1/10——但它同样吃 3.1 的数值失配前提。<b>口径提醒：ReTool 的 RL 训练时间是 SFT 的 200 倍以上（9 天 vs 1 小时）、SimpleVLA-RL 报告 17.3%→91.7%——这些是论文 / 他人报告（书中实验 8-13 / 8-14 / 8-16 本地未跑），只能作量级参照，不能当本页或你的实测结论。</b></p>
+<p class="hint">口诀：先测 pass@k 再谈方法；先比 logprob 再更新；先扩 worker 再调 lr。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测：学习-实践-复盘的闭环</h2></div>
+<p class="sec-sub">用自己的话能讲清楚，才算真的懂。先答题，再对照解析。</p>
+<div class="quote">「复盘是把『我当时怎么想的』和『实际怎么走完的』对齐：哪条机制对应哪种失败，答不出对应关系的，下次预算就烧在那条上。」</div>
+<div id="quiz"></div>
+<p class="hint">口诀：讲得清「全 0 与全 1 为何处置相反」，才敢怀疑评估；讲得清「为何先看方差」，才敢按下加 step 的按钮。</p>
+</section>
+
+<div class="summary">
+<h2>一页带走</h2>
+<p class="chant">一组采样一个均值，一次归一一次更新；方差为零优势即灭，全零补底座全一修评估。</p>
+<p>· 方法：表象（改不改得动的黑盒）→ 结构（三组七件：rollout/验证器/均值/方差/优势/位移/死区）→ 流程（九相位一次更新）→ 融合（「改得动」是「组内差异 × 方差非零 × 优势加权」协同涌现的）。</p>
+<p>· 结构：GRPO 一步四件事——同一 prompt 采 G=16 → 验证器给 0/1 → 组内归一化（减均值 0.25、除 σ≈0.433）得优势 → 加权更新 π。PPO 多一个 critic：优势 = 折扣回报 − V(s)，on-policy 要求 μ=π、ρ=1。</p>
+<p>· 行为：混合结果 4 通过 → 正优势 +1.73（4 条）/ 负优势 −0.58（12 条）→ 有梯度；<b>全 0 → 方差 0、优势消失、无梯度 → 补 Mid-training 或改课程 / 部分奖励</b>；<b>全 1 → 同样方差 0、无梯度，但病因是验证器没区分度 → 先修评估</b>。判据链先测 <code>pass@k=1−(1−p)^k</code>、<code>pass^k=p^k</code>（p=0.6、k=5 → 99.0% / 7.8%）。</p>
+<p>· 协同与账：诊断顺序「先看组内有没有差异 → 再看方差 → 最后才加预算」；一个 step 时间账 = 墙钟（最慢 rollout ≈2,000s）+ 梯度（≈600s）≈2,600s≈43 分钟、100 step≈72 小时；数值失配链 logprob 微差→概率比指数化→长前缀累积（4,000×1e-3→e⁴≈54.6），改 batch size 破坏 batch invariance 会退化为隐式 off-policy。</p>
+<p>· 边界与简化：本页是<b>单步演示</b>，真实训练是多个 step 的累积；rollout 长度与耗时是<b>示意分布</b>，真实取决于任务轮数与并发度；策略分布曲线的位移是<b>教学示意</b>，不代表真实参数变化；相位时间轴把阶段<b>等距压缩</b>进 0–720°，未按真实秒数比例。<b>数字口径：<code>R=O+βΦ</code> 那组（3.71→0.66、7.0→4.4）、<code>17.3%→91.7%</code>、<code>200 倍 / 9 天 vs 1 小时</code> 属论文 / 他人报告（书中实验 8-11 / 8-13 / 8-14 / 8-16 本地未跑），只能作量级参照，不写成实测</b>；4/16、+1.73/−0.58、2,000s/600s/43 分钟/72 小时、54.6 是正文第三、四节给的量级与算例，pass@k/pass^k 为公式逐帧计算。</p>
+</div>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+
+<script>
+(function(){
+// ============ 主题专属数据 ============
+var PERIOD=4600,PHASE_MAX=720;
+var STEPS=[
+{d:0,t:'同一 prompt · G=16 采样',x:'GRPO 的一步只做四件事：同一个 prompt 采 G=16 条 rollout → 每条交给验证器打分 → 组内归一化得优势 → 用优势更新。本页例子：修复一个失败测试，4 条通过、12 条失败。0° = 这 16 条并行开始采样；GRPO 不需要单独价值网络，它靠组内互相比'},
+{d:120,t:'验证器打分 · 只给 0/1',x:'每条 rollout 交给验证器（跑测试 / 状态断言 / schema 校验），只给终点 0/1：4 个 1、12 个 0。这是 RLVR 最可靠的一档，因为不依赖判断。代价：on-policy RL 的监督密度极低——一条长度 T 的轨迹只有终点一个标量'},
+{d:220,t:'组均值 · 组内归一化',x:'组均值 = 通过数/16 = 4/16 = 0.25，它是组内比较的唯一零点。归一化优势 =（本条 reward − 均值）/ σ；这组 0/1 分数的 σ≈0.433，通过→(1−0.25)/0.433≈+1.73，失败→(0−0.25)/0.433≈−0.58。归一化不改变绝对判定，只把分数翻译成组内相对好坏'},
+{d:300,t:'正负优势分离',x:'4 条正优势（这条轨迹以后多做）、12 条负优势（少做）。优势条的长度 = 归一化后的大小，正条明显长于负条（+1.73 vs −0.58）。这一步能不能分离出正负，取决于组内有没有差异——这正是全 0 / 全 1 会卡住的原因'},
+{d:380,t:'策略位移 · 一次更新',x:'用优势加权更新 π：正优势抬升对应 token 概率、负优势压低。右侧曲线里被抬高的峰与被打压的区域随相位移动——位移是教学示意，不代表真实参数变化，但方向是实的：多做高分轨迹、少做低分轨迹。PPO 在此多一个 critic：优势 = 折扣回报 − V(s)'},
+{d:470,t:'全 0 分支 · 方差 0 死区',x:'若 16 条全为 0（pass@k 近零时硬上 RL）：组内方差 = 0、优势 = 0、这一步不产生梯度。这是机制层面而非玄学。处置：先补 Mid-training / 改课程 / 给部分奖励（R=O+βΦ），而不是加 step——继续加大采样只能以约 1/p 的速度等待偶然成功'},
+{d:540,t:'全 1 分支 · 验证器无区分度',x:'若 16 条全为 1：组内方差同样 = 0、优势消失、没有梯度。但没有梯度 ≠ 没问题——是验证器没有区分度（全是隐藏测试的漏网）。处置：先修评估，而不是补底座。与全 0 现象相同、病因相反，绝不能用同一套「加预算」硬扛'},
+{d:630,t:'一个 step 的时间账 · 墙钟',x:'16 条并行时墙钟由最慢那条决定 ≈2,000s，其后梯度与优化器 ≈600s → 一个 step ≈2,600s（≈43 分钟），100 step ≈72 小时；SFT 上表现好的任务转 RL 常需 10–100 倍时间（正文量级举例）。瓶颈常在验证 worker 数量，不在 GPU。诊断顺序：先看组内有无差异 → 再看方差 → 最后才加预算'},
+{d:700,t:'更新后的 π 进入下一轮',x:'闭环：更新后的 π 进入下一轮采样。对照与红线——on-policy 要求采样策略 π 与更新时的 μ 一致、比率 ρ 才等于 1；数值失配会在长前缀被指数放大（4,000 token × 1e-3 → e⁴≈54.6）；改 batch size 会改变计算归约、破坏 batch invariance，把本该 on-policy 的 RL 变成隐式 off-policy'}
+];
+var PARTS={
+roll:['rollCap','bar0','bar8','bar15'],
+verify:['verifCap'],
+mean:['meanCap','meanLine'],
+var:['varCap','varRead'],
+adv:['advCap','advPosLab','advNegLab'],
+policy:['polCap','polCurve','polLoop'],
+dead:['br0Box','br1Box','deadCap'],
+wall:['v2_wall','v2_gradbox','v2_cap']
+};
+var CHIPS=[{k:'group',l:'group 组内通过数'},{k:'mean',l:'mean 组均值'},{k:'var',l:'var 组内方差'},{k:'adv',l:'adv 优势'},{k:'grad',l:'grad 是否有梯度'},{k:'wall',l:'wall 墙钟'}];
+var QUIZ=[
+{q:'为什么全 0 与全 1 都没有梯度，但两者的处置完全不同？',opts:['都是模型能力问题，都应补底座再重训','全 0 是任务不可达 → 补 Mid-training / 改课程 / 部分奖励；全 1 是验证器没有区分度 → 先修评估。现象相同（方差 0、优势消失），病因相反','都没梯度，所以都不必处理，加 step 迟早会动'],a:1,exp:'组内归一化的除数是方差：全同分（全 0 或全 1）时方差为 0、优势为 0、这一步没有梯度——机制一样。但全 0 说明正确策略不在模型分布里（无事可放大，先补能力），全 1 说明验证器分辨不出好坏（先把评估修出区分度）。把全 1 当全 0 去补底座，方向彻底反了。'},
+{q:'怀疑「训练没效果」时，为什么先看组内方差而不是加 step / 加预算？',opts:['因为方差最好计算','先测 pass@k，再测 pass^k，取两者均值','加 step 只烧采样预算；方差为 0 意味着这一步数学上就没信号，加多少都不动。先看组内有没有差异 → 再看方差 → 最后才加预算，这条顺序一步比一步贵'],a:2,exp:'训了 200 step loss 在降、指标不动，常见根因就是全 0 / 全 1 的组没有优势。继续加大采样只能以约 1/p 的速度等待偶然成功，效率迅速失去实际意义。所以「先看组内有没有差异，再看该补 Mid-training 还是 SFT」，而不是先加预算。'},
+{q:'p=0.6、k=5 时，pass@k=1−(1−p)^k 与 pass^k=p^k 各约多少？',opts:['约 7.8% 与约 99.0%（前者低后者高）','约 99.0% 与约 7.8%','两者都约 60%'],a:1,exp:'pass@k = 1−0.4⁵ ≈ 99.0%（k 次里至少中一次的概率很高）；pass^k = 0.6⁵ ≈ 7.8%（连续 k 次全中的概率很低）。一个往上涨、一个往下跌——这正是「至少成一次」与「每次都成」的区别，也是判据链里区分「有探索空间」与「需稳定协议」的两把尺。'},
+{q:'为什么「只是把 batch 开大一点」可能让 on-policy RL 变味？',opts:['batch 大就一定更稳','改 batch size 会改变计算归约方式、破坏 batch invariance，使 sampler 与 trainer 的 logprob 不再一致，本该 on-policy（ρ=1）的更新退化成隐式 off-policy','batch 大会让验证器变慢'],a:1,exp:'on-policy 要求采样策略 π 与更新时的 μ 一致，比率 ρ 才等于 1。而 vLLM/SGLang 与 FSDP/Megatron 即使权重相同，也会因归约顺序、并行布局、batch size、fused kernel 给出不同 logprob；logprob 微差会在长前缀被指数放大（4,000 token × 1e-3 → e⁴≈54.6）。症状是比率尖峰、大量 token 被裁剪、奖励与熵一起坍塌。'},
+{q:'一个 step 的墙钟账里，「墙钟 ≈2,000s」是由什么决定的？',opts:['由最快那条 rollout 决定','由最慢那条 rollout 决定——16 条并行时整组要等最慢的完成，才能进入归一化与更新；其后梯度与优化器再加 ≈600s','由 GPU 数量决定'],a:1,exp:'复杂 Agent 的 rollout 有几十轮工具调用，16 条并行的墙钟由最慢那条决定（≈2,000s），加上梯度更新（≈600s）≈2,600s≈43 分钟，100 step≈72 小时。当验证器是 CPU 程序时，吞吐瓶颈常在验证 worker 数量，不在 GPU——所以扩 worker 有时比调学习率管用。'}
+];
+// ============ 场景构建 ============
+function $(id){return document.getElementById(id);}
+function rep(id,x,y,w,h,t1,s1,fill,stroke,dash){
+var d=dash?' stroke-dasharray="5 4"':'';
+return '<g id="'+id+'"><rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="8" fill="'+fill+'" stroke="'+stroke+'" stroke-width="1.3"'+d+'/>'
++'<text class="tb" x="'+(x+8)+'" y="'+(y+18)+'">'+t1+'</text>'
++(s1?'<text class="ts" x="'+(x+8)+'" y="'+(y+36)+'">'+s1+'</text>':'')+'</g>';
+}
+var RH=[118,150,96,168,112,138,158,104,132,110,92,178,140,120,152,100];
+var PASS=[2,6,9,13];
+var H='';
+// 左列：prompt + pass@k 常驻读数
+H+='<rect x="24" y="60" width="160" height="40" rx="8" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.4"/>';
+H+='<text class="tb" id="rollCap" x="32" y="78">① 同一 prompt</text>';
+H+='<text class="ts" x="32" y="94">修复失败测试 · 采 16 条</text>';
+H+='<rect x="24" y="112" width="160" height="128" rx="8" fill="#ffffff" stroke="#B4B2A9" stroke-width="1.3" stroke-dasharray="5 4"/>';
+H+='<text class="tb" id="passCap" x="32" y="130">判据 pass@k / pass^k</text>';
+H+='<text class="ts" x="32" y="150">pass@k=1−(1−p)^k</text>';
+H+='<text class="tb" id="passK" x="32" y="167">p=0.6,k=5 → --</text>';
+H+='<text class="ts" x="32" y="192">pass^k = p^k</text>';
+H+='<text class="tb" id="passPow" x="32" y="209">p=0.6,k=5 → --</text>';
+H+='<text class="ts" id="passNote" x="32" y="230">近零 → 先补底座</text>';
+// 中区·上：16 条 rollout（条长=耗时 · 色=结果）
+H+='<text class="tb" id="verifCap" x="200" y="72">② 验证器打分：16 条 → 0 / 1（条长=耗时 · 色=结果）</text>';
+H+='<line x1="200" y1="232" x2="616" y2="232" stroke="#3B3A34" stroke-width="1"/>';
+for(var i=0;i<16;i++){
+var x=206+i*26, pass=PASS.indexOf(i)>=0, y=232-RH[i];
+H+='<rect id="bar'+i+'" x="'+x+'" y="'+y+'" width="16" height="'+RH[i]+'" rx="2" fill="'+(pass?'#EAF3DE':'#FCEBEB')+'" stroke="'+(pass?'#639922':'#E24B4A')+'" stroke-width="1.2"/>';
+}
+// 中区·下：组均值与归一化 → 正负优势分离
+H+='<text class="tb" id="advCap" x="200" y="284">③ 组内归一化：优势 =（reward − 均值）/ σ</text>';
+H+='<line id="meanLine" x1="200" y1="350" x2="616" y2="350" stroke="#EF9F27" stroke-width="1.5" stroke-dasharray="6 4" opacity="0.3"/>';
+H+='<text class="ts" id="meanCap" x="206" y="344">组均值 = 4/16 = 0.25</text>';
+H+='<text class="ts" id="varCap" x="388" y="344">σ ≈ 0.433</text>';
+H+='<g id="gAdv" opacity="0">';
+for(var i=0;i<16;i++){
+var x=206+i*26, pass=PASS.indexOf(i)>=0;
+if(pass){H+='<rect x="'+x+'" y="288" width="16" height="62" rx="2" fill="#639922" stroke="#4C7A1E" stroke-width="1"/>';}
+else{H+='<rect x="'+x+'" y="350" width="16" height="21" rx="2" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1"/>';}
+}
+H+='<text class="ts" id="advPosLab" x="470" y="316">正优势 +1.73 · 4 条 · 多做</text>';
+H+='<text class="ts" id="advNegLab" x="470" y="410">负优势 −0.58 · 12 条 · 少做</text>';
+H+='</g>';
+H+='<text class="ts" id="varRead" x="206" y="364">方差 = 归一化的除数；= 0 即优势消失</text>';
+// 右区：策略位移曲线 + 回路
+H+='<text class="tb" id="polCap" x="660" y="72">④ 策略位移：更新后的 π</text>';
+H+='<line x1="666" y1="214" x2="966" y2="214" stroke="#3B3A34" stroke-width="1"/>';
+H+='<path id="polCurve" d="" fill="none" stroke="#C46A0A" stroke-width="2"/>';
+H+='<text class="ts" x="716" y="150" fill="#4C7A1E">峰被抬高 ↑</text>';
+H+='<text class="ts" x="900" y="196" fill="#A5342F" text-anchor="middle">区被压低 ↓</text>';
+H+='<path id="polLoop" d="M966 214 C992 214 992 240 900 240 C820 240 720 240 660 236" fill="none" stroke="#C46A0A" stroke-width="1.4" stroke-dasharray="5 3" marker-end="url(#flw)"/>';
+H+='<text class="ts" x="660" y="252">更新后 π → 下一轮采样</text>';
+// 右区：三条分支状态板
+H+='<g id="brMix"><rect x="660" y="262" width="316" height="46" rx="8" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.4"/>'
++'<text class="tb" x="666" y="280">① 混合 4/16 → 方差 &gt; 0</text>'
++'<text class="ts" x="666" y="298">→ 有梯度：健康区，有东西可放大</text></g>';
+H+='<g id="br0Box"><rect x="660" y="314" width="316" height="54" rx="8" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.4"/>'
++'<text class="tb" id="deadCap" x="666" y="332">② 全 0 → 方差 0 · 优势消失</text>'
++'<text class="ts" x="666" y="350">→ 补 Mid-training / 改课程 / 部分奖励</text>'
++'<text class="ts" x="666" y="364" fill="#A5342F">任务不可达：先补底座，别硬上 RL</text></g>';
+H+='<g id="br1Box"><rect x="660" y="374" width="316" height="54" rx="8" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.4"/>'
++'<text class="tb" x="666" y="392">③ 全 1 → 验证器无区分度</text>'
++'<text class="ts" x="666" y="410">→ 先修评估（不是补底座）</text>'
++'<text class="ts" x="666" y="424" fill="#A5342F">现象同全 0 · 病因相反</text></g>';
+// 底部三块常驻板：PPO 对照 / 数值失配链 / 诊断顺序
+H+='<rect x="24" y="445" width="316" height="98" rx="8" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.3"/>';
+H+='<text class="tb" x="30" y="463">PPO 对照</text>';
+H+='<text class="ts" x="30" y="482">优势 = 折扣回报 − V(s)</text>';
+H+='<text class="ts" x="30" y="500">on-policy：μ=π → ρ=1</text>';
+H+='<text class="ts" x="30" y="518">多一个 critic 网络</text>';
+H+='<rect x="352" y="445" width="312" height="98" rx="8" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.3"/>';
+H+='<text class="tb" x="358" y="463">数值失配放大链</text>';
+H+='<text class="ts" x="358" y="482">logprob 微差 → 概率比指数化</text>';
+H+='<text class="ts" x="358" y="500">4,000 token × 1e-3 → e⁴≈54.6</text>';
+H+='<text class="ts" x="358" y="518">改 batch size → 破坏 batch invariance</text>';
+H+='<rect x="676" y="445" width="300" height="98" rx="8" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.3"/>';
+H+='<text class="tb" x="682" y="463">诊断顺序（便宜 → 贵）</text>';
+H+='<text class="ts" x="682" y="482">① 先看组内有无差异</text>';
+H+='<text class="ts" x="682" y="500">② 再看组内方差</text>';
+H+='<text class="ts" x="682" y="518">③ 最后才加采样预算</text>';
+document.getElementById('scene').innerHTML=H;
+// 副图 16 条完成时刻条带
+var VT=[1640,1720,1500,1980,1600,1820,2000,1560,1760,1860,1480,1680,1900,1520,1800,1700];
+var V2='';
+for(var i=0;i<16;i++){
+var pass=PASS.indexOf(i)>=0, w=VT[i]/2600*830;
+V2+='<rect x="70" y="'+(44+i*4.5).toFixed(1)+'" width="'+w.toFixed(1)+'" height="3" rx="1.5" fill="'+(pass?'#639922':'#EF9F27')+'" opacity="0.85"/>';
+}
+document.getElementById('v2_bars').innerHTML=V2;
+// ============ 通用脚手架 ============
+function setTxt(id,v){var n=$(id);if(n&&n.textContent!==v)n.textContent=v;}
+function setA(id,k,v){var n=$(id);if(n)n.setAttribute(k,v);}
+function setO(id,v){var n=$(id);if(n)n.setAttribute('opacity',Math.round(v*100)/100);}
+function setF(id,f,s){var n=$(id);if(n){n.setAttribute('fill',f);if(s)n.setAttribute('stroke',s);}}
+function boxOn(id,on,base,stroke){var n=$(id);if(!n)return;var r=n.querySelector?n.querySelector('rect'):null;if(r){r.setAttribute('fill',on?'#FFF1D6':base);r.setAttribute('stroke',on?'#D97E06':stroke);}}
+var btn=$('engBtn'),spd=$('engSpd'),spdV=$('engSpdV');
+var stepBar=$('stepBar'),stepT=$('stepT'),stepX=$('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var dots=[];
+for(var s=0;s<STEPS.length;s++){
+(function(n){
+var b=document.createElement('button');
+b.className='stepnode';
+b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+b.onclick=function(){goStep(n);};
+stepBar.appendChild(b);dots.push(b);
+})(s);
+}
+var stepIdx=-1;
+function setAuto(on){
+mode='auto';run=on;btn.textContent=on?'暂停':'播放';
+if(on){stepIdx=-1;dots.forEach(function(d){d.classList.remove('on');});
+stepT.textContent='自动运转模式';
+stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格；也可以直接点部件卡，在图里点亮对应部件。';}
+}
+window.goStep=function(i){
+stepIdx=(i+STEPS.length)%STEPS.length;
+mode='step';run=false;
+phase=STEPS[stepIdx].d/PHASE_MAX*PERIOD;
+btn.textContent='继续自动运转';
+dots.forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+stepX.textContent=STEPS[stepIdx].x;
+};
+btn.textContent=run?'暂停':'播放';
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+// ---- 运动学 ----
+function smooth(t){return t*t*(3-2*t);}
+function cl(v,a,b){return Math.max(a,Math.min(b,v));}
+function norm0(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+// ---- 派生量 ----
+function branch(t){return (t>=458&&t<530)?0:(t>=530&&t<600)?1:-1;}
+function passCount(t){return branch(t)===0?0:(branch(t)===1?16:4);}
+function keyAt(t){
+if(t<120)return '采样铺开 · G=16 并行';
+if(t<220)return '验证器 0/1 · 4 通过';
+if(t<300)return '组均值 0.25 · 归一化';
+if(t<380)return '正负优势分离';
+if(t<458)return '策略位移 · 有梯度';
+if(t<530)return '全 0 · 方差 0 无梯度';
+if(t<600)return '全 1 · 验证器无区分度';
+if(t<700)return '时间账 · 墙钟 2,600s';
+return '回填 · π 进下一轮';
+}
+function fmtPct(v){return (v*100).toFixed(1)+'%';}
+var PK_P=0.6,PK_K=5;
+function chipsAt(t){
+var b=branch(t),cnt=passCount(t),inB=b>=0;
+var groupV=cnt+'/16'+(b===0?'·全0':(b===1?'·全1':''));
+var meanV=(b===0?'0.00':(b===1?'1.00':'0.25'));
+var varV=(b>=0?'0 · 死区':'0.19');
+var advV=(t<220?'待计算':(b>=0?'消失':'+1.73/−0.58'));
+var gradV=(b>=0?'无':(t<300?'待计算':'有'));
+var wallV=(t<600?'—':'≈2,600s');
+return [
+['group',groupV,inB?'warn':(t>=120?'on':'off')],
+['mean',meanV,inB?'warn':(t>=220?'on':'off')],
+['var',varV,inB?'off':(t>=220?'warn':'off')],
+['adv',advV,(b>=0||t<300)?(b>=0?'off':'off'):(t>=300?'on':'off')],
+['grad',gradV,gradV==='有'?'on':(gradV==='无'?'off':'off')],
+['wall',wallV,t>=600?'on':'off']
+];
+}
+// ---- 主图渲染 ----
+function render(th){
+var t=norm0(th);
+// rollout 条带依次铺开（0–100°）
+for(var i=0;i<16;i++){
+var op=cl((t-(i*5))/18,0,1);
+setO('bar'+i,op);
+}
+// 组均值线与优势板
+setA('meanLine','opacity',cl((t-220)/40,0.3,1).toFixed(2));
+var inB=branch(t)>=0;
+setO('gAdv',(t<260?cl((t-260)/1,0,0):cl((t-260)/40,0,1))*(inB?0.12:1));
+// 策略位移曲线（算术驱动：随相位抬高正峰 / 压低负区）
+var pShift=cl((t-380)/70,0,1);
+var H1=26+78*pShift, H2=70-48*pShift, yb=214;
+var d='';
+for(var x=666;x<=966;x+=8){
+var y=yb-(H1*Math.exp(-Math.pow((x-760)/38,2))+H2*Math.exp(-Math.pow((x-880)/54,2)));
+d+=(x===666?'M':'L')+x+' '+y.toFixed(1)+' ';
+}
+setA('polCurve','d',d);
+// 分支板点亮：混合 / 全0 / 全1 各在自己的相位
+var onMix=(t>=300&&t<458),on0=t>=458&&t<530,on1=t>=530&&t<600;
+boxOn('brMix',onMix,'#ffffff','#D3D1C7');
+boxOn('br0Box',on0,'#FCEBEB','#E24B4A');
+boxOn('br1Box',on1,'#FCEBEB','#E24B4A');
+setO('brMix',(onMix||t>=600)?1:0.6);setO('br0Box',on0?1:0.6);setO('br1Box',on1?1:0.6);
+// pass@k 常驻读数：公式逐帧算
+setTxt('passK','p=0.6,k=5 → '+fmtPct(1-Math.pow(1-PK_P,PK_K)));
+setTxt('passPow','p=0.6,k=5 → '+fmtPct(Math.pow(PK_P,PK_K)));
+}
+function tick(now){
+var dt=Math.min(50,now-last);last=now;
+if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+render(phase/PERIOD*PHASE_MAX);
+requestAnimationFrame(tick);
+}
+/* agent-lab shared instruments + second view */
+(function(){
+var roPhase=$('roPhase'),roStep=$('roStep'),roKey=$('roKey'),roPass=$('roPass'),roAdv=$('roAdv');
+var chipBox=$('stateChips');
+var chipEls={};
+CHIPS.forEach(function(c){
+var s=document.createElement('span');s.className='chip';s.innerHTML=c.l+' <b>--</b>';
+chipBox.appendChild(s);chipEls[c.k]=s;
+});
+function setChip(k,v,cls){
+var n=chipEls[k];if(!n)return;
+var b=n.querySelector('b');
+if(b&&b.textContent!==v)b.textContent=v;
+n.classList.remove('on','warn','off');
+if(cls)n.classList.add(cls);
+}
+function stageIndex(th){var si=0;for(var i=0;i<STEPS.length;i++){if(th>=STEPS[i].d)si=i;}return si;}
+function render2(th){
+var t=norm0(th),x=70+t/720*830,b=branch(t);
+setA('v2_play','x1',x.toFixed(1));setA('v2_play','x2',x.toFixed(1));
+setA('v2_prog','width',(t/720*830).toFixed(1));
+var acc=t>=600?1:0.5;
+setA('v2_gradbox','opacity',acc);
+setF('v2_gradbox',t>=600?'#FAEEDA':'#FFF6E8','#EF9F27');
+setTxt('v2_scan',t<120?'扫描：采样铺开 · 16 条并行 rollout':(t<220?'扫描：验证器打分 · 各给 0/1':(t<380?'扫描：归一化与优势分离 · 未进入更新':(t<458?'扫描：策略位移 · 一次更新落地':(b>=0?'扫描：零方差死区 · 这一步无梯度（时间账仍照常）':(t<600?'扫描：死区演示收尾 · 转入时间账':'扫描：墙钟 ≈2,000s + 梯度 ≈600s ≈43 分钟'))))));
+}
+function updateShared(th){
+var t=norm0(th);
+var pr=Math.round(t)%720;
+if(roPhase.textContent!==(pr+'\u00b0'))roPhase.textContent=pr+'\u00b0';
+var si=stageIndex(t);if(mode==='step'&&stepIdx>=0)si=stepIdx;
+var st=STEPS[si]?STEPS[si].t:'\u2014';
+if(roStep.textContent!==st)roStep.textContent=st;
+var kv=keyAt(t);if(roKey.textContent!==kv)roKey.textContent=kv;
+var pv=fmtPct(1-Math.pow(1-PK_P,PK_K))+' / '+fmtPct(Math.pow(PK_P,PK_K));
+if(roPass.textContent!==pv)roPass.textContent=pv;
+var b=branch(t);
+var av=b>=0?'0（死区）':'+1.73 / −0.58';
+if(roAdv.textContent!==av)roAdv.textContent=av;
+var cs=chipsAt(t);
+for(var i=0;i<cs.length;i++)setChip(cs[i][0],cs[i][1],cs[i][2]);
+render2(t);
+}
+var AS={ease:null,last:performance.now(),DUR:900};
+var origGoStep=window.goStep;
+window.goStep=function(i){
+var from=phase;
+origGoStep(i);
+var to=phase,delta=to-from;
+if(!reduced&&Math.abs(delta)<=PERIOD/4&&Math.abs(delta)>0.01){
+phase=from;AS.ease={from:from,to:to,elapsed:0};
+}else{AS.ease=null;}
+};
+var origTick=tick;
+tick=function(now){
+if(typeof now!=='number')now=performance.now();
+var dt=Math.min(50,Math.max(0,now-AS.last));AS.last=now;
+if(mode==='auto')AS.ease=null;
+if(AS.ease){
+AS.ease.elapsed=Math.min(AS.DUR,AS.ease.elapsed+dt);
+var p=AS.ease.elapsed/AS.DUR;
+phase=AS.ease.from+(AS.ease.to-AS.ease.from)*smooth(p);
+if(p>=1){phase=AS.ease.to;AS.ease=null;}
+}
+origTick(now);
+updateShared(phase/PERIOD*PHASE_MAX);
+};
+})();
+
+requestAnimationFrame(tick);
+document.querySelectorAll('.part').forEach(function(b){
+b.onclick=function(){
+var ids=PARTS[b.getAttribute('data-part')]||[];
+ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+};
+});
+var BASE=(location.pathname.split('/agent-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/agent/lab';
+document.getElementById('lnkArt').href=BASE+'/agent/tutorial/10-grpo-normalization';
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+var d=document.createElement('div');d.className='q';
+var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+h+='<div class="exp">'+it.exp+'</div>';
+d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+var b=e.target.closest('.opt');if(!b)return;
+var box2=b.parentElement;if(box2.classList.contains('done'))return;
+box2.classList.add('done');
+var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+box2.querySelectorAll('.opt').forEach(function(x){
+var xi=+x.getAttribute('data-oi');
+if(xi===QUIZ[qi].a)x.classList.add('right');
+else if(x===b)x.classList.add('wrong');
+});
+});
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+})();
+</script>
+</body>
+</html>

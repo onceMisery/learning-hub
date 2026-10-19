@@ -29,7 +29,7 @@
 | [前端](tracks/frontend/) | 已发布 | 11 阶段路线图 + Lumen Kanban 实战 | TypeScript 7 · React 19 · Vite 8 · Tailwind 4 · Motion 13 · Dexie 4 · Electron 43 |
 | [中间件](tracks/middleware/) | 已发布 | 7 篇 Pulsar 源码剖析 + 9 章互动实验室 + 16 张原理图 | Apache Pulsar 5.1 · BookKeeper · Pulsar Functions |
 | [分布式事务](tracks/seata/) | 已发布 | 16 篇 Seata 源码剖析 + 13 章互动实验室 + 15 张原理图 | Apache Seata 2.8.0 · AT/TCC/Saga/XA · Raft |
-| [Agent 开发](tracks/agent/) | 已发布 | 10 篇工程实践教程 + 9 章互动实验室 + 27 张原理图 | MCP · 上下文工程 · RAG · Coding Agent · 事件驱动 · 评估与治理 · 后训练边界 |
+| [Agent 开发](tracks/agent/) | 已发布 | 10 篇工程实践教程 + 10 章互动实验室 + 27 张原理图 | MCP · 上下文工程 · RAG · Coding Agent · 事件驱动 · 评估与治理 · 后训练边界 |
 | [Go](tracks/golang/) | 规划中 | — | — |
 | [Python](tracks/python/) | 规划中 | — | — |
 

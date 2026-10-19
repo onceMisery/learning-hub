@@ -15,7 +15,7 @@ export const AGENT_LAB = {
   trackId: 'agent',
   title: '互动原理实验室',
   subtitle:
-    '九章动态图解：把 Agent 运行的每个关键原理，做成能看、能点、能测的一页课。每章遵循同一条认知链——表象 → 结构 → 流程 → 融合 → 环境 → 自测。',
+    '十章动态图解：把 Agent 运行的每个关键原理，做成能看、能点、能测的一页课。每章遵循同一条认知链——表象 → 结构 → 流程 → 融合 → 环境 → 自测。',
   /** 实验室根路由（LabPage 渲染） */
   route: '/agent/lab',
   /** 图解页所在目录（public/agent-lab） */
@@ -92,6 +92,14 @@ export const AGENT_LAB = {
       principle: '紧急度决定策略：取消式 / 队列式 / 并行式，只在安全点切进生成流',
       articleRoute: '/agent/tutorial/09-timing-and-interaction',
       articleTitle: '触发时机与交互：把观察和动作扩展到真实世界的时间尺度上',
+    },
+    {
+      id: '10-grpo-normalization',
+      file: '10-grpo-normalization.html',
+      title: '组内归一化与零方差死区',
+      principle: '一组采样 → 一个均值 → 一次归一化：全 0 补能力，全 1 修验证器',
+      articleRoute: '/agent/tutorial/10-model-boundary',
+      articleTitle: '模型层边界：什么时候必须改权重，怎么把教训写进参数',
     },
   ] satisfies LabChapter[],
 } as const;
