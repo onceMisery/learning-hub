@@ -525,7 +525,7 @@ broker:['brokerBox','cnxBox','topicBox','subBox'],
 ledger:['ledgerBox','e0','e1','e2','e3','e4'],
 bookies:['bkBox','bookie0','bookie1','bookie2','b0','b1','b2'],
 metadata:['metaBox','metaGlow','metaBundle','metaLedger'],
-consumer:['consumerBox','queueBar','ackPath'],
+consumer:['consumerBox','queueBar','ackPath','ackTok'],
 cursor:['cursorBox','curBar']};
 var QUIZ=[{q:'客户端第一次 lookup，拿到的结果可能是什么？',opts:['一定是 owner 的地址，一次就中','可能是 Redirect：当前 Broker 不是 owner，告诉客户端去另一个地址再问','一定是 TopicNotFound，因为 topic 还没创建'],a:1,exp:'客户端连的 Broker 不一定是 owner。若当前 Broker 就是 owner，会直接 Connect；否则返回 Redirect，客户端带 authoritative=true 再问一次。Redirect 是正常流程，不是错误。见上方 lookup 时序图。'},
 {q:'集群默认 E=2、W=2、A=2，一条消息有几份副本？',opts:['3 份，每个 Bookie 一份','2 份，两个 Bookie 都写、都 ack','1 份，ack 只代表写成功'],a:1,exp:'默认是 2 份：E=2 决定这个 ledger 用两个 Bookie，W=2 决定每条 entry 写两份，A=2 决定两个都必须确认；没有第三个副本。若配置 E=3/W=2/A=2，第三个只是在 ensemble 里，不在本次 writeQuorum，也不是 standby。'},
@@ -553,8 +553,7 @@ H+='<path d="M482 274 L482 276" stroke="#C46A0A" stroke-width="1.5" marker-end="
 H+='<path d="M482 354 L482 424" stroke="#C46A0A" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#flw)" fill="none"/>';
 H+='<path d="M620 129 L668 129" stroke="#C46A0A" stroke-width="1.5" stroke-dasharray="4 4" marker-end="url(#flw)" fill="none"/>';
 H+='<path d="M620 329 L668 329" stroke="#639922" stroke-width="1.5" marker-end="url(#flwG)" fill="none"/>';
-H+='<path id="ackPath" d="M668 350 L628 350" stroke="#639922" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#flwG)" fill="none" opacity="0.35"/>';
-H+='<text id="ackLabel" class="tag" x="648" y="368" text-anchor="middle" fill="#4C7A1A" opacity="0.55">ack</text>';
+H+='<path id="ackPath" d="M822 374 L822 386 L640 386" stroke="#639922" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#flwG)" fill="none" opacity="0.5"/>';
 H+='<path id="lookupPath" d="M92 96 L92 66 L482 66 L482 100 M482 66 L820 66 L820 82" stroke="#C46A0A" stroke-width="1.6" stroke-dasharray="5 4" fill="none" opacity="0.2" marker-end="url(#flw)"/>';
 // metadata
 H+='<g id="metaBox">'+box(672,84,300,190,10,'#ffffff','#3B3A34')+tx(688,108,'元数据存储','tn')+tx(688,128,'ZooKeeper / RocksDB / Oxia','ts')+'</g>';
@@ -574,6 +573,8 @@ H+='<rect id="queueBar" x="840" y="310" width="0" height="12" rx="6" fill="#EF9F
 H+='<g id="cursorBox">'+box(672,394,300,86)+tx(688,418,'cursor.markDeletePosition','tn')+tx(688,438,'进度账：读到哪了','ts')+'</g>';
 H+='<rect x="688" y="452" width="268" height="12" rx="6" fill="#F5F4EF" stroke="#D3D1C7" stroke-width="1"/>';
 H+='<rect id="curBar" x="688" y="452" width="0" height="12" rx="6" fill="#639922"/>';
+H+='<text id="ackLabel" class="tag" x="731" y="382" text-anchor="middle" fill="#4C7A1A" opacity="0.65">CommandAck（消费完成后）</text>';
+H+='<circle id="ackTok" cx="822" cy="374" r="5" fill="#639922" stroke="#4C7A1A" stroke-width="1.3" opacity="0"/>';
 H+='<text id="stageTag" class="ts" x="985" y="544" text-anchor="end" fill="#854F0B"></text>';
 // token
 H+='<circle id="tok" cx="92" cy="139" r="9" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/>';
@@ -661,8 +662,15 @@ setOp('metaBundle',th>=20&&th<100?1:0.45);
 setOp('metaLedger',th>=20&&th<100?0.55:0.95);
 setOp('metaAckNote',th>=680?1:0.55);
 setAttr('metaAckNote','fill',th>=680?'#4C7A1A':'#6B695F');
-setOp('ackPath',th>=680?1:0.35);
-setOp('ackLabel',th>=680?1:0.55);
+setOp('ackPath',th>=680?1:0.5);
+setOp('ackLabel',th>=680?1:0.65);
+setOp('ackTok',th>=680&&th<710?1:0);
+if(th>=680&&th<710){
+  var tA=Math.min(1,(th-680)/40), ax, ay;
+  if(tA<0.2){ax=822;ay=374+(386-374)*(tA/0.2);}
+  else{ax=822-(822-640)*((tA-0.2)/0.8);ay=386;}
+  setAttr('ackTok','cx',ax.toFixed(1));setAttr('ackTok','cy',ay.toFixed(1));
+}else{setAttr('ackTok','cx','822');setAttr('ackTok','cy','374');}
 var lit=th>=400?1:0.18;
 setOp('e0',lit);setOp('e1',th>=410?lit:0.18);setOp('e2',th>=420?lit:0.18);setOp('e3',th>=430?lit:0.18);setOp('e4',th>=440?lit:0.18);
 setOp('b0',th>=410?1:0.35);setOp('b1',th>=420?1:0.35);setOp('b2',0.35);
