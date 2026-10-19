@@ -28,6 +28,7 @@
 | [Rust](tracks/rust/) | 已发布 | 12 篇教程 + 2 附录 + minidb 九阶段实战 | Rust 1.98 · tokio · axum |
 | [前端](tracks/frontend/) | 已发布 | 11 阶段路线图 + Lumen Kanban 实战 | TypeScript 7 · React 19 · Vite 8 · Tailwind 4 · Motion 13 · Dexie 4 · Electron 43 |
 | [中间件](tracks/middleware/) | 已发布 | 7 篇 Pulsar 源码剖析 + 9 章互动实验室 + 16 张原理图 | Apache Pulsar 5.1 · BookKeeper · Pulsar Functions |
+| [分布式事务](tracks/seata/) | 已发布 | 16 篇 Seata 源码剖析 + 13 章互动实验室 + 15 张原理图 | Apache Seata 2.8.0 · AT/TCC/Saga/XA · Raft |
 | [Go](tracks/golang/) | 规划中 | — | — |
 | [Python](tracks/python/) | 规划中 | — | — |
 
