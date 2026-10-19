@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="360" viewBox="0 0 920 360" role="img" aria-label="持久化、非持久化与跨地域复制">
+<title>持久化、非持久化与跨地域复制</title>
+<style>
+text{font-family:'Microsoft YaHei','PingFang SC','Hiragino Sans GB',sans-serif}
+.t{font-size:20px;font-weight:700;fill:#1F1E1A}
+.s{font-size:12px;fill:#6B695F}
+.b{font-size:12.5px;font-weight:600;fill:#1F1E1A}
+.n{font-size:10.5px;fill:#3B3A34}
+.g{font-size:9.5px;fill:#6B695F}
+.h{font-size:11.5px;font-weight:600;fill:#854F0B}
+</style>
+<rect x="0" y="0" width="920" height="360" fill="#FFFFFF"/>
+<text class="t" x="30" y="34">持久化、非持久化与跨地域复制</text>
+<text class="s" x="30" y="54">同一套 API，不同的消息命运：账本、游标、复制 backlog 和 drop 的分界</text>
+<defs>
+<marker id="a16" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="g16" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="r16" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<rect x="20" y="72" width="280" height="220" rx="12" fill="#FBFAF6" stroke="#ECEAE2"/>
+<text class="h" x="160" y="96" text-anchor="middle">persistent</text>
+<text class="g" x="160" y="112" text-anchor="middle">ledger + cursor + backlog</text>
+<rect x="40" y="128" width="80" height="38" rx="6" fill="#FFFFFF" stroke="#3B3A34"/><text class="n" x="80" y="151" text-anchor="middle">Client</text>
+<rect x="150" y="128" width="120" height="38" rx="6" fill="#FFFFFF" stroke="#3B3A34"/><text class="n" x="210" y="151" text-anchor="middle">PersistentTopic</text>
+<rect x="150" y="180" width="120" height="38" rx="6" fill="#FFF6E8" stroke="#EF9F27"/><text class="n" x="210" y="203" text-anchor="middle">ManagedLedger</text>
+<rect x="150" y="232" width="120" height="38" rx="6" fill="#EAF3DE" stroke="#639922"/><text class="n" x="210" y="255" text-anchor="middle">Bookie ×2 · W/A=2</text>
+<rect x="40" y="180" width="80" height="38" rx="6" fill="#FFFFFF" stroke="#3B3A34"/><text class="n" x="80" y="203" text-anchor="middle">Consumer</text>
+<path d="M120 147 L150 147" stroke="#C46A0A" stroke-width="1.4" fill="none" marker-end="url(#a16)"/>
+<path d="M210 166 L210 180" stroke="#C46A0A" stroke-width="1.4" fill="none" marker-end="url(#a16)"/>
+<path d="M210 218 L210 232" stroke="#C46A0A" stroke-width="1.4" fill="none" marker-end="url(#a16)"/>
+<path d="M150 203 L120 203" stroke="#639922" stroke-width="1.4" fill="none" marker-end="url(#g16)"/>
+<text class="g" x="100" y="230" fill="#4C7A1A">ack → cursor</text>
+<text class="g" x="175" y="282" fill="#4C7A1A">断链：backlog 可续传</text>
+
+<rect x="320" y="72" width="280" height="220" rx="12" fill="#FBFAF6" stroke="#ECEAE2"/>
+<text class="h" x="460" y="96" text-anchor="middle">non-persistent</text>
+<text class="g" x="460" y="112" text-anchor="middle">直接分发 · 无 ledger/cursor</text>
+<rect x="340" y="128" width="80" height="38" rx="6" fill="#FFFFFF" stroke="#3B3A34"/><text class="n" x="380" y="151" text-anchor="middle">Client</text>
+<rect x="450" y="128" width="120" height="38" rx="6" fill="#FFFFFF" stroke="#3B3A34"/><text class="n" x="510" y="151" text-anchor="middle">NonPersistentTopic</text>
+<rect x="450" y="180" width="120" height="38" rx="6" fill="#FFFFFF" stroke="#3B3A34"/><text class="n" x="510" y="203" text-anchor="middle">Dispatcher</text>
+<rect x="340" y="180" width="80" height="38" rx="6" fill="#FFFFFF" stroke="#3B3A34"/><text class="n" x="380" y="203" text-anchor="middle">Consumer</text>
+<rect x="450" y="232" width="120" height="38" rx="6" fill="#FCEBEB" stroke="#E24B4A"/><text class="n" x="510" y="255" text-anchor="middle">drop（无 permit/consumer）</text>
+<path d="M420 147 L450 147" stroke="#C46A0A" stroke-width="1.4" fill="none" marker-end="url(#a16)"/>
+<path d="M510 166 L510 180" stroke="#639922" stroke-width="1.4" fill="none" marker-end="url(#g16)"/>
+<path d="M450 199 L420 199" stroke="#639922" stroke-width="1.4" fill="none" marker-end="url(#g16)"/>
+<path d="M510 218 L510 232" stroke="#E24B4A" stroke-width="1.4" stroke-dasharray="4 3" fill="none" marker-end="url(#r16)"/>
+<text class="g" x="380" y="240" fill="#8A2A2A">ack no-op</text>
+<text class="g" x="445" y="282" fill="#8A2A2A">断开/链断：直接丢</text>
+
+<rect x="620" y="72" width="280" height="220" rx="12" fill="#FBFAF6" stroke="#ECEAE2"/>
+<text class="h" x="760" y="96" text-anchor="middle">跨集群复制</text>
+<text class="g" x="760" y="112" text-anchor="middle">persistent cursor / np best-effort</text>
+<rect x="640" y="128" width="100" height="38" rx="6" fill="#FFFFFF" stroke="#3B3A34"/><text class="n" x="690" y="151" text-anchor="middle">本地 cursor</text>
+<rect x="760" y="128" width="120" height="38" rx="6" fill="#FFF6E8" stroke="#EF9F27"/><text class="n" x="820" y="151" text-anchor="middle">Replicator</text>
+<rect x="760" y="180" width="120" height="38" rx="6" fill="#FFFFFF" stroke="#3B3A34"/><text class="n" x="820" y="203" text-anchor="middle">远端 Producer</text>
+<rect x="760" y="232" width="120" height="38" rx="6" fill="#FFFFFF" stroke="#3B3A34"/><text class="n" x="820" y="255" text-anchor="middle">远端 Topic</text>
+<rect x="640" y="232" width="100" height="38" rx="6" fill="#EFF6FF" stroke="#2563EB"/><text class="n" x="690" y="255" text-anchor="middle">快照对齐 ack</text>
+<path d="M740 147 L760 147" stroke="#C46A0A" stroke-width="1.4" fill="none" marker-end="url(#a16)"/>
+<path d="M820 166 L820 180" stroke="#C46A0A" stroke-width="1.4" fill="none" marker-end="url(#a16)"/>
+<path d="M820 218 L820 232" stroke="#C46A0A" stroke-width="1.4" fill="none" marker-end="url(#a16)"/>
+<path d="M690 232 L690 166" stroke="#639922" stroke-width="1.4" stroke-dasharray="4 3" fill="none" marker-end="url(#g16)"/>
+<text class="g" x="700" y="292" fill="#4C7A1A">persistent：可续传 / np：drop 即丢</text>
+<text class="g" x="30" y="330" fill="#6B695F">复制策略在 namespace/topic 的 replication_clusters；事务不跨集群；Replicated Subscription 只是缩小重复窗口，仍是至少一次。</text>
+</svg>

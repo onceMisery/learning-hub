@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="360" viewBox="0 0 920 360" role="img" aria-label="Schema 注册与兼容性">
+<title>Schema 注册与兼容性</title>
+<style>
+text{font-family:'Microsoft YaHei','PingFang SC','Hiragino Sans GB',sans-serif}
+.t{font-size:20px;font-weight:700;fill:#1F1E1A}
+.s{font-size:12px;fill:#6B695F}
+.b{font-size:12.5px;font-weight:600;fill:#1F1E1A}
+.n{font-size:10.5px;fill:#3B3A34}
+.g{font-size:10px;fill:#6B695F}
+.h{font-size:10px;font-weight:600;fill:#4C7A1A}
+</style>
+<rect x="0" y="0" width="920" height="360" fill="#FFFFFF"/>
+<text class="t" x="30" y="34">Schema：一份带版本的格式合同</text>
+<text class="s" x="30" y="54">公开 API 是 SchemaInfo；Broker 存 SchemaData 和版本；消息只带 schema_version</text>
+<defs>
+<marker id="a15" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="g15" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="r15" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<rect x="30" y="70" width="190" height="64" rx="8" fill="#FFFFFF" stroke="#3B3A34"/>
+<text class="b" x="125" y="92" text-anchor="middle">SchemaInfo</text>
+<text class="n" x="125" y="110" text-anchor="middle">name · type · schema bytes</text>
+<text class="n" x="125" y="125" text-anchor="middle">properties（公开 API）</text>
+<rect x="250" y="70" width="190" height="64" rx="8" fill="#FFFFFF" stroke="#3B3A34"/>
+<text class="b" x="345" y="92" text-anchor="middle">SchemaData</text>
+<text class="n" x="345" y="110" text-anchor="middle">data · type · hash</text>
+<text class="n" x="345" y="125" text-anchor="middle">Broker 存储结构</text>
+<rect x="470" y="70" width="190" height="64" rx="8" fill="#EAF3DE" stroke="#639922"/>
+<text class="b" x="565" y="92" text-anchor="middle">SchemaVersion</text>
+<text class="n" x="565" y="110" text-anchor="middle">当前 8B LongSchemaVersion</text>
+<text class="n" x="565" y="125" text-anchor="middle">兼容旧 64B 版本</text>
+<rect x="690" y="70" width="200" height="64" rx="8" fill="#FFF6E8" stroke="#EF9F27"/>
+<text class="b" x="790" y="92" text-anchor="middle">MessageMetadata</text>
+<text class="n" x="790" y="110" text-anchor="middle">schema_version</text>
+<text class="n" x="790" y="125" text-anchor="middle">随每条 entry 写入</text>
+<path d="M220 102 L250 102" stroke="#C46A0A" stroke-width="1.4" fill="none" marker-end="url(#a15)"/>
+<path d="M440 102 L470 102" stroke="#C46A0A" stroke-width="1.4" fill="none" marker-end="url(#a15)"/>
+<path d="M660 102 L690 102" stroke="#C46A0A" stroke-width="1.4" fill="none" marker-end="url(#a15)"/>
+<rect x="30" y="180" width="170" height="54" rx="8" fill="#FFFFFF" stroke="#3B3A34"/>
+<text class="b" x="115" y="202" text-anchor="middle">CommandProducer</text>
+<text class="n" x="115" y="220" text-anchor="middle">schema 随命令带过去</text>
+<rect x="240" y="180" width="190" height="54" rx="8" fill="#FFF6E8" stroke="#EF9F27"/>
+<text class="b" x="335" y="202" text-anchor="middle">handleProducer</text>
+<text class="n" x="335" y="220" text-anchor="middle">putSchemaIfAbsent</text>
+<rect x="470" y="180" width="160" height="54" rx="8" fill="#FFFFFF" stroke="#3B3A34"/>
+<text class="b" x="550" y="202" text-anchor="middle">schema 已存在？</text>
+<text class="n" x="550" y="220" text-anchor="middle">同 hash 直接复用</text>
+<rect x="670" y="180" width="220" height="54" rx="8" fill="#FFFFFF" stroke="#3B3A34"/>
+<text class="b" x="780" y="202" text-anchor="middle">兼容性检查</text>
+<text class="n" x="780" y="220" text-anchor="middle">FULL / BACKWARD / FORWARD</text>
+<path d="M200 207 L240 207" stroke="#C46A0A" stroke-width="1.4" fill="none" marker-end="url(#a15)"/>
+<path d="M430 207 L470 207" stroke="#C46A0A" stroke-width="1.4" fill="none" marker-end="url(#a15)"/>
+<path d="M630 207 L670 207" stroke="#639922" stroke-width="1.4" fill="none" marker-end="url(#g15)"/>
+<rect x="240" y="260" width="190" height="48" rx="8" fill="#FFF6E8" stroke="#EF9F27"/>
+<text class="b" x="335" y="281" text-anchor="middle">CommandGetOrCreateSchema</text>
+<text class="n" x="335" y="298" text-anchor="middle">未缓存 / 多 schema / 自动更新</text>
+<rect x="470" y="260" width="160" height="48" rx="8" fill="#EAF3DE" stroke="#639922"/>
+<text class="b" x="550" y="281" text-anchor="middle">返回 schemaVersion</text>
+<text class="n" x="550" y="298" text-anchor="middle">写入 MessageMetadata</text>
+<rect x="670" y="260" width="220" height="48" rx="8" fill="#FCEBEB" stroke="#E24B4A"/>
+<text class="b" x="780" y="281" text-anchor="middle">IncompatibleSchema</text>
+<text class="n" x="780" y="298" text-anchor="middle">producer 创建失败</text>
+<path d="M500 234 L500 246 L335 246 L335 260" stroke="#C46A0A" stroke-width="1.4" stroke-dasharray="4 3" fill="none" marker-end="url(#a15)"/>
+<text class="g" x="395" y="240" text-anchor="middle" fill="#854F0B">未缓存</text>
+<path d="M430 286 L470 286" stroke="#C46A0A" stroke-width="1.4" fill="none" marker-end="url(#a15)"/>
+<path d="M670 218 L630 260" stroke="#639922" stroke-width="1.4" fill="none" marker-end="url(#g15)"/>
+<text class="g" x="655" y="238" text-anchor="middle" fill="#4C7A1A">兼容</text>
+<path d="M780 234 L780 260" stroke="#E24B4A" stroke-width="1.4" fill="none" marker-end="url(#r15)"/>
+<text class="g" x="792" y="250" fill="#8A2A2A">不兼容</text>
+<text class="g" x="30" y="336">协议门槛：GetOrCreateSchema 需要 v15；ack receipt 需要 v17；AutoConsume schema 需要 v21。Broker 只宣告 min(server, client)。</text>
+</svg>

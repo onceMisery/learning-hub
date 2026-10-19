@@ -442,7 +442,6 @@ H+='<path id="recoverPath" d="M692 300 L650 300 L650 208 L652 208" stroke="#E24B
 H+='<text id="recoverT" class="ts" x="654" y="326" fill="#8A2A2A" opacity="0">恢复：读索引账 → 打开最后一本 ledger</text>';
 H+='<text id="stageTag" class="ts" x="985" y="544" text-anchor="end" fill="#854F0B"></text>';
 H+='<circle id="tok" cx="124" cy="124" r="9" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/>';
-H+='<text id="tokT" class="ts" x="124" y="106" text-anchor="middle" fill="#854F0B">entry</text>';
 document.getElementById('scene').innerHTML=H;
 var scene2El=document.getElementById('scene2');
 if(scene2El){var H2='';
@@ -535,7 +534,7 @@ var si=0;for(var ri=0;ri<STEPS.length;ri++){if(pr>=STEPS[ri].d)si=ri;}
 if(mode==='step'&&stepIdx>=0)si=stepIdx;
 setText('roStep',STEPS[si]?STEPS[si].t:'—');
 var p=tokPos(th);
-if(p){setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));setAttr('tokT','x',p[0].toFixed(1));setAttr('tokT','y',(p[1]-18).toFixed(1));setOp('tok',1);setOp('tokT',1);}else{setOp('tok',0);setOp('tokT',0);}
+if(p){setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));setOp('tok',1);}else{setOp('tok',0);}
 var n=clamp(Math.floor((th-160)/22),0,8);
 for(var i=0;i<8;i++){setOp('e'+i,i<n?1:0.15);}
 if(el['fillBar'])el['fillBar'].setAttribute('width',(n/8*388).toFixed(1));

@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="470" viewBox="0 0 920 470" role="img" aria-label="客户端命令序列与帧解剖">
+<title>客户端命令序列与帧解剖</title>
+<style>
+text{font-family:'Microsoft YaHei','PingFang SC','Hiragino Sans GB',sans-serif}
+.t{font-size:20px;font-weight:700;fill:#1F1E1A}
+.s{font-size:12px;fill:#6B695F}
+.b{font-size:13px;font-weight:600;fill:#1F1E1A}
+.n{font-size:11px;fill:#3B3A34}
+.g{font-size:10.5px;fill:#854F0B}
+.c{font-size:9.5px;fill:#3B3A34}
+</style>
+<rect x="0" y="0" width="920" height="470" fill="#FFFFFF"/>
+<text class="t" x="30" y="34">客户端命令序列与帧解剖</text>
+<text class="s" x="30" y="54">一次 producer 连接从 lookup 到 sendReceipt；通知命令靠 requestId，发送靠 producerId + sequenceId</text>
+<rect x="40" y="76" width="200" height="60" rx="9" fill="#FFFFFF" stroke="#3B3A34"/>
+<text class="b" x="140" y="100" text-anchor="middle">Java 客户端</text>
+<text class="n" x="140" y="120" text-anchor="middle">Producer · ClientCnx</text>
+<rect x="680" y="76" width="200" height="60" rx="9" fill="#FFFFFF" stroke="#3B3A34"/>
+<text class="b" x="780" y="100" text-anchor="middle">Broker</text>
+<text class="n" x="780" y="120" text-anchor="middle">ServerCnx · Producer</text>
+<line x1="140" y1="136" x2="140" y2="330" stroke="#D3D1C7" stroke-width="1.2" stroke-dasharray="5 5"/>
+<line x1="780" y1="136" x2="780" y2="330" stroke="#D3D1C7" stroke-width="1.2" stroke-dasharray="5 5"/>
+<defs>
+<marker id="a14" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="g14" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<path d="M140 160 L780 160" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#a14)"/>
+<text class="g" x="460" y="152" text-anchor="middle">CommandLookupTopic · requestId</text>
+<path d="M780 190 L140 190" stroke="#639922" stroke-width="1.5" fill="none" marker-end="url(#g14)"/>
+<text class="g" x="460" y="182" text-anchor="middle" fill="#4C7A1A">LookupResponse · Connect / Redirect</text>
+<path d="M140 220 L780 220" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#a14)"/>
+<text class="g" x="460" y="212" text-anchor="middle">CommandConnect · v21</text>
+<path d="M780 250 L140 250" stroke="#639922" stroke-width="1.5" fill="none" marker-end="url(#g14)"/>
+<text class="g" x="460" y="242" text-anchor="middle" fill="#4C7A1A">CommandConnected · v21 / maxMessageSize</text>
+<path d="M140 280 L780 280" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#a14)"/>
+<text class="g" x="460" y="272" text-anchor="middle">CommandProducer + schema</text>
+<path d="M780 310 L140 310" stroke="#639922" stroke-width="1.5" fill="none" marker-end="url(#g14)"/>
+<text class="g" x="460" y="302" text-anchor="middle" fill="#4C7A1A">ProducerSuccess + schemaVersion</text>
+<text class="n" x="460" y="332" text-anchor="middle" fill="#6B695F">接下来是 CommandSend / SEND_RECEIPT；消费侧是 Subscribe / Flow / Message / Ack</text>
+<text class="b" x="30" y="382">帧解剖</text>
+<text class="n" x="30" y="402">控制帧</text>
+<rect x="120" y="386" width="60" height="22" rx="4" fill="#FFF6E8" stroke="#EF9F27"/><text class="c" x="150" y="401" text-anchor="middle">totalSize</text>
+<rect x="188" y="386" width="52" height="22" rx="4" fill="#FFF6E8" stroke="#EF9F27"/><text class="c" x="214" y="401" text-anchor="middle">cmdSize</text>
+<rect x="248" y="386" width="190" height="22" rx="4" fill="#FFFFFF" stroke="#3B3A34"/><text class="c" x="343" y="401" text-anchor="middle">BaseCommand（Protobuf）</text>
+<text class="n" x="30" y="432">发送帧</text>
+<rect x="120" y="416" width="52" height="22" rx="4" fill="#FFF6E8" stroke="#EF9F27"/><text class="c" x="146" y="431" text-anchor="middle">totalSize</text>
+<rect x="180" y="416" width="46" height="22" rx="4" fill="#FFF6E8" stroke="#EF9F27"/><text class="c" x="203" y="431" text-anchor="middle">cmdSize</text>
+<rect x="234" y="416" width="100" height="22" rx="4" fill="#FFFFFF" stroke="#3B3A34"/><text class="c" x="284" y="431" text-anchor="middle">Command</text>
+<rect x="342" y="416" width="42" height="22" rx="4" fill="#EAF3DE" stroke="#639922"/><text class="c" x="363" y="431" text-anchor="middle">magic</text>
+<rect x="392" y="416" width="48" height="22" rx="4" fill="#EAF3DE" stroke="#639922"/><text class="c" x="416" y="431" text-anchor="middle">CRC32C</text>
+<rect x="448" y="416" width="52" height="22" rx="4" fill="#FFF6E8" stroke="#EF9F27"/><text class="c" x="474" y="431" text-anchor="middle">metaSize</text>
+<rect x="508" y="416" width="110" height="22" rx="4" fill="#FFFFFF" stroke="#3B3A34"/><text class="c" x="563" y="431" text-anchor="middle">MessageMetadata</text>
+<rect x="626" y="416" width="160" height="22" rx="4" fill="#F5F4EF" stroke="#B4B2A9"/><text class="c" x="706" y="431" text-anchor="middle">payload（任意字节）</text>
+<text class="n" x="30" y="458" fill="#6B695F">CRC 只覆盖 metaSize + metadata + payload；command 和 metadata 是 Protobuf，payload 不是。</text>
+</svg>
