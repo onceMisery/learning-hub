@@ -12,7 +12,7 @@ export const SEATA_LAB = {
   trackId: 'seata',
   title: 'Seata 互动原理实验室',
   subtitle:
-    '十二章动态图解：从一条 XID 的旅程、角色接力、AT/TCC/Saga、SQL 流水线，到 TC 状态机、锁生命周期与事务传播边界。',
+    '十三章动态图解：从一条 XID 的旅程、角色接力、AT/TCC/Saga/XA、SQL 流水线，到 TC 状态机、锁生命周期与事务传播边界。',
   route: '/seata/lab',
   baseDir: 'seata-lab',
   chapters: [
@@ -111,6 +111,14 @@ export const SEATA_LAB = {
       principle: '会话锁保护同一 XID，全局行锁保护同一行；提交提前放锁，回滚失败默认保留',
       articleRoute: '/seata/server/01-session-lock',
       articleTitle: '会话与锁管理',
+    },
+    {
+      id: '13-xa-visibility',
+      file: '13-xa-visibility.html',
+      title: 'XA 的两阶段与可见性',
+      principle: 'XA START 持锁，PREPARE 后仍不可见，XA COMMIT 后才可见；没有 TC 全局锁',
+      articleRoute: '/seata/modes/04-xa',
+      articleTitle: 'XA 模式：两阶段提交',
     },
   ] satisfies LabChapter[],
 } as const;
