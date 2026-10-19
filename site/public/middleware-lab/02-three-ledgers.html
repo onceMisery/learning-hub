@@ -434,10 +434,11 @@ H+='<text class="ts" x="708" y="256">…/topic/cursor</text>';
 H+='<text class="ts" x="708" y="278">markDeletePosition</text>';
 H+='<text class="ts" x="708" y="300">cursorsLedgerId</text>';
 // cursor
-H+='<g id="cursorBox">'+box(692,352,284,134,10,'#ffffff','#3B3A34')+tx(708,376,'Cursor · 进度账','tn')+tx(708,396,'读到哪里，就记到哪里','ts')+'</g>';
+H+='<g id="cursorBox">'+box(692,352,284,134,10,'#ffffff','#3B3A34')+tx(708,376,'Cursor · 进度账（consumer ack）','tn')+tx(708,396,'读到哪里，就记到哪里','ts')+'</g>';
 H+='<rect x="708" y="418" width="252" height="14" rx="7" fill="#F5F4EF" stroke="#D3D1C7" stroke-width="1"/>';
 H+='<rect id="curBar" x="708" y="418" width="0" height="14" rx="7" fill="#639922"/>';
 H+='<text id="curT" class="ts" x="708" y="458">markDeletePosition = —</text>';
+H+=tx(708,474,'consumer ack → markDelete 推进','ts','start','#4C7A1A');
 H+='<path id="recoverPath" d="M692 300 L650 300 L650 208 L652 208" stroke="#E24B4A" stroke-width="1.8" stroke-dasharray="5 4" fill="none" opacity="0" marker-end="url(#flwR)"/>';
 H+='<text id="recoverT" class="ts" x="654" y="326" fill="#8A2A2A" opacity="0">恢复：读索引账 → 打开最后一本 ledger</text>';
 H+='<text id="stageTag" class="ts" x="985" y="544" text-anchor="end" fill="#854F0B"></text>';

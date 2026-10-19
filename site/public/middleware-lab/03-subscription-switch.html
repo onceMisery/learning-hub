@@ -519,6 +519,7 @@ else if(th<560){var u=(th-480)/80;p=[620-305*u,cy-(cy-270)*u];}
 else{var u=Math.min(1,(th-560)/160);p=[315-211*u,270-(270-210)*u];}
 if(p){setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));setAttr('tokT','x',p[0].toFixed(1));setAttr('tokT','y',(p[1]-16).toFixed(1));setOp('tok',1);setOp('tokT',1);}
 setText('tokT',['A','B','C'][k]);
+setOp('tokT',th>=80?1:0);
 var roles=[['收全部','会被拒绝','会被拒绝'],['active','待命','待命'],['轮询','轮询','轮询'],['key A / B','key C','待命']];
 var ri={exclusive:0,failover:1,shared:2,key:3}[MODE];
 for(var i=0;i<3;i++){setText('role'+i,roles[ri][i]);}

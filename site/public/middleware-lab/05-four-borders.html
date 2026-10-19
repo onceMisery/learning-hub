@@ -401,7 +401,7 @@ function box(x,y,w,h,rx,fill,stroke,dash){return '<rect x="'+x+'" y="'+y+'" widt
 function tx(x,y,s,cls,anchor,fill){return '<text class="'+(cls||'ts')+'" x="'+x+'" y="'+y+'"'+(anchor?' text-anchor="'+anchor+'"':'')+(fill?' fill="'+fill+'"':'')+'>'+s+'</text>';}
 var H='';
 // cards
-function card(x,w,title,l1,l2,kind){return '<g id="'+kind+'">'+box(x,84,w,150,10,'#ffffff','#3B3A34')+tx(x+14,108,title,'tn')+tx(x+14,130,l1,'ts')+tx(x+14,150,l2,'ts')+'</g>';}
+function card(x,w,title,l1,l2,kind,h){return '<g id="'+kind+'">'+box(x,84,w,(h||150),10,'#ffffff','#3B3A34')+tx(x+14,108,title,'tn')+tx(x+14,130,l1,'ts')+tx(x+14,150,l2,'ts')+'</g>';}
 H+=card(40,200,'① 事务可见性','未提交：maxReadPosition 不动','提交：marker 推过去','txnCard');
 H+='<text id="st1" class="ts" x="54" y="184" fill="#8A2A2A">未提交 · 不可见</text>';
 H+='<g id="marker" opacity="0"><rect x="54" y="200" width="172" height="18" rx="4" fill="#EAF3DE" stroke="#639922" stroke-width="1"/>'+tx(140,213,'COMMIT(txn) → 可见','ts','middle','#3B4A1A')+'</g>';
@@ -415,7 +415,7 @@ H+=card(500,200,'③ bundle 归属','topic 算 hash → bundle','归属锁在 /n
 H+='<text id="st3" class="ts" x="514" y="184" fill="#8A2A2A">归属未知 · lookup</text>';
 H+='<g id="lockIcon" opacity="0.4"><path d="M519 208 L519 201 A8 8 0 0 1 535 201 L535 208" fill="none" stroke="#E24B4A" stroke-width="1.6"/><rect x="514" y="208" width="26" height="18" rx="3" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.4"/><circle cx="527" cy="217" r="2" fill="#8A2A2A"/></g>';
 H+='<g id="bundleBox" opacity="0.35">'+box(548,198,138,30,6,'#FFF6E8','#EF9F27')+tx(617,218,'owner = Broker B','ts','middle','#854F0B')+'</g>';
-H+=card(730,230,'④ 背压','permits 是信用，不是速率','没有许可就停止读取','bpCard');
+H+=card(730,230,'④ 背压','permits 是信用，不是速率','没有许可就停止读取','bpCard',160);
 H+='<text id="st4" class="ts" x="744" y="184" fill="#8A2A2A">permits=0 · 停读</text>';
 H+='<rect x="744" y="202" width="200" height="10" rx="5" fill="#F5F4EF" stroke="#D3D1C7" stroke-width="1"/>';
 H+='<rect id="permitBar" x="744" y="202" width="0" height="10" rx="5" fill="#639922"/>';

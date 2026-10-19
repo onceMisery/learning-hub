@@ -372,11 +372,11 @@ H+='<g id="horizon" opacity="0.3"><rect x="620" y="362" width="152" height="20" 
 H+='<path id="offArrow" d="M888 322 L888 366" stroke="#2563EB" stroke-width="1.6" stroke-dasharray="4 4" marker-end="url(#flw)" fill="none" opacity="0.2"/>';
 H+='<g id="objBox" opacity="0.35">'+box(800,370,176,44,8,'#EFF6FF','#2563EB')+tx(888,392,'对象存储 · 冷数据','ts','middle','#1E3A8A')+tx(888,408,'读完才删 Bookie 副本','ts','middle','#1E3A8A')+'</g>';
 // 下：Bookie 三副本 + journal 提示
-H+='<g id="bkBox">'+box(24,370,480,120,12,'#FBFAF6','#B4B2A9','6 5')+tx(44,392,'Bookie 侧：一次写入的两层落盘','tn')+'</g>';
+H+='<g id="bkBox">'+box(24,370,480,130,12,'#FBFAF6','#B4B2A9','6 5')+tx(44,392,'Bookie 侧：一次写入的两层落盘','tn')+'</g>';
 H+='<text id="jrTag" class="ts" x="44" y="412">journal（顺序写 + fsync）→ 回 ack</text>';
 H+=tx(44,430,'entry log + index（异步刷）→ 后台 GC','ts','start','#6B695F');
 for(var b=0;b<3;b++){var bx=44+b*112;H+='<g id="bk'+b+'">'+box(bx,444,100,34,6,'#ffffff','#3B3A34')+tx(bx+50,465,'Bookie '+(b+1),'ts','middle')+'</g>';}
-H+=tx(44,486,'副本缺失由 BookKeeper 的 Auditor + ReplicationWorker 补（不在本仓库）','ts','start','#854F0B');
+H+=tx(44,492,'副本缺失由 BookKeeper 的 Auditor + ReplicationWorker 补（不在本仓库）','ts','start','#854F0B');
 H+='<text id="stageTag" class="ts" x="985" y="544" text-anchor="end" fill="#854F0B"></text>';
 // token
 H+='<circle id="tok" cx="96" cy="119" r="9" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/>';
