@@ -13,6 +13,7 @@ import { collectUnits, type InlineMark } from '@/lib/note-anchor';
 import { reconcileNotes, useNotes } from '@/lib/notes';
 import { markVisited, useProgress } from '@/lib/progress';
 import { formatDate } from '@/lib/format';
+import { labEntryForArticle } from '@/lib/lab-index';
 import type { PageDocument } from '@/types/content';
 
 interface DocState {
@@ -124,6 +125,8 @@ export function DocPage() {
     () => track?.sections.find((item) => item.id === sectionId),
     [track, sectionId],
   );
+  // 本页有没有配套的互动图解：实验室那边只有「去读文章」，入口得在教程页这一侧补上
+  const labEntry = useMemo(() => labEntryForArticle(trackId, slug), [trackId, slug]);
 
   if (!index) return null;
 
@@ -203,6 +206,16 @@ export function DocPage() {
                 基于 {track?.toolchain || '当前版本'}，{verified} 验证
               </span>
             </>
+          ) : null}
+          {labEntry ? (
+            <Link
+              to={`${labEntry.route}/${labEntry.chapter.id}`}
+              className="lh-chip transition-colors hover:border-[var(--border-strong)] hover:text-[var(--text)]"
+              title={labEntry.chapter.principle}
+            >
+              <Icon name="sparkles" size={11} />
+              互动版图解：{labEntry.chapter.title}
+            </Link>
           ) : null}
           {pageId ? (
             <button

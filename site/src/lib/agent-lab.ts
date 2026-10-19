@@ -15,7 +15,7 @@ export const AGENT_LAB = {
   trackId: 'agent',
   title: '互动原理实验室',
   subtitle:
-    '七章动态图解：把 Agent 运行的每个关键原理，做成能看、能点、能测的一页课。每章遵循同一条认知链——表象 → 结构 → 流程 → 融合 → 环境 → 自测。',
+    '九章动态图解：把 Agent 运行的每个关键原理，做成能看、能点、能测的一页课。每章遵循同一条认知链——表象 → 结构 → 流程 → 融合 → 环境 → 自测。',
   /** 实验室根路由（LabPage 渲染） */
   route: '/agent/lab',
   /** 图解页所在目录（public/agent-lab） */
@@ -76,6 +76,22 @@ export const AGENT_LAB = {
       principle: '七脉认知功能 × 六式执行拓扑：给 Agent 系统一个唯一地址',
       articleRoute: '/agent/tutorial/07-project-deep-dive',
       articleTitle: '项目深挖与工程表达：把系统讲出深度，把源码读出判断',
+    },
+    {
+      id: '08-tool-discovery',
+      file: '08-tool-discovery.html',
+      title: '工具发现与披露漏斗',
+      principle: '目录 → 检索 → 追加到轨迹末尾：把数万 token 的 schema 压到千级，并让「未命中」显式可见',
+      articleRoute: '/agent/tutorial/08-action-space',
+      articleTitle: '动作空间：把工具做成可发现、可审计、可自造的接口',
+    },
+    {
+      id: '09-event-timing',
+      file: '09-event-timing.html',
+      title: '事件消费与安全点',
+      principle: '紧急度决定策略：取消式 / 队列式 / 并行式，只在安全点切进生成流',
+      articleRoute: '/agent/tutorial/09-timing-and-interaction',
+      articleTitle: '触发时机与交互：把观察和动作扩展到真实世界的时间尺度上',
     },
   ] satisfies LabChapter[],
 } as const;

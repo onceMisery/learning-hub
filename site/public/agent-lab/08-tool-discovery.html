@@ -1,0 +1,1100 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>工具发现与披露漏斗 · Agent 运行原理实验室 第 8 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:920px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:680px}
+.method-chain{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:18px}
+.method-chain .mnode{background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 14px;font-size:13px;font-weight:500}
+.method-chain .marr{color:#C46A0A;font-weight:600}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:500;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:11.5px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:500;fill:#1F1E1A}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:76px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:11px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:9px 10px;text-align:center}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+.cell{cursor:pointer}
+
+/* agent-lab shared layer v1.4 */
+.method-chain{display:grid;grid-template-columns:repeat(3,max-content);justify-content:start;gap:8px 10px;align-items:center}
+.method-chain .marr{display:none}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;margin:8px 4px 0;font-size:12px;color:#6B695F}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:12px;height:10px;border-radius:3px;display:inline-block;border:1px solid #D3D1C7;background:#fff}
+.legend .sw-amber{background:#FFF6E8;border-color:#EF9F27}
+.legend .sw-green{background:#EAF3DE;border-color:#639922}
+.legend .sw-red{background:#FCEBEB;border-color:#E24B4A}
+.legend .sw-dash{border-style:dashed;border-color:#B4B2A9}
+.legend .sw-line{width:16px;height:0;border:0;border-top:2px solid #C46A0A;border-radius:0;background:none}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.warn{background:#FFF6E8;border-color:#EF9F27}
+.chip.off{background:#F5F4EF;color:#8A877C}
+.subview{margin:8px 0 4px;background:#ffffff;border:1px dashed #D3D1C7;border-radius:10px;padding:8px 10px}
+.subview .viewtitle{font-size:12px;font-weight:600;color:#854F0B;margin-bottom:4px}
+.subview .subcap{font-size:12px;color:#6B695F;margin:6px 2px 0;line-height:1.6}
+.phase-note{font-size:12px;color:#8A877C;margin:8px 4px 0;line-height:1.6}
+.tablewrap{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 0 12px;padding-bottom:2px;scrollbar-width:thin}
+.tablewrap table.grid{width:100%}
+#scene [opacity],#scene2 [opacity]{transition:opacity .28s ease}
+#scene rect,#scene circle,#scene path,#scene2 rect,#scene2 circle,#scene2 path{transition:fill .24s ease,stroke .24s ease,opacity .24s ease}
+#tok,#tokT{transition:none}
+@media (prefers-reduced-motion: reduce){#scene [opacity],#scene2 [opacity],#scene rect,#scene circle,#scene path,#scene2 rect,#scene2 circle,#scene2 path{transition:none}}
+@media (max-width:640px){.method-chain{grid-template-columns:repeat(2,max-content)}}
+
+/* 本页静态图专用（不改共享层） */
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:8px 10px 4px;margin:0 0 12px}
+.figcap{font-size:12.5px;color:#6B695F;margin:6px 4px 10px;line-height:1.65}
+.figcap b{color:#854F0B}
+.stfig .hl,.stfig .hl *{stroke:#D96C06 !important}
+@media (max-width:640px){.steppanel{flex-wrap:wrap}.steppanel .sx{min-width:0}.steppanel .snav{margin-left:0}}
+
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：动作空间</a>
+  <span class="idx">第 8 / 9 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · 动静结合认知法</div>
+<h1>工具发现与披露漏斗：一条能力怎么走到模型眼前</h1>
+<p>系统里有 127 项工具，和模型这一轮看见 5 项，是两件事。这页课讲这条能力走过的漏斗：<b>目录 → 检索 → 闸口 → 只追加的轨迹 → 模型工位</b>，以及没命中时的三条退路。动画支持<b>自动运转</b>与<b>分步点击</b>两种模式，部件可以直接点亮，读数和副图始终同相位。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span><span class="marr">→</span>
+<span class="mnode">② 静态分解</span><span class="marr">→</span>
+<span class="mnode">③ 动态分析</span><span class="marr">→</span>
+<span class="mnode">④ 动静融合</span><span class="marr">→</span>
+<span class="mnode">⑤ 环境场景</span><span class="marr">→</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 560" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>工具发现与披露漏斗动画</title>
+<defs>
+<marker id="flw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/>
+</marker>
+</defs>
+<text class="th" x="500" y="24" text-anchor="middle">工具发现与披露漏斗 · 127 项在场，本轮只放 5 项</text>
+<text class="ts" x="500" y="44" text-anchor="middle">左：schema 目录（密集小格）· 中：检索层与 top-5 闸口 · 右：稳定前缀 + 只追加轨迹 + 模型工位 · 下方：未命中分支与成本对账</text>
+<g id="scene"></g>
+</svg>
+<div class="legend">
+<span><i class="sw-amber"></i>琥珀 = 稳定前缀 / 已出闸的 schema</span>
+<span><i class="sw-green"></i>绿 = 缓存命中 / 省下的成本</span>
+<span><i class="sw-red"></i>红 = 未命中分支与「准确率打平」负结论</span>
+<span><i class="sw-dash"></i>虚线 = 系统边界 / 没走通的路径</span>
+<span><i class="sw-line"></i>橙线 = 能力流动方向</span>
+<span><i></i>密集小格 = 127 项 schema（×127，动画里只亮一个实例）</span>
+</div>
+<div class="readout">
+<span class="ro">相位 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">关键量 <b id="roKey">--</b></span>
+<span class="ro">本轮 schema 文本 <b id="roTok">--</b></span>
+<span class="ro">全量注入 <b id="roFull">50,829 token</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="subview">
+<div class="viewtitle">第二视图 · 上下文条带与缓存分段 · 稳定前缀 / 只追加轨迹 / 每轮重写尾部（与主图同步）</div>
+<svg id="eng2" viewBox="0 0 1000 230" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>上下文条带与缓存分段</title>
+<g id="scene2">
+<text class="th" x="500" y="18" text-anchor="middle">上下文条带与缓存分段 · 横轴 = 对话轮次</text>
+<text class="ts" x="500" y="35" text-anchor="middle">带内分色：稳定前缀（命中缓存，读取 ≈ 1/10）· 只追加轨迹 · 每轮重写的尾部 · 红竖线 = 缓存失效点</text>
+<text class="tb" x="64" y="72" text-anchor="end">稳定前缀</text>
+<text class="tb" x="64" y="100" text-anchor="end">只追加轨迹</text>
+<text class="tb" x="64" y="128" text-anchor="end">每轮重写</text>
+<g id="v2cells"></g>
+<line x1="70" y1="152" x2="640" y2="152" stroke="#3B3A34" stroke-width="1"/>
+<line id="v2_inv" x1="430" y1="50" x2="430" y2="158" stroke="#E24B4A" stroke-width="1.6" stroke-dasharray="4 3" opacity="0"/>
+<line id="v2_play" x1="70" y1="54" x2="70" y2="152" stroke="#D96C06" stroke-width="1.6" opacity="0.85"/>
+<rect id="v2_prog" x="70" y="198" width="0" height="8" rx="4" fill="#EF9F27"/>
+<text id="v2_scan" class="tb" x="70" y="172">扫描：轮 1 · 前缀在场</text>
+<text id="v2_invT" class="ts" x="70" y="192">轮 6 起工具集变动 · 此前缓存一直命中</text>
+<text class="ts" x="70" y="218">1/10 读取成本按公开定价量级示意 · −46.9% 为书中引用的 A/B 实测</text>
+<text class="tb" x="680" y="64">schema token 对账</text>
+<text class="ts" x="680" y="84">按需披露（动态累计）</text>
+<text id="v2_v1" class="tb" x="976" y="84" text-anchor="end">1,251</text>
+<rect x="680" y="90" width="290" height="12" rx="4" fill="#F5F4EF" stroke="#ECEAE2"/>
+<rect id="v2_b1" x="680" y="90" width="0" height="12" rx="4" fill="#639922"/>
+<text class="ts" x="680" y="116">全量注入（每任务）</text>
+<text class="tb" x="976" y="116" text-anchor="end">50,829</text>
+<rect x="680" y="122" width="290" height="12" rx="4" fill="#F5F4EF" stroke="#ECEAE2"/>
+<rect id="v2_b2" x="680" y="122" width="290" height="12" rx="4" fill="#EF9F27"/>
+<text class="ts" x="680" y="148">索引化披露 A/B · −46.9%</text>
+<rect x="680" y="154" width="290" height="12" rx="4" fill="#F5F4EF" stroke="#ECEAE2"/>
+<rect id="v2_b3" x="680" y="154" width="290" height="12" rx="4" fill="#C46A0A"/>
+<text class="ts" x="680" y="180">初始 1,251 + 动态 8,424</text>
+<text class="ts" x="680" y="200">127 项全放 = 50,597 token</text>
+<text class="ts" x="680" y="220">墙钟 3.90× · 准确率打平</text>
+</g>
+</svg>
+<div class="subcap">读法：第一遍只看红竖线落在第几轮，以及它左边/右边的前缀格颜色差别；第二遍把左侧三段带与右侧三条对账条同相位对照。图例：绿 = 缓存命中，琥珀 = 只追加的轨迹，灰 = 每轮重写的尾部，红虚线 = 工具集增删重排导致的缓存失效点。口径：本页数字全部来自书中原著实验与论文报告的分类标注，见第 3 节数字账本。</div>
+</div>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 次披露漏斗 / 4.6 秒</span>
+</div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格；也可以直接点目录里的小格。</span>
+<span class="snav">
+<button class="btn" onclick="prevStep()">‹ 上一步</button>
+<button class="btn warn" onclick="nextStep()">下一步 ›</button>
+</span>
+</div>
+<p class="phase-note">相位口径：0° = 任务进场且识别出能力缺口；720° = 一次能力闭环回到起点。目录检索 140°、top-5 出闸 230°、schema 追加轨迹末尾 300°、模型选择 380°、准入审批 450°、执行与返回 540°、未命中分支 620–680°、成本对账 680–720°；副图与主图共用同一个 phase。</p>
+<p class="phase-note"><b>数据口径</b>：127 项 schema / 50,597 token / 每轮注入 5 个 / 1,251 初始 + 8,424 动态 对 50,829 / 783.442s 对 3,056.294s（3.90×）/ 两组准确率同为 100% —— 均为书中原著实验 4-1 的<b>本地实测</b>（qwen3:4b + all-MiniLM-L6-v2），该实验<b>没有出现论文预期的准确率提升</b>；「按需检索把工具基准从 49% 提到 74%」「约 2800 个工具省约 98% token」—— <b>论文报告</b>；「MCP 工具改索引化披露后总 token 降 46.9%」—— 书中引用的 <b>A/B 实测</b>；「5 个 server 的 schema ≈ 数万 token，200K 窗口未对话先占近三成」—— <b>书中陈述</b>。四类证据等级不同，写进方案时不许混写。</p>
+</div>
+</div>
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：先把它当黑盒</h2></div>
+<p class="sec-sub">第一步不拆机器，只看它对外表现出什么行为。</p>
+<div class="quote">「对事物的观察包括了静态结构 + 动态生命周期 + 环境场景三个方面的内容。」</div>
+<p>从外部看，这台机器做的事只有一件：<b>把「系统里有的能力」翻译成「模型这一轮能看见的能力」</b>。请求进来时它并不回答，而是先决定哪些工具定义出现在窗口里；回答得对不对，取决于这一步放进来的是什么。</p>
+<div class="flow">
+<span class="node">一次带能力缺口的请求</span><span class="arr">→</span>
+<span class="node">披露漏斗（黑盒）</span><span class="arr">→</span>
+<span class="node">本轮在场 5 个 schema（主产物）</span>
+<span class="node">「未找到」回执 + token 账单（副产物）</span>
+</div>
+<p>黑盒观察还能看出两件事：其一，<b>在场数量与目录数量不成比例</b>——127 对 5，压缩比来自宿主策略而不是协议；最省事的写法（把 tools/list 的结果全量注入 system prompt 顶部）会让 5 个 MCP server 的 schema 就吃掉数万 token，200K 窗口里对话还没开始就先占掉近三成。其二，<b>没命中时它会明确说没命中</b>，而不是挑一个看起来像的先用上。第二件事比第一件事更能说明这套机制是否可信。</p>
+<p class="hint">口诀：先问本轮在场几个，再问系统里一共几个。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：它由什么组成</h2></div>
+<p class="sec-sub">打开黑盒，沿空间维度拆解。点部件卡片，动画中对应部分会亮成琥珀色。</p>
+<div class="quote">「它由什么构成？核心方法是分解、分类、结构化——分解需符合 MECE 法则，同层必须粒度一致。」</div>
+<p>披露漏斗按功能分成<b>四组九件</b>。先看静态标注图（编号与动画、部件卡三处一致），再点卡片。</p>
+<div class="figure">
+<svg id="fig1" class="stfig" viewBox="0 0 1000 330" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>披露漏斗静态标注图</title>
+<text class="th" x="500" y="22" text-anchor="middle">静态标注图 · 披露漏斗的九件部件（编号 = 动画编号 = 部件卡编号）</text>
+<text class="ts" x="500" y="40" text-anchor="middle">虚线框 = 宿主披露层的系统边界：框内是工程可以改写的部分，框外是模型与运行环境</text>
+<rect x="20" y="52" width="960" height="256" rx="12" fill="#ffffff" stroke="#B4B2A9" stroke-width="1.2" stroke-dasharray="6 4"/>
+<rect x="470" y="62" width="62" height="16" rx="8" fill="#FBFAF6" stroke="#B4B2A9" stroke-width="0.8"/>
+<text class="ts" x="501" y="74" text-anchor="middle">系统边界</text>
+<rect x="36" y="86" width="170" height="58" rx="8" fill="#ffffff" stroke="#3B3A34" stroke-width="1.4"/>
+<text class="ts" x="46" y="102">×127 格</text>
+<text class="tn" x="121" y="112" text-anchor="middle">① schema 目录</text>
+<text class="ts" x="121" y="132" text-anchor="middle">50,597 token</text>
+<rect x="226" y="86" width="170" height="58" rx="8" fill="#ffffff" stroke="#3B3A34" stroke-width="1.4"/>
+<text class="tn" x="311" y="112" text-anchor="middle">② 检索层</text>
+<text class="ts" x="311" y="132" text-anchor="middle">语义 + 名称分词</text>
+<rect x="416" y="86" width="110" height="58" rx="8" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.4"/>
+<text class="tn" x="471" y="112" text-anchor="middle">③ 闸口</text>
+<text class="ts" x="471" y="132" text-anchor="middle">top-5</text>
+<rect x="546" y="86" width="200" height="58" rx="8" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.4"/>
+<text class="ts" x="722" y="102" text-anchor="end">×5 行</text>
+<text class="tn" x="646" y="112" text-anchor="middle">④ 稳定前缀 + 轨迹</text>
+<text class="ts" x="646" y="132" text-anchor="middle">1,251 初始 · 8,424 动态</text>
+<rect x="766" y="86" width="190" height="58" rx="8" fill="#ffffff" stroke="#3B3A34" stroke-width="1.4"/>
+<text class="tn" x="861" y="112" text-anchor="middle">⑤ 模型工位</text>
+<text class="ts" x="861" y="132" text-anchor="middle">只在 5 项里挑</text>
+<rect x="36" y="170" width="170" height="58" rx="8" fill="#ffffff" stroke="#3B3A34" stroke-width="1.4"/>
+<text class="tn" x="121" y="196" text-anchor="middle">⑥ 工具执行框</text>
+<text class="ts" x="121" y="216" text-anchor="middle">准入审批 · 结果回写</text>
+<rect x="226" y="170" width="230" height="58" rx="8" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.4"/>
+<text class="tn" x="341" y="196" text-anchor="middle">⑦ 未命中分支</text>
+<text class="ts" x="341" y="216" text-anchor="middle">显式「未找到」· 三条退路</text>
+<rect x="476" y="170" width="230" height="58" rx="8" fill="#ffffff" stroke="#3B3A34" stroke-width="1.4"/>
+<text class="tn" x="591" y="196" text-anchor="middle">⑧ 前缀对比</text>
+<text class="ts" x="591" y="216" text-anchor="middle">9,675 对 50,829 token</text>
+<rect x="726" y="170" width="230" height="58" rx="8" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.4"/>
+<text class="tn" x="841" y="196" text-anchor="middle">⑨ 准确率状态牌</text>
+<text class="ts" x="841" y="216" text-anchor="middle">100% 对 100% · 打平</text>
+<defs><marker id="flwA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker></defs>
+<path d="M206 115 L226 115" stroke="#C46A0A" stroke-width="1.4" fill="none" marker-end="url(#flwA)"/>
+<path d="M396 115 L416 115" stroke="#C46A0A" stroke-width="1.4" fill="none" marker-end="url(#flwA)"/>
+<path d="M526 115 L546 115" stroke="#C46A0A" stroke-width="1.4" fill="none" marker-end="url(#flwA)"/>
+<path d="M746 115 L766 115" stroke="#C46A0A" stroke-width="1.4" fill="none" marker-end="url(#flwA)"/>
+<path d="M861 144 L861 156 L121 156 L121 170" stroke="#C46A0A" stroke-width="1.2" fill="none" marker-end="url(#flwA)"/>
+<path d="M206 199 L226 199" stroke="#C46A0A" stroke-width="1.2" fill="none" marker-end="url(#flwA)"/>
+<path d="M456 199 L476 199" stroke="#C46A0A" stroke-width="1.2" fill="none" marker-end="url(#flwA)"/>
+<path d="M706 199 L726 199" stroke="#C46A0A" stroke-width="1.2" fill="none" marker-end="url(#flwA)"/>
+<path d="M341 170 L341 156 L311 156 L311 144" stroke="#C46A0A" stroke-width="1.1" fill="none" stroke-dasharray="4 3" marker-end="url(#flwA)"/>
+<text class="ts" x="36" y="258">关键边界：① 目录 ≠ 本轮在场（127 对 5）· ③ 闸口宽度 = 每轮注入条数（5）· ④ 前缀钉住，只往末尾追加</text>
+<text class="ts" x="36" y="278">重复件：目录 127 格、轨迹 5 行——本图各标一个实例（×N 见上方角标）；② 的两把尺子并行，各管一类命中</text>
+<text class="ts" x="36" y="298">读法：从左到右是一条能力的旅程；虚线框外的发布流程与定价属于环境（第 5 节），不算漏斗内部件</text>
+</svg>
+</div>
+<p class="figcap"><b>读法</b>：① → ⑤ 是主线（能力怎么走到模型眼前），⑥ 是出手，⑦ 是没走到时的出口，⑧ ⑨ 是这本账的两条结论。编号与顶部动画、下方部件卡一一对应。<b>口径</b>：图上所有数字与动画同一份，未展开的多轮并发见「边界与简化」。</p>
+<div class="partgroup">
+<div class="gname">供给组 —— 负责「哪些能力被摊开」</div>
+<div class="parts">
+<button class="part" data-part="cat"><b>① 127 项 schema 目录</b><span>tools/list 拿到的是全量定义，50,597 token。目录是账本，不是在场名单。</span></button>
+<button class="part" data-part="ret"><b>② 检索层</b><span>两把尺子并行：all-MiniLM-L6-v2 管语义相近，名称分词管 token 精确命中；花宿主的算力，不花模型的 token。</span></button>
+<button class="part" data-part="gate"><b>③ top-5 闸口</b><span>命中才出闸，每轮注入 5 个 schema。闸口做的是裁剪，不是判断。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">在场组 —— 负责「模型这一轮看见什么」</div>
+<div class="parts">
+<button class="part" data-part="traj"><b>④ 稳定前缀 + 只追加轨迹</b><span>前缀 1,251 token 钉住不动才能命中缓存；新 schema 追加到末尾并保持首次位置，绝不回填前缀。</span></button>
+<button class="part" data-part="model"><b>⑤ 模型工位</b><span>只在 5 个候选里挑，另外 122 项它从没见过。「没选中」和「选错」是两个不同的问题。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">出手组 —— 负责「看见之后能不能安全做」</div>
+<div class="parts">
+<button class="part" data-part="exec"><b>⑥ 工具执行框</b><span>高风险动作过准入，拒绝理由作为调用结果写进轨迹；结果逐轮计费，所以返回体才是成本主体。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">分支与对账组 —— 负责「没命中怎么办、这趟值不值」</div>
+<div class="parts">
+<button class="part" data-part="branch"><b>⑦ 未命中分支</b><span>显式返回「未找到」，三条退路：改写查询重试 / 基础工具手工实现 / 造一个新工具。</span></button>
+<button class="part" data-part="cmp"><b>⑧ 前缀长度对比</b><span>同一条请求两种前缀：按需 9,675 token 对 全量 50,829；索引化披露 A/B 总 token 降 46.9%。</span></button>
+<button class="part" data-part="acc"><b>⑨ 准确率状态牌</b><span>本地实测两组同为 100%，预期内的准确率提升没有出现。省下来的是 token 与墙钟。</span></button>
+</div>
+</div>
+<p class="hint">静态分解只回答了「有什么」。一条能力怎么在 4.6 秒里走完漏斗、没命中时又怎么走岔？必须切换到时间维度——下一节。</p>
+<p class="hint">口诀：目录、尺子、闸口、轨迹、工位——五件把能力送进门，剩下四件管没送成的那一半。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：它如何运转</h2></div>
+<p class="sec-sub">盯住那块琥珀色的 schema 卡。用动画下方 9 个步骤点逐帧走完一次披露漏斗。</p>
+<div class="quote">「它如何演变与运作？关注时间轴上的发展规律、行为模式和内部流程。核心方法是流程分析、行为追溯。」</div>
+<p><b>操作：</b>点步骤条圆点（或「下一步」）画面会定格在对应相位；也<b>可以直接点目录里的任意小格</b>，看那一项 schema 单独披露会不会改变本轮结论。建议完整走两遍：第一遍只跟踪那块卡（目录 → 两把尺子 → 闸口 → 轨迹末尾），第二遍同时读右侧模型工位、执行框与副图的三段带。</p>
+<div class="figure">
+<svg id="fig2" class="stfig" viewBox="0 0 1000 200" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>披露漏斗相位时间轴</title>
+<defs><marker id="flwB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker></defs>
+<text class="th" x="500" y="20" text-anchor="middle">相位时间轴 · 0°= 任务进场且识别出能力缺口，720°= 一次能力闭环回到起点</text>
+<rect x="60" y="56" width="171" height="14" rx="3" fill="#F5F4EF" stroke="#ECEAE2"/>
+<rect x="231" y="56" width="110" height="14" rx="3" fill="#FFF6E8" stroke="#EF9F27"/>
+<rect x="341" y="56" width="86" height="14" rx="3" fill="#FFF1D6" stroke="#EF9F27"/>
+<rect x="427" y="56" width="97" height="14" rx="3" fill="#FFF6E8" stroke="#EF9F27"/>
+<rect x="524" y="56" width="86" height="14" rx="3" fill="#FBFAF6" stroke="#ECEAE2"/>
+<rect x="610" y="56" width="110" height="14" rx="3" fill="#EAF3DE" stroke="#639922"/>
+<rect x="720" y="56" width="98" height="14" rx="3" fill="#FBFAF6" stroke="#ECEAE2"/>
+<rect x="818" y="56" width="73" height="14" rx="3" fill="#FCEBEB" stroke="#E24B4A"/>
+<rect x="891" y="56" width="49" height="14" rx="3" fill="#FAEEDA" stroke="#EF9F27"/>
+<line x1="60" y1="70" x2="940" y2="70" stroke="#3B3A34" stroke-width="1"/>
+<line x1="610" y1="50" x2="610" y2="112" stroke="#E24B4A" stroke-width="1.4" stroke-dasharray="4 3"/>
+<text class="tb" x="146" y="46" text-anchor="middle">缺口</text>
+<text class="tb" x="286" y="46" text-anchor="middle">检索</text>
+<text class="tb" x="384" y="46" text-anchor="middle">出闸</text>
+<text class="tb" x="475" y="46" text-anchor="middle">追加</text>
+<text class="tb" x="567" y="46" text-anchor="middle">选择</text>
+<text class="tb" x="665" y="46" text-anchor="middle">审批</text>
+<text class="tb" x="769" y="46" text-anchor="middle">执行</text>
+<text class="tb" x="854" y="46" text-anchor="middle">未命中</text>
+<text class="tb" x="915" y="46" text-anchor="middle">对账</text>
+<text class="ts" x="60" y="86" text-anchor="middle">0°</text>
+<text class="ts" x="231" y="86" text-anchor="middle">140°</text>
+<text class="ts" x="341" y="86" text-anchor="middle">230°</text>
+<text class="ts" x="427" y="86" text-anchor="middle">300°</text>
+<text class="ts" x="524" y="86" text-anchor="middle">380°</text>
+<text class="ts" x="610" y="86" text-anchor="middle">450°</text>
+<text class="ts" x="720" y="86" text-anchor="middle">540°</text>
+<text class="ts" x="818" y="86" text-anchor="middle">620°</text>
+<text class="ts" x="891" y="86" text-anchor="middle">680°</text>
+<text class="ts" x="940" y="86" text-anchor="middle">720°</text>
+<text class="ts" x="427" y="106">300° · schema 追加到末尾</text>
+<text class="ts" x="610" y="106" fill="#8A2A2A">450° · 工具集变动 → 缓存全废</text>
+<text class="ts" x="818" y="106">620° 显式未找到</text>
+<text class="ts" x="60" y="130">目录状态：140–230° 被扫描 · 230° 后 127 项仍全量在册，但一个都不再注入</text>
+<text class="ts" x="60" y="150">闸口状态：230–300° 逐条放行（0 → 5）· 300° 之后本轮封顶，多出来的留在目录里</text>
+<text class="ts" x="60" y="170">轨迹状态：300° +1 schema · 546° +1 tool result · 全程不重排前缀，只往末尾追加</text>
+<text class="ts" x="60" y="190">分支状态：610–650° 未命中回执在途 · 646–700° 三条退路依次亮，700° 起进入成本对账</text>
+</svg>
+</div>
+<p class="figcap"><b>读法</b>：色带是阶段长度（不是等分时间），刻度单位是相位°；红虚线是缓存失效点，它落在「准入审批之后」而不是「追加 schema 之后」——这个区别就是本页最贵的一句话。<b>口径</b>：本轴与动画 STEPS 同一份数据，阶段区间逐条对应下方表格。</p>
+<div class="tablewrap"><table class="grid">
+<tr><th>阶段</th><th>相位</th><th>谁在场</th><th>定格读数</th><th>这一步在干什么</th></tr>
+<tr><td>① 任务进场 · 缺口</td><td>0°–140°</td><td class="act">前缀 + 名称索引</td><td>1,251 token</td><td>系统有 127 项，本轮在场的是工具名列表；缺的是退改规则的查询能力</td></tr>
+<tr><td>② 目录检索</td><td>140°–230°</td><td class="hot">检索层两把尺子</td><td>已扫 n / 127</td><td>语义匹配 + 名称分词并行；扫描花宿主的算力，不花模型的 token</td></tr>
+<tr><td>③ top-5 出闸</td><td>230°–300°</td><td class="hot">闸口</td><td>出闸 5 / 5</td><td>命中才出闸，每轮注入 5 个 schema；裁剪不是判断</td></tr>
+<tr><td>④ 追加轨迹末尾</td><td>300°–380°</td><td class="hot">轨迹</td><td>1,251 + 动态累计</td><td>新 schema 追加到末尾并保持首次位置；不回填前缀，缓存才保得住</td></tr>
+<tr><td>⑤ 模型选择</td><td>380°–450°</td><td class="act">模型工位</td><td>候选 5 → 选定 1</td><td>只在 5 项里挑，另外 122 项它没见过；短注意力不等于高正确率</td></tr>
+<tr><td>⑥ 准入审批</td><td>450°–540°</td><td class="hot">执行框 · 工具集变动</td><td>缓存命中 → 全废</td><td>拒绝理由作为调用结果写进轨迹；新工具进集合即重排前缀</td></tr>
+<tr><td>⑦ 执行与返回</td><td>540°–620°</td><td class="act">执行框 · 轨迹</td><td>+1 tool result</td><td>结果逐轮计费；3.90× 的墙钟差来自少读 127 份目录</td></tr>
+<tr><td>⑧ 未命中分支</td><td>620°–680°</td><td class="hot">分支 · 三条退路</td><td>显式「未找到」</td><td>相似项不顶替；重试 / 手工实现 / 造新工具，造出的要走 worktree + PR</td></tr>
+<tr><td>⑨ 成本对账</td><td>680°–720°</td><td class="hot">对比条 · 准确率牌</td><td>9,675 对 50,829</td><td>省的是 token 与墙钟，准确率打平——闭环回到起点</td></tr>
+</table></div>
+<p>数字账本：每个数字只维护一份，图上、表里、解析里必须一致。</p>
+<div class="tablewrap"><table class="grid">
+<tr><th>数字</th><th>口径 / 证据等级</th><th>在页面上的落点</th></tr>
+<tr><td>127 项 schema · 50,597 token</td><td class="hot">本地实测（实验 4-1，qwen3:4b + all-MiniLM-L6-v2）</td><td>主图 ① 目录格阵 + 副图对账行 + 静态标注图</td></tr>
+<tr><td>每轮注入 5 个 schema</td><td class="hot">本地实测</td><td>主图 ③ 闸口 5 个槽位 + 读数 chips</td></tr>
+<tr><td>1,251 初始 + 8,424 动态 = 9,675</td><td class="hot">本地实测</td><td>读数条 roTok 动态值 + 主图 ⑧ + 副图第一条</td></tr>
+<tr><td>全量注入 50,829 token / 任务</td><td class="hot">本地实测</td><td>读数条「全量注入」+ 主图 ⑧ 第二条</td></tr>
+<tr><td>准确率 100% 对 100%（打平）· 3/3 对 3/3</td><td class="hot">本地实测，负结论：预期提升未出现</td><td>主图 ⑨ 状态牌（两条等长）+ chips + 自测题</td></tr>
+<tr><td>783.442s 对 3,056.294s = 3.90× 提速</td><td class="hot">本地实测（墙钟）</td><td>主图 ⑨ 第三行 + 第 3 节阶段表</td></tr>
+<tr><td>49% → 74%（工具基准）</td><td>论文报告</td><td>第 5 节环境卡 + 本表</td></tr>
+<tr><td>约 2800 工具省约 98% token</td><td>论文报告</td><td>第 5 节环境卡 + 本表</td></tr>
+<tr><td>总 token −46.9%</td><td class="act">书中引用的 A/B 实测</td><td>主图 ⑧ 第三条 + 副图第三条</td></tr>
+<tr><td>5 个 server ≈ 数万 token · 200K 窗口先占近三成</td><td>书中陈述</td><td>第 1 节黑盒描述 + 副图对账行</td></tr>
+<tr><td>缓存命中读取成本 ≈ 1/10</td><td>公开定价量级示意</td><td>副图前缀带图例 + 边界与简化</td></tr>
+</table></div>
+<p>两个容易错过、但值得在分步模式里细看的点：① 第 ④ 阶段那块卡是<b>插到轨迹末尾</b>而不是插进前缀——把它插进前缀就等于每轮重排一次前缀，副图的红线会从第 1 轮一直画到最后一轮；② 第 ⑥ 阶段缓存失效点画在<b>工具集变动</b>之后而不是<b>schema 载入</b>之后：追加历史不碰前缀，改工具集才碰。</p>
+<p class="hint">口诀：0° 缺能力，300° 进轨迹，450° 变工具集，620° 说不认识。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：三段带如何协同出「该在场的在场」</h2></div>
+<p class="sec-sub">把第 2 节的「结构」和第 3 节的「流程」叠在一起——这才是理解的完成态。</p>
+<div class="quote">「动静融合的关键是建立映射：将组成部件与操作步骤一一对应，理解各部件如何协同产生外在行为。系统 = 元素 + 连接 + 目标。」</div>
+<p>映射表：<b>每个部件在每个阶段里承担什么角色</b>。竖着看是一个阶段的全体协同，横着看是一个部件的完整职责。</p>
+<div class="tablewrap"><table class="grid">
+<tr><th>部件 ＼ 阶段</th><th>① 缺口</th><th>② 检索</th><th>③④ 出闸入轨迹</th><th>⑤ 选择</th><th>⑥⑦ 准入执行</th><th>⑧⑨ 分支对账</th></tr>
+<tr><td>① 127 项目录</td><td class="act">全量在册</td><td class="hot">被扫描</td><td>只出 5 项</td><td>不参与</td><td>不参与</td><td>50,597 是账本不是在场</td></tr>
+<tr><td>② 检索层</td><td>读缺口</td><td class="hot">语义 + 分词</td><td>交候选</td><td>—</td><td>—</td><td class="hot">无命中即触发 ⑦</td></tr>
+<tr><td>③ 闸口</td><td>—</td><td>等结果</td><td class="hot">放行 5 条</td><td>定义候选集</td><td>—</td><td>不出闸 = 不假装看见</td></tr>
+<tr><td>④ 前缀 + 轨迹</td><td class="act">前缀钉住</td><td>不变</td><td class="hot">末尾追加</td><td>被读取</td><td class="hot">写调用与结果</td><td class="hot">工具集变动 → 缓存全废</td></tr>
+<tr><td>⑤ 模型工位</td><td>声明缺口</td><td>—</td><td>第一次看见</td><td class="hot">5 选 1</td><td>提交调用</td><td>选不出就退回缺口</td></tr>
+<tr><td>⑥ 执行框</td><td>—</td><td>—</td><td>—</td><td>—</td><td class="hot">审批 · 回写</td><td>拒绝理由进轨迹</td></tr>
+<tr><td>⑨ 准确率牌</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td class="hot">打平是实测结论</td></tr>
+</table></div>
+<div class="figure">
+<svg id="fig3" class="stfig" viewBox="0 0 1000 150" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>一次披露的六次交接</title>
+<defs><marker id="flwC" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker></defs>
+<text class="th" x="500" y="20" text-anchor="middle">接力图 · 一次披露走过的六次交接（相位零点与动画一致：0° = 任务进场）</text>
+<rect x="70" y="40" width="140" height="44" rx="8" fill="#ffffff" stroke="#3B3A34" stroke-width="1.3"/>
+<text class="tb" x="140" y="60" text-anchor="middle">① 目录 127 项</text>
+<text class="ts" x="140" y="76" text-anchor="middle">50,597 token</text>
+<rect x="230" y="40" width="140" height="44" rx="8" fill="#ffffff" stroke="#3B3A34" stroke-width="1.3"/>
+<text class="tb" x="300" y="60" text-anchor="middle">② 两把尺子</text>
+<text class="ts" x="300" y="76" text-anchor="middle">语义 · 分词</text>
+<rect x="390" y="40" width="140" height="44" rx="8" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.3"/>
+<text class="tb" x="460" y="60" text-anchor="middle">③ 闸口 top-5</text>
+<text class="ts" x="460" y="76" text-anchor="middle">每轮 5 条</text>
+<rect x="550" y="40" width="140" height="44" rx="8" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.3"/>
+<text class="tb" x="620" y="60" text-anchor="middle">④ 轨迹 +1</text>
+<text class="ts" x="620" y="76" text-anchor="middle">末尾 · 不重排</text>
+<rect x="710" y="40" width="140" height="44" rx="8" fill="#ffffff" stroke="#3B3A34" stroke-width="1.3"/>
+<text class="tb" x="780" y="60" text-anchor="middle">⑤ 模型 5 选 1</text>
+<text class="ts" x="780" y="76" text-anchor="middle">只看见 5 项</text>
+<rect x="870" y="40" width="100" height="44" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text class="tb" x="920" y="60" text-anchor="middle">⑥ 执行</text>
+<text class="ts" x="920" y="76" text-anchor="middle">结果回写</text>
+<path d="M210 62 L230 62" stroke="#C46A0A" stroke-width="1.3" marker-end="url(#flwC)"/>
+<path d="M370 62 L390 62" stroke="#C46A0A" stroke-width="1.3" marker-end="url(#flwC)"/>
+<path d="M530 62 L550 62" stroke="#C46A0A" stroke-width="1.3" marker-end="url(#flwC)"/>
+<path d="M690 62 L710 62" stroke="#C46A0A" stroke-width="1.3" marker-end="url(#flwC)"/>
+<path d="M850 62 L870 62" stroke="#C46A0A" stroke-width="1.3" marker-end="url(#flwC)"/>
+<path d="M920 84 L920 100 L140 100 L140 84" stroke="#C46A0A" stroke-width="1.1" fill="none" stroke-dasharray="4 3" marker-end="url(#flwC)"/>
+<text class="ts" x="70" y="120">交接物：候选清单 → 5 份 schema → 一次调用 → 一条 tool result；没有一环把「看见」当成「授权」</text>
+<text class="ts" x="70" y="140">三段的账不能混：稳定前缀跨轮复用（读取 ≈ 1/10）· 轨迹只追加 · 尾部每轮重写</text>
+</svg>
+</div>
+<p class="figcap"><b>读法</b>：先看六次交接各交出什么东西，再看那条虚线回环——执行结果回写进轨迹，才让「下一轮少查一次目录」成为可能。<b>口径</b>：交接顺序即动画相位顺序，未展开多轮并发。</p>
+<p>点题一句：<b>「127 项能力、每轮只花 9,675 token，而且缓存还在」这个外在行为，不是任何一个部件的属性，而是「披露策略 × 追加顺序 × 准入边界」整体协同涌现的</b>。三件事少一件就换一种失守：只改披露不改追加顺序（把 schema 回填进前缀），token 省了、缓存废了；只保缓存不管工具集变动，前缀看似稳定、其实每轮都在重排；把「看见」和「能调」混成一件事，检索就成了越权通道——搜索是补说明书，不是开权限。对称设计在另一侧：<b>没命中也要留痕</b>，显式的「未找到」和静默塞一个相近工具，是两种完全不同的可审计性。</p>
+<p class="hint">口诀：token 是买出来的，判断力不是；前缀钉住，账才算得清。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：它依赖什么才能工作</h2></div>
+<p class="sec-sub">主体之外，还有一圈支撑系统。</p>
+<div class="quote">「对事物的认识 = 空间属性 + 时间属性 + 环境属性（外在关系和依赖）。」</div>
+<div class="figure">
+<svg id="fig4" class="stfig" viewBox="0 0 1000 250" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>披露漏斗的环境边界图</title>
+<defs><marker id="flwD" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker></defs>
+<text class="th" x="500" y="22" text-anchor="middle">环境边界图 · 漏斗依赖的六个外部系统</text>
+<rect x="300" y="44" width="400" height="148" rx="12" fill="#FBFAF6" stroke="#B4B2A9" stroke-width="1.2" stroke-dasharray="6 4"/>
+<text class="tn" x="500" y="70" text-anchor="middle">主体 · 披露漏斗</text>
+<text class="ts" x="500" y="92" text-anchor="middle">目录 → 检索 → 闸口 → 只追加轨迹</text>
+<text class="ts" x="500" y="112" text-anchor="middle">本轮：127 项里放 5 项进窗</text>
+<text class="ts" x="500" y="132" text-anchor="middle">外部系统只提供条件</text>
+<text class="ts" x="500" y="152" text-anchor="middle">不进本轮上下文</text>
+<rect x="26" y="44" width="230" height="44" rx="8" fill="#ffffff" stroke="#3B3A34" stroke-width="1.3"/>
+<text class="tb" x="141" y="62" text-anchor="middle">索引与嵌入服务</text>
+<text class="ts" x="141" y="78" text-anchor="middle">all-MiniLM-L6-v2 · 本地</text>
+<rect x="26" y="100" width="230" height="44" rx="8" fill="#ffffff" stroke="#3B3A34" stroke-width="1.3"/>
+<text class="tb" x="141" y="118" text-anchor="middle">宿主披露策略</text>
+<text class="ts" x="141" y="134" text-anchor="middle">全量 / 索引 / 延迟三选一</text>
+<rect x="26" y="156" width="230" height="44" rx="8" fill="#ffffff" stroke="#3B3A34" stroke-width="1.3"/>
+<text class="tb" x="141" y="174" text-anchor="middle">定价与缓存机制</text>
+<text class="ts" x="141" y="190" text-anchor="middle">缓存键含身份与授权范围</text>
+<rect x="744" y="44" width="230" height="44" rx="8" fill="#ffffff" stroke="#3B3A34" stroke-width="1.3"/>
+<text class="tb" x="859" y="62" text-anchor="middle">权限与准入系统</text>
+<text class="ts" x="859" y="78" text-anchor="middle">把「看见」与「能调」拆开</text>
+<rect x="744" y="100" width="230" height="44" rx="8" fill="#ffffff" stroke="#3B3A34" stroke-width="1.3"/>
+<text class="tb" x="859" y="118" text-anchor="middle">发布流程</text>
+<text class="ts" x="859" y="134" text-anchor="middle">worktree + Spec + PR</text>
+<rect x="744" y="156" width="230" height="44" rx="8" fill="#ffffff" stroke="#3B3A34" stroke-width="1.3"/>
+<text class="tb" x="859" y="174" text-anchor="middle">评估集与轨迹日志</text>
+<text class="ts" x="859" y="190" text-anchor="middle">打平要能被复现</text>
+<path d="M256 66 L300 66" stroke="#C46A0A" stroke-width="1.2" marker-end="url(#flwD)"/>
+<path d="M256 122 L300 122" stroke="#C46A0A" stroke-width="1.2" marker-end="url(#flwD)"/>
+<path d="M256 178 L300 178" stroke="#C46A0A" stroke-width="1.2" marker-end="url(#flwD)"/>
+<path d="M744 66 L700 66" stroke="#C46A0A" stroke-width="1.2" marker-end="url(#flwD)"/>
+<path d="M744 122 L700 122" stroke="#C46A0A" stroke-width="1.2" marker-end="url(#flwD)"/>
+<path d="M744 178 L700 178" stroke="#C46A0A" stroke-width="1.2" marker-end="url(#flwD)"/>
+<text class="ts" x="26" y="214">失效后果：断索引 → 退化成全量注入；断准入 → 「看见」与「能调」混成一件事；断发布流程 → 自造工具悄悄转正</text>
+<text class="ts" x="26" y="236">依赖流向：实线 = 每轮都被读一次的前置条件；虚线框 = 系统边界，框外不进本轮上下文</text>
+</svg>
+</div>
+<p class="figcap"><b>读法</b>：先看六个外部系统各供给什么，再看底部三条失效后果——每条都能在第 3 节的某个阶段上找到对应现象。<b>口径</b>：49% → 74%、约 98% 为论文报告，与本页本地实测不同等级。</p>
+<div class="envcards">
+<div class="env"><b>索引与嵌入服务</b><span>本地 all-MiniLM-L6-v2 把 127 项压成可检索的向量。拆掉它，检索层只剩名称分词，闸口宽度就得靠人写规则。</span></div>
+<div class="env"><b>宿主披露策略</b><span>协议不管披露，宿主管：全量注入、只留名称索引、转延迟项 + 检索三条路，只有第三条把「看见」和「能调」分开。</span></div>
+<div class="env"><b>定价与缓存机制</b><span>稳定前缀的读取成本按公开定价量级约 1/10——但缓存键必须含用户身份与授权范围，否则会把 A 的权限结果喂给 B。</span></div>
+<div class="env"><b>权限与准入系统</b><span>拦截是工具名粒度的。没有准入，检索出来的 schema 就同时是权限申请单，审批门形同虚设。</span></div>
+<div class="env"><b>发布流程（worktree + PR）</b><span>运行内生成的插件重启即消失，不能被自动提升为正式能力；造新工具这条退路全靠它兜底。</span></div>
+<div class="env"><b>评估集与轨迹日志</b><span>「准确率打平」这个负结论能被复现，靠的是同一批任务 + 可比价指标 + 完整轨迹。拆掉它，只能讲省了多少 token 的故事。</span></div>
+</div>
+<p>动画里的漏斗能转起来，前提是这六个系统在「环境」里就位。拆掉任何一个，外在行为立即消失——尤其是<b>宿主披露策略与发布流程</b>：拆掉前者，「按需披露」退化成一堆检索代码；拆掉后者，Agent 自造的工具会悄悄长成正式能力，把整条审计链断在最贵的那一环。</p>
+<p class="hint">口诀：漏斗能转，靠的是索引、准入、定价、发布四件事都在场。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测：学习-实践-复盘的闭环</h2></div>
+<p class="sec-sub">用自己的话能讲清楚，才算真的懂。先答题，再对照解析。</p>
+<div class="quote">「复盘是把『我当时怎么想的』和『实际怎么走完的』对齐：结论要能复现，数字要能定级——实测、论文报告、A/B 实测是三种不同的分量。」</div>
+<div id="quiz"></div>
+<p class="hint">口诀：讲得清口径，才敢引用数字；分得清实测与报告，才敢写进方案。</p>
+</section>
+
+<div class="summary">
+<h2>一页带走</h2>
+<p class="chant">目录里一百二十七，本轮只放五个；买到的是 token 与延迟，不是判断力。</p>
+<p>· 方法：表象（能力翻译机）→ 结构（四组九件）→ 流程（九阶段一轮漏斗）→ 融合（「该在场的在场」是三段带协同涌现的）。</p>
+<p>· 结构：127 项目录 + 两把尺子的检索层 + top-5 闸口 + 钉住的前缀与只追加轨迹 + 模型工位与执行框 + 未命中分支与两块对账牌。</p>
+<p>· 行为：检索花宿主的算力不花模型的 token；schema 追加到末尾并保持首次位置；工具集一变动，缓存自首个变动处起全废；没命中就显式说没命中。</p>
+<p>· 协同：披露策略 × 追加顺序 × 准入边界三件齐了，「127 项能力、每轮只花 9,675 token」才成立；缺任一件，账就变成一笔糊涂账。</p>
+<p>· 边界与简化：漏斗按单轮演示，多轮并发检索与批量披露未展开；检索与全量注入的延迟差异未按比例绘制；缓存读取成本 1/10 是公开定价量级示意；未命中分支只演了「三条退路里选一条」的过程，真实系统还要按外部契约是否变化来判该不该自愈。</p>
+</div>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+
+<script>
+(function(){
+// ============ 主题专属数据 ============
+var PERIOD=4600,PHASE_MAX=720;
+var STEPS=[
+{d:0,t:'任务进场 · 缺口',x:'「把这个订单退掉」进来时，系统里 127 项 schema 一项都不在模型眼前——本轮在场的是 1,251 token 的名称索引；缺的是退改规则的查询能力，这就是能力缺口'},
+{d:140,t:'目录检索',x:'检索层两把尺子并行：all-MiniLM-L6-v2 管语义相近，名称分词管 token 精确命中，在 127 项里扫。目录整体 50,597 token，但扫描花的是宿主的算力，不花模型的 token'},
+{d:230,t:'top-5 出闸',x:'命中才出闸，每轮注入 5 个 schema。闸口做的是裁剪不是判断：它决定模型这一轮能看见哪些候选，多出来的 122 项它连见都没见过'},
+{d:300,t:'追加轨迹末尾',x:'检索到的 schema 以消息形式追加到轨迹末尾，并保持首次出现的位置——不回填前缀、不重排历史。前缀一重排，缓存自第一个变动处起全废'},
+{d:380,t:'模型选择',x:'模型只在 5 个候选里挑一个。「没选中」不等于「选错」：候选集里没有的东西无法被选，这属于供给问题；选错了才是描述与分诊问题'},
+{d:450,t:'准入审批',x:'执行前过准入：高风险动作要审批，拒绝理由作为调用结果写进轨迹。通过的新工具进入工具集——也正是这一步把副图的红线推到第 6 轮'},
+{d:540,t:'执行与返回',x:'结果作为 tool result 回写轨迹，此后每一轮都被重新计费，所以返回体才是感知工具的成本主体。墙钟 783.442s 对 3,056.294s（3.90×）省在少读 127 份目录'},
+{d:620,t:'未命中分支',x:'检索没命中就显式返回「未找到」，不许悄悄挑相近的顶上——「像但不是」是一次错，静默降级是把错藏进轨迹。随后三条退路：改写查询重试 / 基础工具手工实现 / 造一个新工具'},
+{d:680,t:'成本对账与闭环',x:'同一条请求两种前缀：按需披露 1,251 + 8,424 = 9,675 token，全量注入每任务 50,829；MCP 工具改索引化披露后总 token 降 46.9%。但两组准确率同为 100%——闭环回到起点'}
+];
+var PARTS={
+cat:['catBox','catGrid','catCount','catHit'],
+ret:['retBox','ln1','ln2','retQ','retS'],
+gate:['gate','gateN'],
+traj:['trajBox','pfx','tr1','tr2','tr3','tr4','tr5'],
+model:['mBox','mSel'],
+exec:['xBox','xRun'],
+branch:['brBox','missBox','nmBox','exA','exB','exC'],
+cmp:['cmpBox','b1F','b2F','b3F'],
+acc:['accPlate','pt1','pt2','pt3']
+};
+var QUIZ=[
+{q:'认识披露漏斗这类机制，正确的认知顺序是？',opts:['先背 127 项工具的名字与参数','表象观察 → 静态分解 → 动态分析 → 动静融合','直接从 embedding 模型的选型自下而上'],a:1,exp:'先看外在行为（黑盒：带缺口的请求进、5 个 schema 出，未命中会明说），再拆静态结构，再追动态流程，最后把结构与流程映射起来——整体不等于零件之和。'},
+{q:'「系统里有 127 项工具」和「模型本轮看见 5 项」为什么是两个数？',opts:['写错了，两个数本该一致','tools/list 拿到的是全量定义，但把这些定义放进窗口是宿主（Host）的披露决策，协议不管披露策略','因为模型最多只能读 5 个工具'],a:1,exp:'三条路：全量注入 system prompt 顶部、只留名称索引、转延迟项 + 检索。前两条改的是 token，只有第三条把「看见」和「能调」分开——选型前先问自己要的是哪个。'},
+{q:'本地实测两组准确率同为 100%，为什么按需披露仍然值得做？',opts:['不值得，没提升就不该做','因为它买到的是 token 与延迟：暴露文本 1,251 + 8,424 对 50,829，墙钟 783.442s 对 3,056.294s（3.90×）；准确率打平只说明它没买到判断力','因为准确率迟早会提升'],a:1,exp:'这条负结论比正面结论更有用：立项书若写「降低选错工具的概率」，得拿它重讲一遍预期。选错要靠描述、候选集治理与准入去解决，不是靠少给几个 schema。'},
+{q:'工具集发生增删重排，为什么缓存自首个变动处起全废？',opts:['因为缓存容量不够','因为稳定前缀本身就是缓存键的一部分：工具定义一被重排，从第一个变动位置往后的内容全变，此后每轮都要重新计费','因为模型会忘掉旧工具的名字'],a:1,exp:'所以新 schema 只能追加到轨迹末尾并保持首次位置；副图的红线落在第 6 轮，正是准入把新工具放进集合的那一刻。另：缓存键必须含用户身份与授权范围，否则会把 A 的权限结果喂给 B。'},
+{q:'检索没命中时，为什么必须显式返回「未找到」？',opts:['为了省一点 token','因为「像但不是」也是一次错，静默降级会把错藏进轨迹、让模型无法自我诊断；显式未找到才换来三条退路的决策点','因为 MCP 协议规定必须返回错误码'],a:1,exp:'三条退路：改写查询重试 / 基础工具手工实现 / 造一个新工具。造出来的要走 worktree + Spec + commit + PR 才算正式能力——运行内生成的插件重启即消失。'},
+{q:'「127 项能力、每轮只花 9,675 token，而且缓存还在」这个结果是？',opts:['检索模型的属性','披露策略 × 追加顺序 × 准入边界三者协同涌现的：只改其一，要么 token 省了缓存废了，要么缓存保住了权限混了','宿主的定价表决定的'],a:1,exp:'把 schema 回填前缀 → 缓存废；不管工具集变动 → 前缀每轮都在重排；把「看见」当「能调」→ 检索变成越权通道。三件事一起成立，这本账才算得清。'}
+];
+// ============ 场景构建 ============
+var GX=34,GY=112,GPX=16,GPY=11,GC=12,GROWS=11;
+var MATCH=[18,37,64,91,110];
+var ROWDEF=[
+{y:146,t:'轮 1 · 任务 + 缺口',show:0},
+{y:176,t:'轮 1 · 只有工具名索引',show:0},
+{y:206,t:'轮 2 · + 退改 schema 载入',show:296},
+{y:236,t:'轮 3 · 选定退改工具',show:392},
+{y:266,t:'轮 4 · tool result 回写',show:546}
+];
+var H='';
+// ① 目录区
+H+='<g id="catBox"><rect x="24" y="64" width="216" height="250" rx="8" fill="#FBFAF6" stroke="#3B3A34" stroke-width="1.5"/>'
++'<text class="tb" x="34" y="82">① schema 目录 · 127 项</text>'
++'<text class="ts" x="34" y="100">全量注入 = 50,597 token</text></g>';
+H+='<g id="catGrid">';
+for(var ci=0;ci<127;ci++){
+var gcx=GX+(ci%GC)*GPX,gcy=GY+Math.floor(ci/GC)*GPY;
+H+='<rect id="cc'+ci+'" data-i="'+ci+'" x="'+gcx+'" y="'+gcy+'" width="14" height="8" rx="2" fill="#ECEAE2" stroke="#D3D1C7" stroke-width="0.7"/>';
+}
+H+='<rect id="catScan" x="30" y="112" width="206" height="11" rx="3" fill="#EF9F27" opacity="0"/></g>';
+H+='<text class="ts" id="catCount" x="34" y="248">扫描进度 0 / 127</text>';
+H+='<text class="ts" id="catHit" x="34" y="266">命中 0 / 5（top-5）</text>';
+H+='<text class="ts" x="34" y="284">一格 = 一个工具 schema</text>';
+H+='<text class="ts" x="34" y="302">目录在册 ≠ 本轮在场</text>';
+// ② 检索层
+H+='<g id="retBox"><rect x="268" y="64" width="202" height="250" rx="8" fill="#ffffff" stroke="#3B3A34" stroke-width="1.5"/>'
++'<text class="tb" x="278" y="82">② 检索层（本地）</text></g>';
+H+='<g id="ln1"><rect x="276" y="92" width="186" height="48" rx="6" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/>'
++'<text class="tb" id="ln1T" x="284" y="112">向量匹配（语义）</text>'
++'<text class="ts" id="ln1S" x="284" y="130">all-MiniLM-L6-v2</text></g>';
+H+='<g id="ln2"><rect x="276" y="146" width="186" height="48" rx="6" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/>'
++'<text class="tb" id="ln2T" x="284" y="166">名称分词 + 描述</text>'
++'<text class="ts" id="ln2S" x="284" y="184">token 精确命中 · 零成本</text></g>';
+H+='<text class="ts" id="bcount" x="278" y="214">候选 127 → 出闸 5</text>';
+H+='<text class="ts" x="278" y="232">扫描算力在宿主侧</text>';
+H+='<text class="tb" id="retQ" x="278" y="258" fill="#854F0B">查询：这个订单能不能退</text>';
+H+='<text class="ts" id="retS" x="278" y="278">缺口：退改规则的查询能力</text>';
+H+='<text class="ts" id="bnote" x="278" y="298">搜索是补说明书 · 不是开权限</text>';
+// ③ 闸口
+H+='<text class="tb" id="gateT" x="520" y="108" text-anchor="middle">③ 闸口 top-5</text>';
+H+='<g id="gate"><rect x="490" y="120" width="60" height="120" rx="8" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.5"/>';
+for(var gi=0;gi<5;gi++){H+='<rect id="gs'+gi+'" x="498" y="'+(128+gi*22)+'" width="44" height="16" rx="4" fill="#ffffff" stroke="#EF9F27" stroke-width="0.9"/>';}
+H+='</g>';
+H+='<text class="ts" x="520" y="254" text-anchor="middle">命中才出闸</text>';
+H+='<text class="tb" id="gateN" x="520" y="272" text-anchor="middle">出闸 0 / 5</text>';
+H+='<text class="ts" x="520" y="296" text-anchor="middle">每轮注入 5 条</text>';
+// ④ 轨迹
+H+='<g id="trajBox"><rect x="570" y="64" width="236" height="250" rx="8" fill="#FBFAF6" stroke="#3B3A34" stroke-width="1.5"/>'
++'<text class="tb" x="578" y="82">④ 轨迹 · 只追加</text></g>';
+H+='<g id="pfx"><rect x="578" y="92" width="220" height="46" rx="6" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.4"/>'
++'<text class="tb" x="586" y="110">稳定前缀（钉住不动）</text>'
++'<text class="ts" id="pfxS" x="586" y="128">初始 1,251 token · 每轮命中</text></g>';
+for(var ri=0;ri<ROWDEF.length;ri++){
+var rd=ROWDEF[ri];
+H+='<g id="tr'+(ri+1)+'"><rect x="578" y="'+rd.y+'" width="220" height="24" rx="6" fill="#ffffff" stroke="#B4B2A9" stroke-width="1.1" stroke-dasharray="4 3"/>'
++'<text class="ts" id="trl'+(ri+1)+'" x="586" y="'+(rd.y+16)+'" opacity="'+(rd.show===0?1:0)+'">'+rd.t+'</text></g>';
+}
+H+='<text class="ts" x="578" y="308">新 schema 追加末尾 · 保持首次位置</text>';
+// ⑤⑥ 模型工位与执行框
+H+='<text class="tn" x="901" y="84" text-anchor="middle">⑤ 模型工位</text>';
+H+='<g id="mBox"><rect x="834" y="92" width="134" height="90" rx="6" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.2"/>'
++'<text class="ts" x="901" y="112" text-anchor="middle">候选集：5 个 schema</text>'
++'<text class="tb" x="901" y="134" text-anchor="middle">看见 ≠ 能调</text>'
++'<text class="ts" id="mSel" x="901" y="158" text-anchor="middle">选择：—</text></g>';
+H+='<text class="tn" x="901" y="200" text-anchor="middle">⑥ 工具执行框</text>';
+H+='<g id="xBox"><rect x="834" y="208" width="134" height="96" rx="6" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.2"/>'
++'<text class="ts" x="901" y="228" text-anchor="middle">准入审批 · 高风险</text>'
++'<text class="ts" id="xRun" x="901" y="250" text-anchor="middle">执行：待审批</text>'
++'<text class="ts" x="901" y="272" text-anchor="middle">结果回写轨迹</text>'
++'<text class="ts" x="901" y="292" text-anchor="middle">拒绝理由也入轨迹</text></g>';
+// 流向箭头
+H+='<path d="M240 160 L268 160" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#flw)"/>';
+H+='<path d="M470 180 L490 180" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#flw)"/>';
+H+='<path d="M550 218 L570 218" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#flw)"/>';
+H+='<path d="M806 137 L834 137" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#flw)"/>';
+H+='<path d="M901 182 L901 208" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#flw)"/>';
+H+='<path d="M834 240 L810 240" stroke="#C46A0A" stroke-width="1.3" fill="none" stroke-dasharray="5 3" marker-end="url(#flw)"/>';
+// ⑦ 未命中分支
+H+='<g id="brBox"><rect x="24" y="324" width="446" height="224" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/>'
++'<text class="tb" id="br1" x="34" y="356">⑦ 分支 · 检索未命中</text>'
++'<text class="ts" id="br2" x="170" y="356">不许悄悄挑相近的顶上</text></g>';
+H+='<path d="M368 314 L368 338 L122 338 L122 366" stroke="#C46A0A" stroke-width="1.3" fill="none" stroke-dasharray="5 3" marker-end="url(#flw)"/>';
+H+='<g id="missBox"><rect x="34" y="366" width="176" height="52" rx="8" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.4"/>'
++'<text class="tb" id="mT1" x="122" y="386" text-anchor="middle" fill="#8A2A2A">显式返回「未找到」</text>'
++'<text class="ts" id="mT2" x="122" y="406" text-anchor="middle">不降级塞相近工具</text></g>';
+H+='<g id="nmBox"><rect x="230" y="366" width="220" height="52" rx="8" fill="#ffffff" stroke="#B4B2A9" stroke-width="1.2" stroke-dasharray="4 3"/>'
++'<text class="tb" x="340" y="386" text-anchor="middle">相似项不顶替</text>'
++'<text class="ts" x="340" y="406" text-anchor="middle">「像但不是」也算错一次</text></g>';
+function exitBox(id,x,w,name,s1,s2){
+return '<g id="'+id+'"><rect x="'+x+'" y="428" width="'+w+'" height="76" rx="8" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.2"/>'
++'<text class="tb" x="'+(x+w/2)+'" y="448" text-anchor="middle">'+name+'</text>'
++'<text class="ts" x="'+(x+w/2)+'" y="468" text-anchor="middle">'+s1+'</text>'
++'<text class="ts" x="'+(x+w/2)+'" y="488" text-anchor="middle">'+s2+'</text></g>';
+}
+H+=exitBox('exA',34,132,'① 改写查询','换触发词','再检索一轮（回 140°）');
+H+=exitBox('exB',184,132,'② 手工实现','基础工具拼','慢，但可审计');
+H+=exitBox('exC',334,136,'③ 造新工具','worktree + PR','重启即失效');
+H+='<path d="M100 418 L100 428" stroke="#C46A0A" stroke-width="1.2" fill="none" marker-end="url(#flw)"/>';
+H+='<path d="M250 418 L250 428" stroke="#C46A0A" stroke-width="1.2" fill="none" marker-end="url(#flw)"/>';
+H+='<path d="M402 418 L402 428" stroke="#C46A0A" stroke-width="1.2" fill="none" marker-end="url(#flw)"/>';
+H+='<text class="ts" x="34" y="524">自造要走 worktree + Spec + commit + PR 才算正式能力</text>';
+H+='<text class="ts" x="34" y="542">缺「能不能做」→ 接接口；缺「该怎么做」→ 给 Skill</text>';
+// ⑧ 前缀长度对比
+H+='<g id="cmpBox"><rect x="494" y="324" width="482" height="146" rx="10" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.2"/>'
++'<text class="tb" x="502" y="342">⑧ 同一条请求 · 两种前缀长度</text>'
++'<text class="ts" x="502" y="364">全量注入：127 项每轮都在</text>'
++'<text class="ts" x="964" y="364" text-anchor="end">每任务 50,829 token</text>'
++'<rect x="502" y="370" width="462" height="12" rx="4" fill="#F5F4EF" stroke="#ECEAE2"/>'
++'<rect id="b1F" x="502" y="370" width="0" height="12" rx="4" fill="#EF9F27"/>'
++'<text class="ts" x="502" y="398">索引披露：1,251 + 8,424</text>'
++'<text class="ts" x="964" y="398" text-anchor="end">9,675 token</text>'
++'<rect x="502" y="404" width="462" height="12" rx="4" fill="#F5F4EF" stroke="#ECEAE2"/>'
++'<rect id="b2F" x="502" y="404" width="0" height="12" rx="4" fill="#639922"/>'
++'<text class="ts" x="502" y="432">MCP 改索引化披露（A/B）</text>'
++'<text class="ts" x="964" y="432" text-anchor="end">总 token −46.9%</text>'
++'<rect x="502" y="438" width="462" height="12" rx="4" fill="#F5F4EF" stroke="#ECEAE2"/>'
++'<rect id="b3F" x="502" y="438" width="0" height="12" rx="4" fill="#C46A0A"/>'
++'<text class="ts" x="502" y="462">证据等级不同：本地实测 / 论文报告 / A/B 实测，不许混写</text></g>';
+// ⑨ 准确率打平牌
+H+='<g id="accPlate"><rect x="494" y="478" width="482" height="70" rx="10" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.4"/>'
++'<text class="tb" x="506" y="496" fill="#8A2A2A">⑨ 准确率打平：两组同为 100%</text>'
++'<text class="ts" x="506" y="516">3/3 完成任务对 3/3 · 预期提升没有出现</text>'
++'<text class="ts" x="506" y="536">墙钟 783.442s 对 3,056.294s = 3.90×</text>'
++'<text class="tb" id="pt1" x="810" y="496">处理组 100%</text>'
++'<text class="ts" id="pt2" x="810" y="516">基线组 100%</text>'
++'<text class="ts" id="pt3" x="810" y="536">两条等长 = 打平</text>'
++'<rect x="898" y="488" width="70" height="9" rx="3" fill="#EAF3DE" stroke="#639922" stroke-width="0.9"/>'
++'<rect x="898" y="508" width="70" height="9" rx="3" fill="#EAF3DE" stroke="#639922" stroke-width="0.9"/></g>';
+// 移动件：schema 卡 / 未命中回执卡
+H+='<g id="card" opacity="0"><rect x="320" y="104" width="96" height="24" rx="6" fill="#FFF1D6" stroke="#D97E06" stroke-width="1.6"/>'
++'<text class="tb" id="cardT" x="368" y="120" text-anchor="middle">退改 schema</text></g>';
+H+='<g id="miss" opacity="0"><rect x="324" y="150" width="96" height="24" rx="6" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.6"/>'
++'<text class="tb" id="missT" x="372" y="166" text-anchor="middle" fill="#8A2A2A">未找到</text></g>';
+document.getElementById('scene').innerHTML=H;
+// 副图条带格阵
+var V2='';
+for(var vi=0;vi<8;vi++){
+var vx=70+vi*72;
+V2+='<rect id="v2_p'+vi+'" x="'+vx+'" y="60" width="66" height="16" rx="3" fill="#F5F4EF" stroke="#ECEAE2" stroke-width="0.8"/>';
+V2+='<rect id="v2_t'+vi+'" x="'+vx+'" y="88" width="66" height="16" rx="3" fill="#F5F4EF" stroke="#ECEAE2" stroke-width="0.8"/>';
+V2+='<rect id="v2_e'+vi+'" x="'+vx+'" y="116" width="66" height="16" rx="3" fill="#F5F4EF" stroke="#ECEAE2" stroke-width="0.8"/>';
+V2+='<text class="ts" x="'+(vx+33)+'" y="146" text-anchor="middle">轮 '+(vi+1)+'</text>';
+}
+document.getElementById('v2cells').innerHTML=V2;
+// ============ 通用脚手架 ============
+var el={};
+['catBox','catGrid','catCount','catHit','catScan','retBox','ln1','ln2','ln1T','ln1S','ln2T','ln2S','bcount','retQ','retS','bnote',
+'gate','gateT','gateN','trajBox','pfx','pfxS','mBox','mSel','xBox','xRun','brBox','br1','br2','missBox','nmBox','exA','exB','exC',
+'cmpBox','b1F','b2F','b3F','accPlate','card','cardT','miss','missT'].forEach(function(id){el[id]=document.getElementById(id);});
+for(var ei=0;ei<127;ei++)el['cc'+ei]=document.getElementById('cc'+ei);
+for(var ei2=0;ei2<5;ei2++){el['gs'+ei2]=document.getElementById('gs'+ei2);el['tr'+(ei2+1)]=document.getElementById('tr'+(ei2+1));el['trl'+(ei2+1)]=document.getElementById('trl'+(ei2+1));}
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var dots=[];
+for(var s=0;s<STEPS.length;s++){
+(function(n){
+var b=document.createElement('button');
+b.className='stepnode';
+b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+b.onclick=function(){goStep(n);};
+stepBar.appendChild(b);dots.push(b);
+})(s);
+}
+var stepIdx=-1;
+function setAuto(on){
+mode='auto';run=on;btn.textContent=on?'暂停':'播放';
+if(on){stepIdx=-1;dots.forEach(function(d){d.classList.remove('on');});
+stepT.textContent='自动运转模式';
+stepX.textContent='点下方步骤点可切换到分步演示；也可以直接点目录里的任意小格。';}
+}
+window.goStep=function(i){
+stepIdx=(i+STEPS.length)%STEPS.length;
+mode='step';run=false;
+phase=STEPS[stepIdx].d/PHASE_MAX*PERIOD;
+btn.textContent='继续自动运转';
+dots.forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+stepX.textContent=STEPS[stepIdx].x;
+};
+btn.textContent=run?'暂停':'播放';
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+// ---- 运动学与遮挡 ----
+function smooth(t){return t*t*(3-2*t);}
+function cl(v,a,b){return Math.max(a,Math.min(b,v));}
+function fmt(n){var s=String(Math.round(n)),o='',c=0;for(var i=s.length-1;i>=0;i--){o=s.charAt(i)+o;c++;if(c%3===0&&i>0)o=','+o;}return o;}
+function norm0(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+var CARD_HOME={x:320,y:104},MISS_HOME={x:324,y:150},MW=96,MH=24;
+var WP_CARD=[{t:120,x:72,y:148},{t:150,x:72,y:148},{t:176,x:318,y:104},{t:200,x:318,y:158},{t:230,x:472,y:168},{t:278,x:472,y:168},{t:290,x:522,y:186},{t:300,x:640,y:206},{t:720,x:640,y:206}];
+var WP_MISS=[{t:606,x:324,y:150},{t:612,x:324,y:150},{t:628,x:300,y:240},{t:644,x:240,y:330},{t:656,x:74,y:372},{t:720,x:74,y:372}];
+function place(node,home,wp,th){
+var i=0;while(i<wp.length-2&&th>wp[i+1].t)i++;
+var a=wp[i],b=wp[i+1];
+var t=smooth(cl((th-a.t)/(b.t-a.t),0,1));
+var x=a.x+(b.x-a.x)*t,y=a.y+(b.y-a.y)*t;
+node.setAttribute('transform','translate('+(x-home.x).toFixed(1)+' '+(y-home.y).toFixed(1)+')');
+return{x:x,y:y};
+}
+var OCCL=[
+{id:'ln1T',x0:278,x1:394,y0:99,y1:120},
+{id:'ln1S',x0:278,x1:392,y0:117,y1:138},
+{id:'ln2T',x0:278,x1:382,y0:153,y1:174},
+{id:'ln2S',x0:278,x1:430,y0:171,y1:192},
+{id:'bcount',x0:272,x1:380,y0:201,y1:222},
+{id:'retQ',x0:272,x1:412,y0:245,y1:266},
+{id:'retS',x0:272,x1:408,y0:265,y1:286},
+{id:'bnote',x0:272,x1:436,y0:285,y1:306},
+{id:'gateT',x0:476,x1:564,y0:95,y1:116},
+{id:'br1',x0:30,x1:150,y0:343,y1:364},
+{id:'br2',x0:166,x1:294,y0:343,y1:364},
+{id:'mT1',x0:66,x1:178,y0:373,y1:394},
+{id:'mT2',x0:70,x1:174,y0:393,y1:414}
+];
+var ROWOCC=[
+{id:'trl1',x0:582,x1:770,y0:149,y1:166},
+{id:'trl2',x0:582,x1:740,y0:179,y1:196},
+{id:'trl3',x0:582,x1:752,y0:209,y1:226},
+{id:'trl4',x0:582,x1:730,y0:239,y1:256},
+{id:'trl5',x0:582,x1:742,y0:269,y1:286}
+];
+function covered(box,o){return box.x+MW>o.x0&&box.x<o.x1&&box.y+MH>o.y0&&box.y<o.y1;}
+function paintOcc(boxes){
+var i,j,hit;
+for(i=0;i<OCCL.length;i++){
+hit=false;
+for(j=0;j<boxes.length;j++)if(covered(boxes[j],OCCL[i])){hit=true;break;}
+var n=el[OCCL[i].id];if(n)n.setAttribute('opacity',hit?0:1);
+}
+for(i=0;i<ROWOCC.length;i++){
+hit=false;
+for(j=0;j<boxes.length;j++)if(covered(boxes[j],ROWOCC[i])){hit=true;break;}
+var rn=el[ROWOCC[i].id];
+if(rn)rn.setAttribute('opacity',(hit||tShow<ROWDEF[i].show)?0:1);
+}
+}
+var lastRow=-1;
+function scanRows(){
+var bandY=parseFloat(el.catScan.getAttribute('y'));
+var litR=bandY>=GY+GROWS*GPY?GROWS-1:Math.floor((bandY-GY-8)/GPY);
+var hits=0;
+for(var m=0;m<MATCH.length;m++)if(Math.floor(MATCH[m]/GC)<=litR)hits++;
+if(litR!==lastRow){
+lastRow=litR;
+for(var r=0;r<GROWS;r++){
+for(var c=0;c<GC;c++){
+var idx=r*GC+c;if(idx>=127)continue;
+var nd=el['cc'+idx];if(!nd)continue;
+var done=r<=litR;
+var isMatch=MATCH.indexOf(idx)>=0&&done;
+var isSel=userSel===idx;
+nd.setAttribute('fill',isSel?'#FFF1D6':(isMatch?'#EF9F27':(done?'#F7F5EE':'#ECEAE2')));
+nd.setAttribute('stroke',isSel?'#D97E06':(isMatch?'#D97E06':'#D3D1C7'));
+nd.setAttribute('stroke-width',(isSel||isMatch)?1.2:0.7);
+}
+}
+}
+return hits;
+}
+var userSel=37;
+function frameOn(id,on,base){
+var g=el[id];if(!g||!g.children||!g.children[0])return;
+var r=g.children[0];
+r.setAttribute('fill',on?'#FFF6E8':base);
+r.setAttribute('stroke',on?'#D97E06':'#3B3A34');
+}
+function boxOn(id,on,base,stroke){
+var g=el[id];if(!g||!g.children||!g.children[0])return;
+var r=g.children[0];
+r.setAttribute('fill',on?'#FFF1D6':base);
+r.setAttribute('stroke',on?'#D97E06':stroke);
+}
+function setTxt(id,v){var n=el[id];if(n&&n.textContent!==v)n.textContent=v;}
+var tShow=0;
+function render(th){
+var t=norm0(th);tShow=t;
+// ① 目录扫描带
+var sp=cl((t-140)/70,0,1);
+var bandY=GY+sp*121;
+el.catScan.setAttribute('y',bandY.toFixed(1));
+var bo=t<138?0:(t<215?1:1-cl((t-215)/10,0,1));
+el.catScan.setAttribute('opacity',(bo*0.35).toFixed(2));
+var hits=scanRows();
+var scanned=Math.round(sp*127);
+setTxt('catCount',t<140?'扫描进度 0 / 127':(sp>=1?'扫描进度 127 / 127':'扫描进度 '+scanned+' / 127'));
+setTxt('catHit',(userSel!==null&&MATCH.indexOf(userSel)<0)?('手选 #'+(userSel+1)+' 不在命中集'):('命中 '+hits+' / 5（top-5）'));
+setTxt('retQ',(userSel!==null&&MATCH.indexOf(userSel)<0)?('查询：#'+(userSel+1)+' 无同域匹配'):('查询：这个订单能不能退'));
+// ②③ 检索层与闸口
+var gateK=Math.round(cl((t-230)/56,0,1)*5);
+for(var k=0;k<5;k++)if(el['gs'+k]){el['gs'+k].setAttribute('fill',k<gateK?'#EF9F27':'#ffffff');el['gs'+k].setAttribute('stroke',k<gateK?'#D97E06':'#EF9F27');}
+setTxt('gateN','出闸 '+gateK+' / 5');
+// 移动件
+var cb=place(el.card,CARD_HOME,WP_CARD,t);
+var mb=place(el.miss,MISS_HOME,WP_MISS,t);
+var cardVis=t>=146&&t<300,missVis=t>=610&&t<664;
+el.card.setAttribute('opacity',cardVis?1:0);
+el.cardT.setAttribute('opacity',(cardVis&&t<288)?1:0);
+el.miss.setAttribute('opacity',missVis?1:0);
+el.missT.setAttribute('opacity',(missVis&&t<640)?1:0);
+var boxes=[];
+if(cardVis)boxes.push(cb);
+if(missVis)boxes.push(mb);
+paintOcc(boxes);
+// ④ 轨迹行与稳定前缀
+for(var rr=0;rr<5;rr++){
+var g=el['tr'+(rr+1)];if(!g)continue;
+var on=t>=ROWDEF[rr].show;
+var rect=g.children[0];
+rect.setAttribute('fill',on?'#FBFAF6':'#ffffff');
+rect.setAttribute('stroke',on?'#EF9F27':'#B4B2A9');
+rect.setAttribute('stroke-dasharray',on?'none':'4 3');
+}
+var broken=t>=450;
+var pr=g0(el.pfx);
+pr.setAttribute('fill',broken?'#FCEBEB':'#FFF6E8');
+pr.setAttribute('stroke',broken?'#E24B4A':'#EF9F27');
+setTxt('pfxS',broken?'初始 1,251 · 工具集已变动':'初始 1,251 token · 每轮命中');
+// ⑤⑥ 模型与执行
+setTxt('mSel',t<380?'选择：—':(t<450?'选择：退改工具':'已提交调用'));
+setTxt('xRun',t<450?'执行：待审批':(t<540?'审批通过 · 放行':'已执行 · 结果回写'));
+// 区域活跃高亮
+frameOn('catBox',t>=140&&t<230,'#FBFAF6');
+frameOn('retBox',t>=140&&t<230||t>=610&&t<700,'#ffffff');
+boxOn('gate',t>=230&&t<300,'#FFF6E8','#EF9F27');
+frameOn('trajBox',t>=300&&t<390||t>=540&&t<620,'#FBFAF6');
+boxOn('mBox',t>=380&&t<450,'#FBFAF6','#D3D1C7');
+boxOn('xBox',t>=450&&t<620,'#FBFAF6','#D3D1C7');
+boxOn('missBox',t>=626&&t<720,'#FCEBEB','#E24B4A');
+boxOn('nmBox',t>=612&&t<646,'#ffffff','#B4B2A9');
+boxOn('exA',t>=646&&t<662,'#ffffff','#D3D1C7');
+boxOn('exB',t>=662&&t<676,'#ffffff','#D3D1C7');
+boxOn('exC',t>=676&&t<710,'#ffffff','#D3D1C7');
+boxOn('cmpBox',t>=680,'#ffffff','#D3D1C7');
+boxOn('accPlate',t>=690,'#FCEBEB','#E24B4A');
+frameOn('brBox',t>=610&&t<720,'#FBFAF6');
+// ⑧ 对账条（早期展开，之后保持）
+var bp=ss2(cl((t-60)/50,0,1));
+el.b1F.setAttribute('width',(462*bp).toFixed(1));
+el.b2F.setAttribute('width',(462*9675/50829*bp).toFixed(1));
+el.b3F.setAttribute('width',(462*0.531*bp).toFixed(1));
+}
+function g0(node){return node.children[0];}
+function ss2(v){return v*v*(3-2*v);}
+function tick(now){
+var dt=Math.min(50,now-last);last=now;
+if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+render(phase/PERIOD*PHASE_MAX);
+requestAnimationFrame(tick);
+}
+/* agent-lab shared instruments + second view */
+(function(){
+var roPhase=document.getElementById('roPhase');
+var roStep=document.getElementById('roStep');
+var roKey=document.getElementById('roKey');
+var roTok=document.getElementById('roTok');
+var chipBox=document.getElementById('stateChips');
+var chipEls={};
+var CHIPS=[{k:'cat',l:'目录'},{k:'ret',l:'检索'},{k:'gate',l:'出闸'},{k:'traj',l:'轨迹'},{k:'miss',l:'未命中'},{k:'acc',l:'准确率'}];
+CHIPS.forEach(function(c){
+var s=document.createElement('span');s.className='chip';s.innerHTML=c.l+' <b>--</b>';
+chipBox.appendChild(s);chipEls[c.k]=s;
+});
+function setChip(k,v,cls){
+var n=chipEls[k];if(!n)return;
+var b=n.querySelector('b');
+if(b&&b.textContent!==v)b.textContent=v;
+n.classList.remove('on','warn','off');
+if(cls)n.classList.add(cls);
+}
+function setT(id,v){var n=document.getElementById(id);if(n&&n.textContent!==v)n.textContent=v;}
+function setA(id,k,v){var n=document.getElementById(id);if(n)n.setAttribute(k,v);}
+function setO(id,v){var n=document.getElementById(id);if(n)n.setAttribute('opacity',v.toFixed(2));}
+function ss(t){t=Math.max(0,Math.min(1,t));return t*t*(3-2*t);}
+function lr(a,b,t){return a+(b-a)*t;}
+function cl(v,a,b){return Math.max(a,Math.min(b,v));}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function stageIndex(th){var si=0;for(var i=0;i<STEPS.length;i++){if(th>=STEPS[i].d)si=i;}return si;}
+function fmt(n){var s=String(Math.round(n)),o='',c=0;for(var i=s.length-1;i>=0;i--){o=s.charAt(i)+o;c++;if(c%3===0&&i>0)o=','+o;}return o;}
+function dynTok(t){return 1251+8424*cl((t-300)/320,0,1);}
+function turnAt(t){return Math.min(7,Math.floor(t/90));}
+function renderSide(th){
+var t=norm(th),x=70+t/720*570,turn=turnAt(t),broken=t>=450;
+setA('v2_play','x1',x.toFixed(1));setA('v2_play','x2',x.toFixed(1));
+setA('v2_prog','width',(300*t/720).toFixed(1));
+setA('v2_inv','opacity',broken?1:0.18);
+for(var i=0;i<8;i++){
+var reached=t>=i*90;
+setA('v2_p'+i,'fill',!reached?'#F5F4EF':(i>=5&&broken?'#FCEBEB':'#EAF3DE'));
+setA('v2_p'+i,'stroke',!reached?'#ECEAE2':(i>=5&&broken?'#E24B4A':'#639922'));
+setA('v2_t'+i,'fill',!reached?'#F5F4EF':(i>=2?'#FFF6E8':'#FAEEDA'));
+setA('v2_t'+i,'stroke',reached?'#EF9F27':'#ECEAE2');
+setA('v2_e'+i,'fill',reached&&i===turn?'#FAEEDA':'#F5F4EF');
+setA('v2_e'+i,'stroke',reached&&i===turn?'#D97E06':'#ECEAE2');
+}
+var dk=Math.round(dynTok(t));
+setA('v2_b1','width',(290*dk/50829).toFixed(1));
+setT('v2_v1',fmt(dk));
+setA('v2_b2','width','290');
+setA('v2_b3','width',(290*0.531).toFixed(1));
+setT('v2_scan','扫描：轮 '+(turn+1)+' · '+(broken?'前缀自第 6 轮起重写':'前缀命中缓存（读取 ≈ 1/10）'));
+setT('v2_invT',broken?'轮 6 · 工具集增删重排 → 缓存自此处全废':'轮 6 起工具集将变动 · 此前缓存一直命中');
+}
+function keyAt(t){
+if(t<140)return '本轮在场：仅名称索引 1,251';
+if(t<230)return '目录扫描中 · 50,597 token 未进窗';
+if(t<300)return '出闸 5 / 5';
+if(t<380)return '轨迹 +1 schema · 前缀未动';
+if(t<450)return '候选 5 → 选定 1';
+if(t<540)return '准入通过 · 缓存自此后全废';
+if(t<620)return '结果回写 · 累计 '+fmt(dynTok(t))+' token';
+if(t<680)return '未找到 → 三条退路';
+return fmt(dynTok(t))+' 对 50,829 · 准确率打平';
+}
+function chipsAt(t){
+var turn=turnAt(t),dk=Math.round(dynTok(t));
+return [
+['cat',t<140?'待检索 127':(t<230?'扫描 '+Math.round(cl((t-140)/70,0,1)*127)+' / 127':'已扫完 127'),t>=230?'on':(t>=140?'warn':'off')],
+['ret',t<140?'待命':(t<230?'语义 + 分词':(t<610?'命中 5 项':'无同域命中')),(t>=140&&t<230)||(t>=610)?'warn':'off'],
+['gate',t<230?'待命':(t<300?'出闸 '+Math.round(cl((t-230)/56,0,1)*5)+' / 5':'本轮封顶 5'),t>=300?'on':(t>=230?'warn':'off')],
+['traj',t<300?'1,251（钉住）':(t<620?('+'+fmt(dk-1251)+' 追加末尾'):(fmt(dk)+' token')),t>=620?'on':(t>=300?'warn':'off')],
+['miss',t<610?'未触发':(t<646?'显式未找到':'退路 '+turn+' 选一'),t>=610?'warn':'off'],
+['acc',t<300?'未对账':'打平 100% / 100%','off']
+];
+}
+function updateShared(th){
+var t=norm(th);
+var pr=Math.round(t)%720;
+if(roPhase.textContent!==(pr+'\u00b0'))roPhase.textContent=pr+'\u00b0';
+var si=stageIndex(t);if(mode==='step'&&stepIdx>=0)si=stepIdx;
+var st=STEPS[si]?STEPS[si].t:'\u2014';
+if(roStep.textContent!==st)roStep.textContent=st;
+var kv=keyAt(t);if(roKey.textContent!==kv)roKey.textContent=kv;
+var tokTxt='1,251 + '+fmt(Math.round(dynTok(t))-1251);
+if(roTok.textContent!==tokTxt)roTok.textContent=tokTxt;
+var cs=chipsAt(t);
+for(var i=0;i<cs.length;i++)setChip(cs[i][0],cs[i][1],cs[i][2]);
+renderSide(t);
+}
+var AS={ease:null,last:performance.now(),DUR:900};
+var origGoStep=window.goStep;
+window.goStep=function(i){
+var from=phase;
+origGoStep(i);
+var to=phase,delta=to-from;
+if(!reduced&&Math.abs(delta)<=PERIOD/4&&Math.abs(delta)>0.01){
+phase=from;AS.ease={from:from,to:to,elapsed:0};
+}else{AS.ease=null;}
+};
+var origTick=tick;
+tick=function(now){
+if(typeof now!=='number')now=performance.now();
+var dt=Math.min(50,Math.max(0,now-AS.last));AS.last=now;
+if(mode==='auto')AS.ease=null;
+if(AS.ease){
+AS.ease.elapsed=Math.min(AS.DUR,AS.ease.elapsed+dt);
+var p=AS.ease.elapsed/AS.DUR;
+phase=AS.ease.from+(AS.ease.to-AS.ease.from)*ss(p);
+if(p>=1){phase=AS.ease.to;AS.ease=null;}
+}
+origTick(now);
+updateShared(phase/PERIOD*PHASE_MAX);
+};
+})();
+
+requestAnimationFrame(tick);
+document.querySelectorAll('.part').forEach(function(b){
+b.onclick=function(){
+var ids=PARTS[b.getAttribute('data-part')]||[];
+ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+};
+});
+// 目录点选：选中 / 取消（点单格看「这一项本轮会不会被披露」）
+document.getElementById('catGrid').addEventListener('click',function(e){
+var i=e.target&&e.target.getAttribute?e.target.getAttribute('data-i'):null;
+if(i===null||i===undefined)return;
+var n=parseInt(i,10);
+userSel=(userSel===n)?null:n;
+lastRow=-2;render(phase/PERIOD*PHASE_MAX);
+});
+var BASE=(location.pathname.split('/agent-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/agent/lab';
+document.getElementById('lnkArt').href=BASE+'/agent/tutorial/08-action-space';
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+var d=document.createElement('div');d.className='q';
+var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+h+='<div class="exp">'+it.exp+'</div>';
+d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+var b=e.target.closest('.opt');if(!b)return;
+var box2=b.parentElement;if(box2.classList.contains('done'))return;
+box2.classList.add('done');
+var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+box2.querySelectorAll('.opt').forEach(function(x){
+var xi=+x.getAttribute('data-oi');
+if(xi===QUIZ[qi].a)x.classList.add('right');
+else if(x===b)x.classList.add('wrong');
+});
+});
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>事件消费的三种策略与安全点 · Agent 运行原理实验室 第 9 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:920px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:680px}
+.method-chain{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:18px}
+.method-chain .mnode{background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 14px;font-size:13px;font-weight:500}
+.method-chain .marr{color:#C46A0A;font-weight:600}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:500;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:11.5px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:500;fill:#1F1E1A}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:76px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:11px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:9px 10px;text-align:center}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+.cell{cursor:pointer}
+
+/* agent-lab shared layer v1.4 */
+.method-chain{display:grid;grid-template-columns:repeat(3,max-content);justify-content:start;gap:8px 10px;align-items:center}
+.method-chain .marr{display:none}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;margin:8px 4px 0;font-size:12px;color:#6B695F}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:12px;height:10px;border-radius:3px;display:inline-block;border:1px solid #D3D1C7;background:#fff}
+.legend .sw-amber{background:#FFF6E8;border-color:#EF9F27}
+.legend .sw-green{background:#EAF3DE;border-color:#639922}
+.legend .sw-red{background:#FCEBEB;border-color:#E24B4A}
+.legend .sw-dash{border-style:dashed;border-color:#B4B2A9}
+.legend .sw-line{width:16px;height:0;border:0;border-top:2px solid #C46A0A;border-radius:0;background:none}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.warn{background:#FFF6E8;border-color:#EF9F27}
+.chip.off{background:#F5F4EF;color:#8A877C}
+.subview{margin:8px 0 4px;background:#ffffff;border:1px dashed #D3D1C7;border-radius:10px;padding:8px 10px}
+.subview .viewtitle{font-size:12px;font-weight:600;color:#854F0B;margin-bottom:4px}
+.subview .subcap{font-size:12px;color:#6B695F;margin:6px 2px 0;line-height:1.6}
+.phase-note{font-size:12px;color:#8A877C;margin:8px 4px 0;line-height:1.6}
+.tablewrap{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 0 12px;padding-bottom:2px;scrollbar-width:thin}
+.tablewrap table.grid{width:100%}
+#scene [opacity],#scene2 [opacity]{transition:opacity .28s ease}
+#scene rect,#scene circle,#scene path,#scene2 rect,#scene2 circle,#scene2 path{transition:fill .24s ease,stroke .24s ease,opacity .24s ease}
+#tok,#tokT{transition:none}
+@media (prefers-reduced-motion: reduce){#scene [opacity],#scene2 [opacity],#scene rect,#scene circle,#scene path,#scene2 rect,#scene2 circle,#scene2 path{transition:none}}
+@media (max-width:640px){.method-chain{grid-template-columns:repeat(2,max-content)}}
+
+/* 本页静态图专用（不改共享层） */
+.stepnode .lab2{white-space:normal;line-height:1.4;max-width:96px}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:8px 10px 4px;margin:0 0 12px}
+.figcap{font-size:12.5px;color:#6B695F;margin:6px 4px 10px;line-height:1.65}
+.figcap b{color:#854F0B}
+.stfig .hl,.stfig .hl *{stroke:#D96C06 !important}
+@media (max-width:640px){.steppanel{flex-wrap:wrap}.steppanel .sx{min-width:0}.steppanel .snav{margin-left:0}}
+
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：触发时机与交互</a>
+  <span class="idx">第 9 / 9 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · 动静结合认知法</div>
+<h1>事件消费的三种策略与安全点：世界推过来时，在哪儿切进去</h1>
+<p>模型一次生成是一段<b>流式、不可分割</b>的推理，而事件随时会到。这页课讲事件进来之后的处置规则：<b>安全点在哪、紧急与常规各走哪条策略、被打断的工具怎么在轨迹里收口</b>。动画支持<b>自动运转</b>与<b>分步点击</b>两种模式，部件可以直接点亮，读数和副图始终同相位。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span><span class="marr">→</span>
+<span class="mnode">② 静态分解</span><span class="marr">→</span>
+<span class="mnode">③ 动态分析</span><span class="marr">→</span>
+<span class="mnode">④ 动静融合</span><span class="marr">→</span>
+<span class="mnode">⑤ 环境场景</span><span class="marr">→</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 560" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>事件消费的三种策略与安全点动画</title>
+<defs>
+<marker id="flw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/>
+</marker>
+</defs>
+<text class="th" x="500" y="24" text-anchor="middle">事件消费的三种策略与安全点 · 世界推过来时，在哪儿切进去</text>
+<text class="ts" x="500" y="44" text-anchor="middle">上：两条事件下落（E1 常规 / E2 紧急）· 中：执行流与安全点 ▲ · 下：三分支与轨迹条 · 副图同相位</text>
+<g id="scene"></g>
+</svg>
+<div class="legend">
+<span><i class="sw-amber"></i>琥珀 = 点亮中的分支 / 安全点标记</span>
+<span><i class="sw-green"></i>绿 = 常规事件入队 · 安全点批量注入</span>
+<span><i class="sw-red"></i>红 = 禁止取消点与占位符风险</span>
+<span><i class="sw-dash"></i>虚线 = 旁路并行通道 / 系统边界</span>
+<span><i class="sw-line"></i>橙线 = 执行流方向</span>
+<span><i></i>▲ = 安全点（推理段结束 / 工具返回 / 消息边界）</span>
+</div>
+<div class="readout">
+<span class="ro">相位 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">关键量 <b id="roKey">--</b></span>
+<span class="ro">积压 <b id="roQue">--</b></span>
+<span class="ro">轨迹 <b id="roTrj">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="subview">
+<div class="viewtitle">第二视图 · 事件流时间轴与队列积压仪表（与主图同步）</div>
+<svg id="eng2" viewBox="0 0 1000 210" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>事件流时间轴与队列积压仪表</title>
+<g id="scene2">
+<text class="th" x="500" y="18" text-anchor="middle">事件流时间轴 · 横轴 0°–720° = 一条推理回合的相位</text>
+<text class="ts" x="500" y="35" text-anchor="middle">▲ = 事件到达时刻 · ◎ = 三个消费点 · 下方积压条与主图同相位：未处理事件要看得见</text>
+<text class="tb" x="64" y="72" text-anchor="end">0° 起点</text>
+<text class="tb" x="64" y="92" text-anchor="end">720° 回填</text>
+<text class="ts" x="70" y="56">事件到达 ▲（上）· 消费点 ◎（下）</text>
+<text class="ts" id="v2_risk" x="976" y="56" text-anchor="end" fill="#8A2A2A" opacity="0.3">推理段内部不可切入</text>
+<line x1="70" y1="110" x2="900" y2="110" stroke="#3B3A34" stroke-width="1.2"/>
+<rect id="v2_ban" x="70" y="107" width="138" height="6" fill="#FCEBEB" stroke="#E24B4A" stroke-width="0.7" opacity="0.25"/>
+<text class="ts" x="70" y="126" text-anchor="middle">0°</text>
+<text class="ts" x="278" y="126" text-anchor="middle">180°</text>
+<text class="ts" x="485" y="126" text-anchor="middle">360°</text>
+<text class="ts" x="692" y="126" text-anchor="middle">540°</text>
+<text class="ts" x="900" y="126" text-anchor="middle">720°</text>
+<g id="v2_marks"></g>
+<text class="tb" x="64" y="158" text-anchor="end">积压</text>
+<rect x="70" y="146" width="232" height="16" rx="4" fill="#F5F4EF" stroke="#ECEAE2"/>
+<rect id="v2_q1" x="70" y="146" width="0" height="16" rx="4" fill="#EF9F27"/>
+<text class="ts" x="306" y="184">清出→轨迹</text>
+<rect x="306" y="146" width="232" height="16" rx="4" fill="#F5F4EF" stroke="#ECEAE2"/>
+<rect id="v2_q2" x="306" y="146" width="0" height="16" rx="4" fill="#639922"/>
+<text class="ts" x="542" y="140" fill="#854F0B">状态栏示意：[未处理事件 2/4] · 本轮共 4 条事件，画面演示 E1/E2 两条</text>
+<text class="ts" x="542" y="184">已注入→轨迹</text>
+<rect x="542" y="146" width="232" height="16" rx="4" fill="#F5F4EF" stroke="#ECEAE2"/>
+<rect id="v2_q3" x="542" y="146" width="0" height="16" rx="4" fill="#639922"/>
+<text class="ts" x="778" y="184">占位符</text>
+<rect x="778" y="146" width="122" height="16" rx="4" fill="#F5F4EF" stroke="#ECEAE2"/>
+<rect id="v2_q4" x="778" y="146" width="0" height="16" rx="4" fill="#C46A0A"/>
+<line id="v2_play" x1="70" y1="44" x2="70" y2="166" stroke="#D96C06" stroke-width="1.6" opacity="0.85"/>
+<rect id="v2_prog" x="70" y="190" width="0" height="6" rx="3" fill="#EF9F27"/>
+<text id="v2_scan" class="tb" x="70" y="174">扫描：推理段 · 事件不可切入</text>
+<text class="ts" x="900" y="204" text-anchor="end">积压与轨迹计数 = 与主图同一份相位数据 · 事件时间尺度为示意压缩</text>
+</g>
+</svg>
+<div class="subcap">读法：第一遍看红黄 ▲ 落在哪个角度——常规 E1 到安全点才被消费，紧急 E2 直接触发取消；第二遍对照下方四条积压条，看「清队不是丢弃」怎么变成轨迹里的条目。图例：橙 = 积压中的事件，绿 = 已落进轨迹，深橙 = 占位符，红横带 = 推理段内不可切入。口径：本轮共 4 条事件（另两条为 timer.trigger / agent.input 背景提醒，画面未单独绘制），只演示其中 2 条。</div>
+</div>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 一轮事件处置 / 4.6 秒</span>
+</div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格；也可以直接点下方部件卡，在图里点亮对应部件。</span>
+<span class="snav">
+<button class="btn" onclick="prevStep()">‹ 上一步</button>
+<button class="btn warn" onclick="nextStep()">下一步 ›</button>
+</span>
+</div>
+<p class="phase-note">相位口径：0° = 本轮推理段开始（工具 A 已发起、结果未落账）；720° = 下一轮采样带回填后的轨迹。常规事件到达 ~120°、紧急事件到达 ~260°、取消式四步 280–400°、旁路并行 400–470°、tool.result 安全点批量注入 ~500°、占位符补写 ~560°、重新调用与回填 ~640°；副图与主图共用同一个 phase。</p>
+<p class="phase-note"><b>数据口径</b>：本页不引用外部性能数字；时间轴上的事件时刻（120°/260°/500°/560°/640°）是<b>本页自设的示意刻度</b>，只保证「安全点次序」与正文一致。取消式四步、兼容五规则、三种非法轨迹、原生异步两条能力与三条验收——均为<b>书中第六章正文的处置规则</b>；「本轮共 4 条事件」是把正文 3.5 节走查例（改口 + 紧急中断 + 背景提醒）合并计数，属<b>示意写法</b>，不是真实协议字段。</p>
+</div>
+</div>
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：先把它当黑盒</h2></div>
+<p class="sec-sub">第一步不拆机器，只看它对外表现出什么行为。</p>
+<div class="quote">「回合制是接口约定，不是环境的性质。」——你和 Agent「轮流说话」是模型与接口之间的约定，环境本身从不等待。</div>
+<p>从外部看，这台机器做的事只有一件：<b>把「世界任意时刻推过来的事件」翻译成「轨迹里合法的、按安全点消费的一条条消息」</b>。四种现场症状都指向「时间不对」而不是「模型不够聪明」：用户中途改口时 Agent 正卡在第三次工具调用上；任务执行到一半来了要求停止的邮件；语音助手在手机号报到一半时抢答；屏幕上第 13 步弹了窗，Agent 还按旧截图算坐标。</p>
+<div class="flow">
+<span class="node">任意时刻到达的事件</span><span class="arr">→</span>
+<span class="node">安全点闸口（黑盒）</span><span class="arr">→</span>
+<span class="node">轨迹新增合法条目（主产物）</span>
+<span class="node">队列积压计数 + 取消回执（副产物）</span>
+</div>
+<p>黑盒观察还能看出两件事：其一，<b>不是所有事件都能立即被处理</b>——常规事件会被「晾」在队列里等到某个确定的点；其二，<b>被打断的工具不会凭空消失</b>——轨迹里会出现一条写明「结果尚未取得」的占位条目。这两件事就是本页的全部机制线索。</p>
+<div class="figure">
+<svg id="figA" class="stfig" viewBox="0 0 1000 190" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>四类任务的时间尺度刻度带</title>
+<text class="th" x="500" y="22" text-anchor="middle">时间尺度刻度 · 四类任务从毫秒铺到天 · 越往下越等不起「一轮」</text>
+<rect x="316" y="53" width="614" height="16" rx="4" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/>
+<text class="tb" x="623" y="65" text-anchor="middle">异步事件与外部触发 · 秒—天 · 世界自己找上门</text>
+<rect x="70" y="78" width="246" height="16" rx="4" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/>
+<text class="tb" x="193" y="90" text-anchor="middle">语音 · 10毫秒—1秒</text>
+<rect x="196" y="103" width="211" height="16" rx="4" fill="#FBFAF6" stroke="#B4B2A9" stroke-width="1.2"/>
+<text class="tb" x="301" y="115" text-anchor="middle">Computer Use · 亚秒—秒</text>
+<rect x="70" y="128" width="126" height="16" rx="4" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.2"/>
+<text class="tb" x="133" y="140" text-anchor="middle">机器人 · 毫秒</text>
+<line x1="70" y1="150" x2="930" y2="150" stroke="#3B3A34" stroke-width="1"/>
+<text class="ts" x="70" y="165" text-anchor="middle">10ms</text>
+<text class="ts" x="196" y="165" text-anchor="middle">100ms</text>
+<text class="ts" x="316" y="165" text-anchor="middle">1s</text>
+<text class="ts" x="442" y="165" text-anchor="middle">10s</text>
+<text class="ts" x="568" y="165" text-anchor="middle">100s</text>
+<text class="ts" x="693" y="165" text-anchor="middle">千秒</text>
+<text class="ts" x="819" y="165" text-anchor="middle">万秒</text>
+<text class="ts" x="930" y="165" text-anchor="middle">天</text>
+<text class="ts" x="70" y="182">判据：先看这件事的真实节奏是多少毫秒，再决定用哪一层机制；把秒—天级机制套到毫秒级任务上，得到的不是慢，是错。</text>
+</svg>
+</div>
+<p class="figcap"><b>读法</b>：横轴是对数时间轴；本页动画只演最上面那条「秒—天」带（事件驱动与打断），语音与 Computer Use 的时序不在本页展开。<b>口径</b>：四条带子的时间范围与「谁在催」取自正文第一节的四类任务对照表；顺带接上第 8 章的「事件触发工具」——那章讲这类工具长什么样，本页讲<b>事件进来之后的处置规则</b>。</p>
+<p class="hint">口诀：先问这件事的真实节奏是多少毫秒，再问事件该在哪一步被消费。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：它由什么组成</h2></div>
+<p class="sec-sub">打开黑盒，沿空间维度拆解。点部件卡片，动画中对应部分会亮成琥珀色。</p>
+<div class="quote">「它由什么构成？核心方法是分解、分类、结构化——分解需符合 MECE 法则，同层必须粒度一致。」</div>
+<p>这台机器按功能分成<b>三组七件</b>：供给组管「事件长什么样、能不能切进去」，策略组管「切进去之后走哪条路」，记账组管「一切必须在轨迹里留痕」。</p>
+<div class="partgroup">
+<div class="gname">供给组 —— 负责「事件能不能被合法地送进门」</div>
+<div class="parts">
+<button class="part" data-part="evt"><b>① 结构化事件</b><span>四字段是底线：source / channel / content / context。context 里带 priority:high、customer_tier:vip、related_orders——载荷自带上下文，省掉现场再查一轮。</span></button>
+<button class="part" data-part="route"><b>② 事件路由器</b><span>事件名两档写死在常量里：紧急 = user.interrupt / supervisor.instruction / agent.interrupt；常规 = user.input / agent.input / tool.result / timer.trigger。路由器只分类不决策，判错顶多早打断一次。</span></button>
+<button class="part" data-part="slot"><b>③ 安全点闸口</b><span>能切进去的地方只有三处：推理段结束、工具返回、消息边界。同步接口下事件只能在安全点被消费——这句写进设计文档，能省掉后面一半争论。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">策略组 —— 负责「紧急度不同，处置完全不同」</div>
+<div class="parts">
+<button class="part" data-part="cancel"><b>④ 取消式</b><span>紧急事件掀掉当前推理，四步：停生成与同步工具 → 清空待处理队列 → 清出的队列与紧急事件一起追加轨迹 → 重新调用。清队不是丢弃，是让模型知道「这些事被打断了」。</span></button>
+<button class="part" data-part="queue"><b>⑤ 队列式</b><span>常规事件入队不打断，等任一 tool.result 返回（天然安全点）一次性批量追加。逐条注入 = 模型每处理一条就重新规划一次，成本与漂移都翻倍。</span></button>
+<button class="part" data-part="par"><b>⑥ 并行式</b><span>与主任务不冲突的旁路查询另起轻量会话即时返回，回写主轨迹并显式标 lane:"parallel"。不标记，模型会把旁路结论当主任务的中间步骤——归因错在策略层，不是检索层。</span></button>
+</div>
+</div>
+<div class="partgroup">
+<div class="gname">记账组 —— 负责「一切必须在轨迹里留痕」</div>
+<div class="parts">
+<button class="part" data-part="traj"><b>⑦ 轨迹条</b><span>只追加，不改写历史。被打断的未完成工具补占位符：「工具正在后台执行，请优先处理新事件」；旁边常驻的风险：写成「已启动」，模型就会编造结果。</span></button>
+</div>
+</div>
+<p class="hint">静态分解只回答了「有什么」。两条事件同时落到一条正在执行工具调用的推理流上，260° 与 500° 处发生了什么不同的事？必须切换到时间维度——下一节。</p>
+<p class="hint">口诀：信封、路由、闸口三件管进得去；取消、队列、并行三件管怎么走；轨迹一件管留痕。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：它如何运转</h2></div>
+<p class="sec-sub">盯住两张下落的卡片。用动画下方 8 个步骤点逐帧走完一次「改口 + 紧急中断」的事件处置。</p>
+<div class="quote">「它如何演变与运作？关注时间轴上的发展规律、行为模式和内部流程。核心方法是流程分析、行为追溯。」</div>
+<p><b>操作：</b>点步骤条圆点（或「下一步」）画面会定格在对应相位。建议完整走两遍：第一遍只跟踪紧急卡片 E2 的下落路线（到达 → 触发取消 → 落进取消分支）；第二遍同时读三个分支面板的点亮次序与底部轨迹条的增行——120° 到 260° 之间它一条都不该多。</p>
+<div class="figure">
+<svg id="figB" class="stfig" viewBox="0 0 1000 210" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>事件处置相位时间轴</title>
+<text class="th" x="500" y="20" text-anchor="middle">相位时间轴 · 0°= 推理段开始（工具 A 已发起未落账），720°= 下一轮采样带回填后的轨迹</text>
+<rect x="60" y="56" width="147" height="14" rx="3" fill="#F5F4EF" stroke="#ECEAE2"/>
+<rect x="207" y="56" width="171" height="14" rx="3" fill="#FFF6E8" stroke="#EF9F27"/>
+<rect x="378" y="56" width="171" height="14" rx="3" fill="#FCEBEB" stroke="#E24B4A"/>
+<rect x="549" y="56" width="85" height="14" rx="3" fill="#FBFAF6" stroke="#B4B2A9" stroke-dasharray="4 3"/>
+<rect x="634" y="56" width="210" height="14" rx="3" fill="#EAF3DE" stroke="#639922"/>
+<rect x="844" y="56" width="96" height="14" rx="3" fill="#FAEEDA" stroke="#EF9F27"/>
+<line x1="60" y1="70" x2="940" y2="70" stroke="#3B3A34" stroke-width="1"/>
+<text class="tb" x="133" y="46" text-anchor="middle">推理段</text>
+<text class="tb" x="292" y="46" text-anchor="middle">常规进场</text>
+<text class="tb" x="463" y="46" text-anchor="middle">取消四步</text>
+<text class="tb" x="591" y="46" text-anchor="middle">旁路</text>
+<text class="tb" x="739" y="46" text-anchor="middle">安全点消费</text>
+<text class="tb" x="894" y="46" text-anchor="middle">重调用</text>
+<text class="ts" x="60" y="86" text-anchor="middle">0°</text>
+<text class="ts" x="207" y="86" text-anchor="middle">120°</text>
+<text class="ts" x="378" y="86" text-anchor="middle">260°</text>
+<text class="ts" x="549" y="86" text-anchor="middle">400°</text>
+<text class="ts" x="634" y="86" text-anchor="middle">470°</text>
+<text class="ts" x="844" y="86" text-anchor="middle">640°</text>
+<text class="ts" x="940" y="86" text-anchor="middle">720°</text>
+<text class="ts" x="207" y="106">120° · E1 入队不打断</text>
+<text class="ts" x="549" y="106">400° 四步走完 · 队列已入轨迹</text>
+<text class="ts" x="940" y="106" text-anchor="end">640° 重调用与合法性自检</text>
+<text class="ts" x="60" y="124">▲ 安全点：≈470° tool.result 返回（500° 批量消费）· ≈560° 推理段结束（560° 占位符补写）</text>
+<text class="ts" x="634" y="124">260° · E2 紧急 → 触发取消</text>
+<text class="ts" x="60" y="150">队列状态：120–260° 积压 1/4 · 260–400° 清空并入轨迹 · 500° 批量注入 · 全程没有一条被「丢弃」</text>
+<text class="ts" x="60" y="170">轨迹状态：0° 起 [1] 已发起未落账 · 280° 后队列落账 · 560° 补占位符「结果尚未取得」· 只追加不改写</text>
+<text class="ts" x="60" y="190">分支状态：260–400° 取消分支点亮 · 400–470° 旁路通道 · 500° 队列分支点亮 · 其余灰化（与动画同相位）</text>
+</svg>
+</div>
+<p class="figcap"><b>读法</b>：色带是阶段长度（对数节拍被等距压缩，见「边界与简化」），刻度单位是相位°；注意 260° 的取消<b>不等</b>安全点——它是唯一允许掀掉推理段的口子。<b>口径</b>：本轴与动画 STEPS 同一份数据，阶段区间逐条对应下方表格。</p>
+<div class="tablewrap"><table class="grid">
+<tr><th>阶段</th><th>相位</th><th>谁在场</th><th>定格读数</th><th>这一步在干什么</th></tr>
+<tr><td>① 推理段流式中</td><td>0°–120°</td><td>主推理流 · 工具 A</td><td>积压 0/4 · 轨迹 1 条</td><td>模型一次生成是一段流式的不可分割推理；事件可达不可切，不能在任意字节处切进去</td></tr>
+<tr><td>② 常规事件到达</td><td>120°–260°</td><td class="hot">队列分支</td><td>积压 1/4</td><td>E1 user.input「地址改成公司那个」入队不打断；载荷自带上下文，省一轮现查</td></tr>
+<tr><td>③ 紧急事件到达</td><td>260°</td><td class="hot">取消分支</td><td>积压 2/4 → 清空</td><td>E2 user.interrupt「先别发货」触发取消——紧急度来自 context.priority 字段，不来自注入位置</td></tr>
+<tr><td>④ 取消式四步</td><td>280°–400°</td><td class="hot">取消分支 · 轨迹</td><td>轨迹 +队列原文</td><td>停生成与同步工具 → 清队列 → 清出的队列与紧急事件一起追加轨迹 → 重新调用；清队 ≠ 丢弃</td></tr>
+<tr><td>⑤ 旁路并行</td><td>400°–470°</td><td class="hot">并行分支</td><td>lane:parallel</td><td>另起轻量会话即时返回，回写主轨迹并显式标旁路身份——旁路身份是归因的前提</td></tr>
+<tr><td>⑥ 安全点批量注入</td><td>500°</td><td class="hot">队列分支 · 安全点</td><td>积压 0/4</td><td>任一 tool.result 返回 = 天然安全点：队列一次性批量追加，E1 不单独占一轮</td></tr>
+<tr><td>⑦ 占位符补写</td><td>560°</td><td class="hot">轨迹条</td><td>+1 占位条目</td><td>「发起过、结果未取得」写进轨迹；已落账的 tool result 绝不重发——复制会让模型以为查了两遍且一致，从此不再复查</td></tr>
+<tr><td>⑧ 重新调用 · 闭环</td><td>640°–720°</td><td class="act">模型工位</td><td>轨迹全合法</td><td>重规划（先取消，取消成功后才改地址）；自检三种非法形态：缺配对结果 / 回灌半截思考 / 清掉的队列没落轨迹</td></tr>
+</table></div>
+<p>走查例的四个细节，每个都对应一种故障（正文 3.5 节）：</p>
+<div class="tablewrap"><table class="grid">
+<tr><th>细节</th><th>正确做法</th><th>做错时的故障</th></tr>
+<tr><td>多条事件同时到达</td><td class="hot">紧急与常规一起批量注入，不是一人一轮</td><td>逐条注入 = 每处理一条就重新规划一次，成本与漂移翻倍</td></tr>
+<tr><td>未完成工具的占位符</td><td class="hot">明写「尚未取得结果」+ 下一步该等还是该做</td><td>写成「已发起」，模型下一步就开始念取消成功的回执——编造就是这么来的</td></tr>
+<tr><td>已落账的 tool result</td><td class="hot">不重发</td><td>复制一份 → 模型认为查了两遍且一致，从此不再复查</td></tr>
+<tr><td>优先级的表达位置</td><td class="hot">写在 context.priority 字段里，由策略消费</td><td>靠「放消息末尾最后一条」表达优先级——下一轮顺序一变，优先级就变了</td></tr>
+</table></div>
+<p>两个值得在分步模式里细看的点：① 第 ③ 步取消<b>不等</b>安全点——「取消点必须是工具或推理能安全收尾的地方」约束的是「在哪取消副作用」，不是「在哪消费事件」，紧急通道是掀掉推理段而不是插进推理段；② 第 ⑥ 步批量注入发生在 tool.result 返回处而不是紧急事件到达处——常规事件从 120° 起就在队列里，470° 之前轨迹一条都不能多。</p>
+<p class="hint">口诀：0° 切不进，120° 入队，260° 掀桌，500° 批量，560° 补占位，640° 重新想。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：七个部件如何协同出「打断之后轨迹仍然合法」</h2></div>
+<p class="sec-sub">把第 2 节的「结构」和第 3 节的「流程」叠在一起——这才是理解的完成态。</p>
+<div class="quote">「动静融合的关键是建立映射：将组成部件与操作步骤一一对应，理解各部件如何协同产生外在行为。系统 = 元素 + 连接 + 目标。」</div>
+<p>映射表：<b>每个部件在每个阶段里承担什么角色</b>。竖着看是一个阶段的全体协同，横着看是一个部件的完整职责。</p>
+<div class="tablewrap"><table class="grid">
+<tr><th>部件 ＼ 阶段</th><th>① 推理段中</th><th>② 常规进场</th><th>③④ 紧急与取消</th><th>⑤ 旁路</th><th>⑥⑦ 安全点与占位</th><th>⑧ 重调用</th></tr>
+<tr><td>① 结构化事件</td><td>在途</td><td class="hot">四字段可路由</td><td class="hot">priority 定生死</td><td>载荷自带上下文</td><td>原文进轨迹</td><td>被消费过的字段不再出现</td></tr>
+<tr><td>② 事件路由器</td><td>分类不切流</td><td class="hot">判为常规</td><td class="hot">判为紧急</td><td>判为旁路查询</td><td>—</td><td>只分类不决策</td></tr>
+<tr><td>③ 安全点闸口</td><td class="hot">关：不可切入</td><td>放行到队列</td><td>紧急绕行</td><td>不等主轨迹</td><td class="hot">开：结果返回处消费</td><td>推理段结束</td></tr>
+<tr><td>④ 取消式</td><td>—</td><td>—</td><td class="hot">四步执行</td><td>—</td><td>触发占位符</td><td class="hot">重新调用</td></tr>
+<tr><td>⑤ 队列式</td><td>—</td><td class="hot">入队不打断</td><td>队列被清出</td><td>—</td><td class="hot">批量注入</td><td>清空待新事件</td></tr>
+<tr><td>⑥ 并行式</td><td>—</td><td>—</td><td>不受牵连</td><td class="hot">另起会话</td><td>回写带 lane</td><td>归因可读</td></tr>
+<tr><td>⑦ 轨迹条</td><td class="act">[1] 已发起未落账</td><td>不变</td><td class="hot">队列原文落账</td><td>旁路结论落账</td><td class="hot">占位符落账</td><td class="hot">全合法才发</td></tr>
+</table></div>
+<p>兼容五规则（第四节的「没有原生异步时」）是⑦的施工图：<b>及时记录已完成的 assistant 消息与工具调用项；工具完成才记 result（半截不记）；执行中被打断补占位符 + 追加打断事件 + 重新调用；无原生 steering 时不能假定半截输出或隐藏推理可以任意回灌；非打断事件入队、批量注入</b>。三条会被当场拒掉的非法轨迹：有 tool_calls 缺配对 tool 结果（删 assistant 等于没发起过，而外部副作用已发生——只能补占位）；回灌被截断的思考（思考签名绑的是产生它时的前缀，轻则静默丢弃重则 400）；清掉的队列没落轨迹（模型看到「什么都没发生」，实际 cancel 已发出——它要么重发取消，要么以为取消过）。</p>
+<p>点题一句：<b>「打断之后轨迹仍然合法」这个外在行为，不是任何一个部件的属性，而是「安全点定义 × 清队落轨迹 × 占位符明写」三者协同涌现的</b>。三件事少一件就换一种失守：只停生成不清轨迹，模型的世界和你的世界分叉；只清轨迹不写占位，模型编造工具结果；只有并行不标身份，归因错到检索层头上。取消改变的是执行，不改变事实记录。</p>
+<p class="hint">口诀：token 会骗人，轨迹不会——轨迹缺一条，世界就分叉。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：它依赖什么才能工作</h2></div>
+<p class="sec-sub">主体之外，还有一圈支撑系统。</p>
+<div class="quote">「对事物的认识 = 空间属性 + 时间属性 + 环境属性（外在关系和依赖）。」</div>
+<div class="envcards">
+<div class="env"><b>实时通道（推 vs 轮询）</b><span>内置渠道是推送（Gateway 直接收到）；外部事件源（新邮件、第三方回调）只能等下一个周期。先把「这件事能不能被推」问清楚，再设计 Agent 的作息表——顺序反了就是一堆轮询加「感觉像主动」的话术。</span></div>
+<div class="env"><b>事件路由器</b><span>用规则（来源 + 关键词 + 优先级字段）或一次轻量 LLM 分类判紧急。注意是路由器不是决策者：判错顶多早打断一次，不会改变任务本身。</span></div>
+<div class="env"><b>厂商续接协议</b><span>reasoning 状态按厂商协议保留，不要自己拼接不可见思考；思考签名绑的是产生它时的前缀，前缀一换就失效。</span></div>
+<div class="env"><b>状态栏与队列计数</b><span>只把最后一条事件回给模型，前几条它不知道存在。状态栏常驻 [未处理事件 2/4] 并在消息末尾汇总——看不见的状态等于没有状态。</span></div>
+<div class="env"><b>工具层发起/完成解耦</b><span>initiate_phone_call 立即返回任务 ID 与初始状态，进展通过 phone_call_connected / phone_call_ended 事件通知。工具自己异步，事件循环才有东西可分派。</span></div>
+<div class="env"><b>取消令牌与执行边界</b><span>拿到取消令牌，别硬等返回；但已发出外部请求、结果未落账处不能取消——调用报错 ≠ 外部操作失败，那会留下悬挂副作用。</span></div>
+</div>
+<p><b>原生异步</b>（新一代模型 API 已提供）把这一页的规则变成两个能力：<b>异步工具调用</b>（发起与取结果分离，先去做不依赖结果的工作）与<b>回合中途引导</b>（同一任务内改约束）。三条验收随之而来：<b>结果归属与未完成状态是否清楚；「修改计划」不等于「停止执行」，更不等于「撤销已发生的动作」；多条更新能否同时遵守</b>（预算改了、人数也改了，两个都要用）。这条线要划清：<b>用了 asyncio 不等于模型具备原生异步能力</b>——一半的「异步 Agent」项目，异步只在 IO 层，推理仍按轮次串行。</p>
+<p class="hint">口诀：先问能不能被推，再谈 Agent 的作息表；异步写在外层还是模型里，决定你要背几页兼容规则。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测：学习-实践-复盘的闭环</h2></div>
+<p class="sec-sub">用自己的话能讲清楚，才算真的懂。先答题，再对照解析。</p>
+<div class="quote">「复盘是把『我当时怎么想的』和『实际怎么走完的』对齐：哪条规则对应哪种故障，答不出对应关系的，下次故障就出在那条规则上。」</div>
+<div id="quiz"></div>
+<p class="hint">口诀：讲得清「清队为什么不是丢弃」，才敢上打断；讲得清「旁路为什么必须带身份」，才敢开并行。</p>
+</section>
+
+<div class="summary">
+<h2>一页带走</h2>
+<p class="chant">推理段切不进，紧急有旁路门；清队不是丢弃，旁路要带身份。</p>
+<p>· 方法：表象（事件翻译机）→ 结构（三组七件）→ 流程（八相位一次处置）→ 融合（「打断后轨迹仍合法」是三者协同涌现的）。</p>
+<p>· 结构：结构化事件四字段（source/channel/content/context）+ 两档事件名 + 安全点闸口（推理段结束 / 工具返回 / 消息边界）+ 三种消费策略 + 只追加的轨迹条。</p>
+<p>· 行为：取消式四步（停生成 → 清队列 → 队列与紧急事件一起入轨迹 → 重新调用）；队列式在任一 tool.result 返回处批量注入；并行式另起会话并显式标 lane:"parallel"；未完成工具补占位符「结果尚未取得」。</p>
+<p>· 协同：兼容五规则维持轨迹合法性；三种非法轨迹（缺配对结果 / 回灌半截思考 / 清掉的队列没落轨迹）各对应一次真实失败；原生异步两条能力 + 三条验收（改计划 ≠ 停止执行 ≠ 撤销已发生动作）。</p>
+<p>· 边界与简化：事件时序被等距压缩进 0–720° 相位，未按真实延迟比例绘制；只演 4 条事件中的 2 条与三种策略的组合，多轮抢占与恢复未展开；占位符文案「工具正在后台执行，请优先处理新事件」是兼容规则里的示意写法，落点要求只有一条——明写「结果尚未取得」；本页不演示语音（10毫秒—1秒）与 Computer Use（亚秒—秒）的时序，它们的时间尺度只出现在第 1 节刻度带。</p>
+</div>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+
+<script>
+(function(){
+// ============ 主题专属数据 ============
+var PERIOD=4600,PHASE_MAX=720;
+var STEPS=[
+{d:0,t:'推理段流式 · 不可分割',x:'模型一次生成是一段流式的、不可分割的推理；事件可以在任何时刻到达，但你不能在任意字节处切进去。本轮主线：「帮客户改地址并重新发货」跑到一半，assistant 已按用户改口发起 cancel_shipment(#4821)——外部世界可能已经变了，而轨迹还不知道'},
+{d:120,t:'常规事件到达 · 入队',x:'E1 user.input「等等，地址改成公司那个」到达：常规档（user.input / agent.input / tool.result / timer.trigger）入队不打断，等任一 tool.result 返回这个天然安全点再批量注入。逐条注入 = 模型每处理一条就重新规划一次，成本与漂移都翻倍'},
+{d:260,t:'紧急事件到达 · 触发取消',x:'E2 user.interrupt「先别发货！客户刚打电话说取消」到达：紧急档（user.interrupt / supervisor.instruction / agent.interrupt）触发取消。紧急度写在 context.priority 字段里由策略消费——靠「放消息末尾最后一条」表达优先级，下一轮顺序一变优先级就变了'},
+{d:280,t:'取消式四步',x:'四步固定：停 LLM 流式生成与同步工具执行（拿到取消令牌，别硬等返回）→ 清空待处理队列（旧事件描述的是旧目标，留着会污染新推理）→ 把清出去的队列 + 紧急事件一起追加进轨迹 → 重新调用模型。清队不是丢弃，是让模型知道「这些事被打断了」，而不是凭空消失'},
+{d:400,t:'旁路并行 · 即时返回',x:'顺手查「公司地址是不是历史常用地址」与主任务不冲突：另起一个轻量推理会话即时返回，结果回写主轨迹并显式标 lane:"parallel"。不写这个标记，模型会把旁路结论当成主任务的中间步骤——出错归因到检索层，其实错在策略层'},
+{d:500,t:'tool.result 安全点 · 批量注入',x:'任一 tool.result 返回 = 安全点：队列一次性批量追加（两条事件原文一起进，不是一人一轮）。取消点必须是工具或推理能安全收尾的地方——不能在已发出外部请求、结果还没落账的位置取消，那会留下悬挂副作用：调用报错 ≠ 外部操作失败'},
+{d:560,t:'未完成工具 · 占位符补写',x:'cancel_shipment 已发起、结果未落账：补一条显式占位 tool result——「工具正在后台执行，请优先处理新事件」，必须明写「结果尚未取得」。写成「已发起」，模型下一步就会开始念取消成功的回执——编造就是这么来的；已落账的结果不重发，复制会让模型以为查了两遍且一致，从此不再复查'},
+{d:640,t:'重新调用 · 合法轨迹闭环',x:'重新调用模型，按新轨迹重规划（先取消，取消成功后才改地址）。合法性自检三连：每条 tool_calls 有配对 tool result（占位符也算）、没有回灌被截断的思考、清掉的队列全部落账。取消改变的是执行，不改变事实记录——回到起点闭环'}
+];
+var PARTS={
+evt:['e1rect','e2rect','e2ctx'],
+route:['cap1','cap2'],
+slot:['spRet','spEnd','banLine','frIn'],
+cancel:['brC','banLine','cap2'],
+queue:['brQ','e1rect','cap1'],
+par:['brP','parNote'],
+traj:['trajBox','trajPh','trajT2','trajT4']
+};
+var CHIPS=[{k:'e1',l:'E1 常规'},{k:'e2',l:'E2 紧急'},{k:'par',l:'旁路并行'},{k:'queue',l:'队列积压'},{k:'traj',l:'轨迹追加'},{k:'slot',l:'安全点'}];
+var QUIZ=[
+{q:'同步接口下，事件应该在哪儿被消费？',opts:['任意字节处，谁先到谁插队','只能在安全点：推理段结束、一次工具返回、一个消息边界','只能在用户明确说「停」的时候'],a:1,exp:'模型一次生成是一段流式的不可分割推理，在任意字节处切入会产生半截 assistant 消息——回灌时轻则静默丢弃重则报 400。「事件只能在安全点被消费」这句写进设计文档，能省掉后面一半争论。'},
+{q:'取消式策略里「清空待处理队列」，为什么不能实现成直接丢弃？',opts:['丢弃更省 token，语义上没区别','因为清出的事件描述的是旧目标这个事实——必须与紧急事件一起追加进轨迹，否则模型要么重做取消要么以为已取消','因为队列里有附件，删了会报错'],a:1,exp:'第 ③ 种非法轨迹就是这么造的：清掉的队列没落轨迹，模型看到「什么都没发生」，实际世界 cancel 已经发出——取消改变的是执行，不改变事实记录。'},
+{q:'旁路（并行式）的结果回写主轨迹时不标 lane:"parallel"，归因会错在哪一层？',opts:['错在检索层——其实错在策略层：模型把旁路结论当主任务的中间步骤，将来出错你追到工具身上','错在执行层——并行会引发竞态','不会错，模型能自己分辨'],a:0,exp:'正文 3.5 的旁路样例：{"role":"tool","content":"该地址为历史第 2 常用","meta":{"lane":"parallel"}}。旁路身份是归因的前提；不写这个字段，「顺手查的」和「主线上查到的」在轨迹里一模一样。'},
+{q:'被打断的未完成工具，占位符怎么写才安全？',opts:['写「已发起」，表示我们试过了','明写「结果尚未取得」，并让模型知道下一步该等还是该做别的','干脆不写，等工具真结果回来再补'],a:1,exp:'模型看到「已启动」就以为「已完成」，然后开始编造取消成功的回执——占位符风险是正文点名的坏味道。不写更糟：assistant 的 tool_calls 缺配对 tool 结果，请求格式非法；删掉那条 assistant 等于没发起过，而外部副作用已发生。'},
+{q:'非打断的常规事件为什么要「批量注入」而不是逐条注入？',opts:['批量实现简单','因为逐条注入让模型每处理一条就重新规划一次，成本与漂移都翻倍；批量 = 在一个安全点把队列一次性追加','因为模型读不了多条消息'],a:1,exp:'队列式的全部要点：入队不打断，等任一 tool.result 返回时一次性批量追加。同时到达的紧急与常规也是一起注入，不是一人一轮——但优先级来自 context.priority 字段，不靠注入位置表达。'},
+{q:'原生异步能力宣称「回合中途引导」，验收时要盯住哪三条？',opts:['响应更快、token 更省、并发更高','结果归属与未完成状态是否清楚；「修改计划」≠「停止执行」≠「撤销已发生动作」；多条更新能否同时遵守','语音、屏幕、机器人三种模态都支持'],a:1,exp:'第三条最容易被漏：预算改了、人数也改了，两个都要用——只遵守一条的「异步」是假的。另外要划清：用了 asyncio 不等于模型具备原生异步能力，一半项目的异步只在 IO 层，推理仍按轮次串行。'}
+];
+// ============ 场景构建 ============
+function rep(id,x,y,w,h,t1,s1,fill,stroke,dash){
+var d=dash?' stroke-dasharray="4 3"':'';
+return '<g id="'+id+'"><rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="8" fill="'+fill+'" stroke="'+stroke+'" stroke-width="1.4"'+d+'/>'
++'<text class="tb" x="'+(x+w/2)+'" y="'+(y+20)+'" text-anchor="middle">'+t1+'</text>'
++'<text class="ts" x="'+(x+w/2)+'" y="'+(y+38)+'" text-anchor="middle">'+s1+'</text></g>';
+}
+function branch(id,x,w,title,rows){
+var s='<g id="'+id+'"><rect x="'+x+'" y="330" width="'+w+'" height="102" rx="8" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.4"/>'
++'<text class="tb" x="'+(x+14)+'" y="348">'+title+'</text>';
+for(var i=0;i<rows.length;i++){s+='<text class="ts" id="'+id+'L'+(i+1)+'" x="'+(x+14)+'" y="'+(366+i*18)+'">'+rows[i]+'</text>';}
+return s+'</g>';
+}
+var H='';
+// 事件登记表（结构化事件落点）
+H+='<g id="e1box"><rect id="e1rect" x="34" y="62" width="590" height="32" rx="8" fill="#FBFAF6" stroke="#B4B2A9" stroke-width="1.2" stroke-dasharray="5 4"/>'
++'<text class="ts" x="44" y="82">E1 user.input · 常规 · source:im · 处置：入队不打断</text></g>';
+H+='<g id="e2box"><rect id="e2rect" x="34" y="98" width="590" height="36" rx="8" fill="#FBFAF6" stroke="#B4B2A9" stroke-width="1.2" stroke-dasharray="5 4"/>'
++'<text class="ts" x="44" y="112">E2 user.interrupt · 紧急 · source:user · 处置：触发取消</text>'
++'<text class="ts" id="e2ctx" x="44" y="128">context：priority=high · customer_tier=vip · related_orders=#4821</text></g>';
+// 下落卡片（移动件，到位交棒）
+H+='<g id="cap1" opacity="0"><rect x="128" y="146" width="176" height="22" rx="6" fill="#FFF1D6" stroke="#D97E06" stroke-width="1.5"/>'
++'<text class="tb" id="cap1T" x="216" y="161" text-anchor="middle">E1 · 入队</text></g>';
+H+='<g id="cap2" opacity="0"><rect x="128" y="172" width="176" height="22" rx="6" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.5"/>'
++'<text class="tb" id="cap2T" x="216" y="187" text-anchor="middle" fill="#8A2A2A">E2 · 触发取消</text></g>';
+// 静态落点标注带
+H+='<text class="ts" id="banTxt" x="296" y="236" text-anchor="middle" fill="#8A2A2A">此处不可取消 · 悬挂副作用</text>';
+H+='<text class="ts" id="b1" x="120" y="252">安全点 ▲：仅在消息边界消费</text>';
+H+='<text class="ts" id="b2" x="24" y="318">紧急取消绕行安全点</text>';
+// 执行流主带
+H+=rep('frIn',24,266,150,44,'推理段 · 流式','不可分割','#ffffff','#3B3A34',false);
+H+=rep('frTool',208,266,176,44,'工具 A 执行中','已发起 · 未落账','#FBFAF6','#3B3A34',false);
+H+='<line id="banLine" x1="296" y1="264" x2="296" y2="312" stroke="#E24B4A" stroke-width="2.6" opacity="0.4"/>';
+H+=rep('frRet',418,266,132,44,'tool.result 返回','结果已落账','#FBFAF6','#3B3A34',false);
+H+=rep('frEnd',586,266,132,44,'推理段结束','消息边界','#FBFAF6','#3B3A34',false);
+H+=rep('frNext',754,266,142,44,'下一轮采样','回填后轨迹','#FFF6E8','#EF9F27',false);
+// ▲ 安全点标记（常驻）
+H+='<polygon id="spRet" points="510,238 501,252 519,252" fill="#F5F4EF" stroke="#EF9F27" stroke-width="1.2"/>';
+H+='<polygon id="spEnd" points="680,238 671,252 689,252" fill="#F5F4EF" stroke="#EF9F27" stroke-width="1.2"/>';
+// 流向箭头
+H+='<path d="M174 288 L208 288" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#flw)"/>';
+H+='<path d="M384 288 L418 288" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#flw)"/>';
+H+='<path d="M550 288 L586 288" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#flw)"/>';
+H+='<path d="M718 288 L754 288" stroke="#C46A0A" stroke-width="1.5" fill="none" marker-end="url(#flw)"/>';
+H+='<path d="M520 312 L520 330" stroke="#C46A0A" stroke-width="1.2" fill="none" stroke-dasharray="5 3" marker-end="url(#flw)"/>';
+H+='<path d="M688 312 L688 321 L760 321 L760 330" stroke="#C46A0A" stroke-width="1.2" fill="none" stroke-dasharray="5 3" marker-end="url(#flw)"/>';
+// 三分支面板
+H+=branch('brC',24,300,'① 取消式 · 四步',['1 停生成与同步工具','2 清空待处理队列','3 队列+紧急 → 入轨迹','4 重新调用模型']);
+H+=branch('brQ',350,300,'② 队列式 · 安全点批量',['入队不打断 · 等安全点','任一 tool.result 返回','一次性批量追加','逐条 = 每轮重规划']);
+H+=branch('brP',676,300,'③ 并行式 · 旁路',['另起轻量会话','即时返回主轨迹','显式标 lane: parallel','不标 = 归因当场错']);
+H+='<text class="ts" id="parNote" x="902" y="322" text-anchor="middle">旁路 · 不阻塞主</text>';
+// 轨迹条 + 占位符风险
+H+='<g id="trajBox"><rect x="24" y="442" width="634" height="82" rx="8" fill="#FBFAF6" stroke="#3B3A34" stroke-width="1.4"/>'
++'<rect x="30" y="446" width="622" height="18" rx="4" fill="#ffffff" stroke="#B4B2A9" stroke-width="1"/>'
++'<text class="ts" id="trajT1" x="36" y="459">[1] assistant tool_calls：cancel_shipment 已发起 · 未落账</text>'
++'<rect id="trajR2" x="30" y="466" width="622" height="18" rx="4" fill="#ffffff" stroke="#B4B2A9" stroke-width="1" opacity="0"/>'
++'<text class="ts" id="trajT2" x="36" y="479" opacity="0">[2] 取消落账：清出队列 + E2 原文（清队 ≠ 丢弃）</text>'
++'<rect id="trajR3" x="30" y="486" width="622" height="18" rx="4" fill="#ffffff" stroke="#B4B2A9" stroke-width="1" opacity="0"/>'
++'<text class="ts" id="trajT3" x="36" y="499" opacity="0">[3] 批量落账：E1 与紧急事件一起注入 · 积压清零</text>'
++'<rect id="trajPh" x="30" y="506" width="622" height="18" rx="4" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.2" opacity="0"/>'
++'<text class="ts" id="trajT4" x="36" y="519" opacity="0" fill="#8A2A2A">[4] 占位符：工具正在后台执行，请优先处理新事件</text></g>';
+H+='<text class="tb" x="670" y="458">轨迹 · 只追加</text>';
+H+='<text class="ts" x="670" y="478" fill="#8A2A2A">写成「已启动」→ 模型会编造结果</text>';
+H+='<text class="ts" x="670" y="498">占位符必须明写：结果尚未取得</text>';
+H+='<text class="ts" x="670" y="518">取消改变的是执行，不是事实记录</text>';
+document.getElementById('scene').innerHTML=H;
+// 副图刻度标记
+var V2='<polygon id="v2_mk1" points="208,92 203,101 213,101" fill="#F5F4EF" stroke="#EF9F27" stroke-width="1.2"/>'
++'<text class="ts" x="208" y="90" text-anchor="middle">E1 到达 120°</text>'
++'<polygon id="v2_mk2" points="370,92 365,101 375,101" fill="#F5F4EF" stroke="#E24B4A" stroke-width="1.2"/>'
++'<text class="ts" x="370" y="90" text-anchor="middle">E2 到达 260°</text>'
++'<circle id="v2_cp1" cx="612" cy="110" r="5" fill="#ffffff" stroke="#639922" stroke-width="1.5"/>'
++'<text class="ts" x="612" y="52" text-anchor="middle">结果返回 · 批量点</text>'
++'<circle id="v2_cp2" cx="716" cy="110" r="5" fill="#ffffff" stroke="#EF9F27" stroke-width="1.5"/>'
++'<text class="ts" x="716" y="66" text-anchor="middle">推理段结束</text>'
++'<circle id="v2_cp3" cx="808" cy="110" r="5" fill="#ffffff" stroke="#C46A0A" stroke-width="1.5"/>'
++'<text class="ts" x="812" y="52" text-anchor="start">重新采样</text>';
+document.getElementById('v2_marks').innerHTML=V2;
+// ============ 通用脚手架 ============
+function $(id){return document.getElementById(id);}
+function setTxt(id,v){var n=$(id);if(n&&n.textContent!==v)n.textContent=v;}
+function setA(id,k,v){var n=$(id);if(n)n.setAttribute(k,v);}
+function setO(id,v){var n=$(id);if(n)n.setAttribute('opacity',Math.round(v*100)/100);}
+function setF(id,f,s){var n=$(id);if(n){n.setAttribute('fill',f);n.setAttribute('stroke',s);}}
+function g0(id){var n=$(id);return n&&n.children?n.children[0]:null;}
+function boxOn(id,on,base,stroke){var r=g0(id);if(r){r.setAttribute('fill',on?'#FFF1D6':base);r.setAttribute('stroke',on?'#D97E06':stroke);}}
+var btn=$('engBtn'),spd=$('engSpd'),spdV=$('engSpdV');
+var stepBar=$('stepBar'),stepT=$('stepT'),stepX=$('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var dots=[];
+for(var s=0;s<STEPS.length;s++){
+(function(n){
+var b=document.createElement('button');
+b.className='stepnode';
+b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+b.onclick=function(){goStep(n);};
+stepBar.appendChild(b);dots.push(b);
+})(s);
+}
+var stepIdx=-1;
+function setAuto(on){
+mode='auto';run=on;btn.textContent=on?'暂停':'播放';
+if(on){stepIdx=-1;dots.forEach(function(d){d.classList.remove('on');});
+stepT.textContent='自动运转模式';
+stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格；也可以直接点部件卡，在图里点亮对应部件。';}
+}
+window.goStep=function(i){
+stepIdx=(i+STEPS.length)%STEPS.length;
+mode='step';run=false;
+phase=STEPS[stepIdx].d/PHASE_MAX*PERIOD;
+btn.textContent='继续自动运转';
+dots.forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+stepX.textContent=STEPS[stepIdx].x;
+};
+btn.textContent=run?'暂停':'播放';
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+// ---- 运动学 ----
+function smooth(t){return t*t*(3-2*t);}
+function cl(v,a,b){return Math.max(a,Math.min(b,v));}
+function norm0(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+var C1HOME={x:216,y:161},C2HOME={x:216,y:187},CW=176,CH=22;
+var WP1=[{t:0,x:216,y:161},{t:60,x:216,y:161},{t:120,x:340,y:161},{t:180,x:484,y:220},{t:502,x:484,y:220},{t:510,x:484,y:366},{t:546,x:440,y:470},{t:556,x:344,y:519},{t:720,x:344,y:519}];
+var WP2=[{t:0,x:216,y:187},{t:150,x:216,y:187},{t:260,x:256,y:187},{t:280,x:256,y:320},{t:720,x:256,y:320}];
+function place(node,home,wp,th){
+var i=0;while(i<wp.length-2&&th>wp[i+1].t)i++;
+var a=wp[i],b=wp[i+1];
+var t=smooth(cl((th-a.t)/(b.t-a.t),0,1));
+var x=a.x+(b.x-a.x)*t,y=a.y+(b.y-a.y)*t;
+node.setAttribute('transform','translate('+(x-home.x).toFixed(1)+' '+(y-home.y).toFixed(1)+')');
+return{x:x,y:y};
+}
+// ---- 派生量 ----
+function pendingAt(t){if(t<120)return 0;if(t<260)return 1;if(t<400)return 2;if(t<500)return 1;return 0;}
+function trajCount(t){return 1+(t>=280?1:0)+(t>=500?1:0)+(t>=560?1:0);}
+function keyAt(t){
+if(t<120)return '推理段执行中 · 工具 A 未落账';
+if(t<260)return 'E1 入队 · 常规不打断';
+if(t<280)return 'E2 紧急 · 触发取消';
+if(t<400)return '取消四步 · 清队即入账';
+if(t<470)return '旁路返回 · lane: parallel';
+if(t<560)return '安全点到达 · 批量注入';
+if(t<640)return '占位符已补 · 结果尚未取得';
+return '重新调用 · 轨迹全合法';
+}
+function chipsAt(t){
+return [
+['e1',t<120?'下落中':(t<500?'已入队':'已批量入账'),t>=500?'on':(t>=120?'warn':'off')],
+['e2',t<260?'未到达':(t<400?'取消执行中':'已入轨迹'),t>=400?'on':(t>=260?'warn':'off')],
+['par',t<400?'未启动':(t<470?'旁路返回中':'已标 lane'),'off'],
+['queue','积压 '+pendingAt(t)+'/4',(t>=120&&t<500)?'warn':'off'],
+['traj',trajCount(t)+' 条已落账',t>=560?'on':(t>=280?'warn':'off')],
+['slot',t<120?'推理段内 · 不可切入':(t<470?'未达安全点':(t<640?'可切入':'已重规划')),'off']
+];
+}
+// ---- 主图渲染 ----
+function render(th){
+var t=norm0(th);
+// 下落卡片（到位即交棒：文字先隐、盒后隐，落点静态文字全程可见）
+place($('cap1'),C1HOME,WP1,t);
+place($('cap2'),C2HOME,WP2,t);
+var c1v=t>=70&&t<558,c2v=t>=152&&t<290;
+setO('cap1',c1v?(1-cl((t-546)/12,0,1)):0);
+setO('cap2',c2v?(t<282?1:(1-cl((t-282)/8,0,1))):0);
+setO('cap1T',t<502?1:0);
+setO('cap2T',t<260?1:0);
+// 安全点 ▲ 点亮
+setF('spRet',(t>=460&&t<540)?'#EF9F27':'#F5F4EF','#EF9F27');
+setF('spEnd',(t>=545&&t<640)?'#EF9F27':'#F5F4EF','#EF9F27');
+// 禁止取消标记与执行流盒
+setA('banLine','opacity',t>=120?1:0.4);
+boxOn('frIn',t<120||t>=640,'#ffffff','#3B3A34');
+boxOn('frTool',t>=120&&t<280,'#FBFAF6','#3B3A34');
+boxOn('frRet',t>=460&&t<540,'#FBFAF6','#3B3A34');
+boxOn('frEnd',t>=545&&t<640,'#FBFAF6','#3B3A34');
+boxOn('frNext',t>=640,'#FFF6E8','#EF9F27');
+// 三分支：各在自己的相位点亮，其余灰化
+var onC=t>=260&&t<400,onQ=t>=460&&t<560,onP=t>=395&&t<470;
+setO('brC',(onC||t>=400)?1:0.6);setO('brQ',(onQ||t>=560)?1:0.6);setO('brP',onP?1:0.6);
+boxOn('brC',onC,'#ffffff','#D3D1C7');boxOn('brQ',onQ,'#ffffff','#D3D1C7');boxOn('brP',onP,'#ffffff','#D3D1C7');
+for(var k=1;k<=4;k++){
+var on=onC&&t>=280+(k-1)*30&&t<310+(k-1)*30;
+setA('brCL'+k,'fill',on?'#1F1E1A':'#6B695F');
+}
+// 轨迹条增行
+setA('trajR2','opacity',t>=280?1:0);setA('trajT2','opacity',t>=280?1:0);
+setA('trajR3','opacity',t>=500?1:0);setA('trajT3','opacity',t>=500?1:0);
+setA('trajPh','opacity',t>=560?1:0);setA('trajT4','opacity',t>=560?1:0);
+// 事件登记表高亮
+setF('e1rect',t>=120&&t<500?'#FFF1D6':'#FBFAF6',t>=120&&t<500?'#D97E06':'#B4B2A9');
+setF('e2rect',t>=260&&t<400?'#FFF1D6':'#FBFAF6',t>=260&&t<400?'#D97E06':'#B4B2A9');
+}
+function tick(now){
+var dt=Math.min(50,now-last);last=now;
+if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+render(phase/PERIOD*PHASE_MAX);
+requestAnimationFrame(tick);
+}
+/* agent-lab shared instruments + second view */
+(function(){
+var roPhase=$('roPhase'),roStep=$('roStep'),roKey=$('roKey'),roQue=$('roQue'),roTrj=$('roTrj');
+var chipBox=$('stateChips');
+var chipEls={};
+CHIPS.forEach(function(c){
+var s=document.createElement('span');s.className='chip';s.innerHTML=c.l+' <b>--</b>';
+chipBox.appendChild(s);chipEls[c.k]=s;
+});
+function setChip(k,v,cls){
+var n=chipEls[k];if(!n)return;
+var b=n.querySelector('b');
+if(b&&b.textContent!==v)b.textContent=v;
+n.classList.remove('on','warn','off');
+if(cls)n.classList.add(cls);
+}
+function stageIndex(th){var si=0;for(var i=0;i<STEPS.length;i++){if(th>=STEPS[i].d)si=i;}return si;}
+function renderSide(th){
+var t=norm0(th),x=70+t/720*830,pend=pendingAt(t);
+setA('v2_play','x1',x.toFixed(1));setA('v2_play','x2',x.toFixed(1));
+setA('v2_prog','width',(t/720*830).toFixed(1));
+setA('v2_ban','opacity',t<120?0.9:0.25);
+setF('v2_mk1',t>=120?'#EF9F27':'#F5F4EF','#EF9F27');
+setF('v2_mk2',t>=260?'#E24B4A':'#F5F4EF','#E24B4A');
+setF('v2_cp1',t>=500?'#EAF3DE':'#ffffff','#639922');
+setF('v2_cp2',t>=560?'#FFF6E8':'#ffffff','#EF9F27');
+setF('v2_cp3',t>=640?'#FAEEDA':'#ffffff','#C46A0A');
+setA('v2_q1','width',(pend*58).toFixed(0));
+setA('v2_q2','width',(cl((t-282)/18,0,1)*116).toFixed(0));
+setA('v2_q3','width',(cl((t-502)/18,0,1)*116).toFixed(0));
+setA('v2_q4','width',(cl((t-562)/18,0,1)*58).toFixed(0));
+setA('v2_risk','opacity',t<120?1:0.3);
+setTxt('v2_scan',t<70?'扫描：推理段进行中 · 事件不可切入':(t<120?'扫描：事件在途 · 推理段不可切入':(t<260?'扫描：E1 已入队 · 积压 1/4':(t<400?'扫描：紧急四步 · 清队即入账':(t<470?'扫描：旁路返回 · lane: parallel':(t<560?'扫描：批量注入 · 积压 0/4':(t<640?'扫描：占位符落账 · 结果尚未取得':'扫描：重新调用 · 轨迹全合法')))))));
+}
+function updateShared(th){
+var t=norm0(th);
+var pr=Math.round(t)%720;
+if(roPhase.textContent!==(pr+'\u00b0'))roPhase.textContent=pr+'\u00b0';
+var si=stageIndex(t);if(mode==='step'&&stepIdx>=0)si=stepIdx;
+var st=STEPS[si]?STEPS[si].t:'\u2014';
+if(roStep.textContent!==st)roStep.textContent=st;
+var kv=keyAt(t);if(roKey.textContent!==kv)roKey.textContent=kv;
+var qt='[未处理事件 '+pendingAt(t)+'/4]';if(roQue.textContent!==qt)roQue.textContent=qt;
+var tt=trajCount(t)+' 条';if(roTrj.textContent!==tt)roTrj.textContent=tt;
+var cs=chipsAt(t);
+for(var i=0;i<cs.length;i++)setChip(cs[i][0],cs[i][1],cs[i][2]);
+renderSide(t);
+}
+var AS={ease:null,last:performance.now(),DUR:900};
+var origGoStep=window.goStep;
+window.goStep=function(i){
+var from=phase;
+origGoStep(i);
+var to=phase,delta=to-from;
+if(!reduced&&Math.abs(delta)<=PERIOD/4&&Math.abs(delta)>0.01){
+phase=from;AS.ease={from:from,to:to,elapsed:0};
+}else{AS.ease=null;}
+};
+var origTick=tick;
+tick=function(now){
+if(typeof now!=='number')now=performance.now();
+var dt=Math.min(50,Math.max(0,now-AS.last));AS.last=now;
+if(mode==='auto')AS.ease=null;
+if(AS.ease){
+AS.ease.elapsed=Math.min(AS.DUR,AS.ease.elapsed+dt);
+var p=AS.ease.elapsed/AS.DUR;
+phase=AS.ease.from+(AS.ease.to-AS.ease.from)*smooth(p);
+if(p>=1){phase=AS.ease.to;AS.ease=null;}
+}
+origTick(now);
+updateShared(phase/PERIOD*PHASE_MAX);
+};
+})();
+
+requestAnimationFrame(tick);
+document.querySelectorAll('.part').forEach(function(b){
+b.onclick=function(){
+var ids=PARTS[b.getAttribute('data-part')]||[];
+ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+};
+});
+var BASE=(location.pathname.split('/agent-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/agent/lab';
+document.getElementById('lnkArt').href=BASE+'/agent/tutorial/09-event-timing';
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+var d=document.createElement('div');d.className='q';
+var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+h+='<div class="exp">'+it.exp+'</div>';
+d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+var b=e.target.closest('.opt');if(!b)return;
+var box2=b.parentElement;if(box2.classList.contains('done'))return;
+box2.classList.add('done');
+var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+box2.querySelectorAll('.opt').forEach(function(x){
+var xi=+x.getAttribute('data-oi');
+if(xi===QUIZ[qi].a)x.classList.add('right');
+else if(x===b)x.classList.add('wrong');
+});
+});
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+})();
+</script>
+</body>
+</html>
