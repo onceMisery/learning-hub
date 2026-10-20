@@ -13,7 +13,7 @@
     "分层存储"
   ],
   "toolchain": "Apache Pulsar 5.1.0-SNAPSHOT",
-  "verifiedAt": "2026-10-18",
+  "verifiedAt": "2026-10-20",
   "outline": [
     "整体架构：四层拆分与三条路径",
     "Broker、账本与元数据：三本账",
@@ -21,7 +21,8 @@
     "消息模型：订阅、非持久化与跨地域复制",
     "Functions 与 IO 连接器",
     "事务、分层存储、负载均衡与背压",
-    "数据生命周期：保留、压缩与卸载"
+    "数据生命周期：保留、压缩与卸载",
+    "异步、并发与顺序：六个取舍"
   ],
   "sections": [
     {
@@ -107,6 +108,17 @@
             "跨地域复制",
             "Replicated Subscription",
             "集群策略"
+          ]
+        },
+        {
+          "file": "08-异步并发与顺序.md",
+          "slug": "08-async-concurrency-ordering",
+          "title": "异步、并发与顺序：Pulsar 源码里的六个取舍",
+          "tags": [
+            "并发",
+            "顺序",
+            "异步",
+            "PartitionedProducer"
           ]
         }
       ]

@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="430" viewBox="0 0 920 430" role="img" aria-label="并发写与有序读，以及去重的两个水位">
+<title>并发写、有序读与去重水位</title>
+<style>
+text{font-family:'Microsoft YaHei','PingFang SC','Hiragino Sans GB',sans-serif}
+.t{font-size:20px;font-weight:700;fill:#1F1E1A}
+.s{font-size:12px;fill:#6B695F}
+.b{font-size:12.5px;font-weight:600;fill:#1F1E1A}
+.n{font-size:10.5px;fill:#3B3A34}
+.g{font-size:10px;fill:#6B695F}
+.h{font-size:10px;font-weight:600;fill:#4C7A1A}
+.w{font-size:10px;font-weight:600;fill:#854F0B}
+.r{font-size:10px;font-weight:600;fill:#A32D2D}
+</style>
+<rect x="0" y="0" width="920" height="430" fill="#FFFFFF"/>
+<text class="t" x="30" y="34">写是并发的，读是有序的</text>
+<text class="s" x="30" y="54">Broker 不等 quorum 就返回；但可见位点只由 pendingAddEntries 的队头推进</text>
+<defs>
+<marker id="a18" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="g18" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="d18" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#B4B2A9" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+
+<rect x="30" y="78" width="120" height="66" rx="8" fill="#FFFFFF" stroke="#3B3A34"/>
+<text class="b" x="90" y="102" text-anchor="middle">Producer</text>
+<text class="n" x="90" y="122" text-anchor="middle">sendAsync</text>
+<rect x="180" y="78" width="180" height="66" rx="8" fill="#FFFFFF" stroke="#3B3A34"/>
+<text class="b" x="270" y="102" text-anchor="middle">PersistentTopic</text>
+<text class="n" x="270" y="122" text-anchor="middle">publishMessage 只入队</text>
+<rect x="390" y="78" width="200" height="66" rx="8" fill="#FFF6E8" stroke="#EF9F27"/>
+<text class="b" x="490" y="102" text-anchor="middle">ManagedLedgerImpl</text>
+<text class="n" x="490" y="122" text-anchor="middle">asyncAddEntry：不等 quorum</text>
+<path d="M150 111 L176 111" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#a18)"/>
+<path d="M360 111 L386 111" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#a18)"/>
+<path d="M590 111 L640 111" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#a18)"/>
+
+<text class="w" x="646" y="86">pendingAddEntries（FIFO）</text>
+<rect x="646" y="94" width="240" height="46" rx="8" fill="#FBFAF6" stroke="#B4B2A9"/>
+<rect x="652" y="100" width="42" height="34" rx="4" fill="#FFF6E8" stroke="#EF9F27"/>
+<text class="n" x="673" y="122" text-anchor="middle">E1</text>
+<rect x="699" y="100" width="42" height="34" rx="4" fill="#FFFFFF" stroke="#D3D1C7"/>
+<text class="g" x="720" y="122" text-anchor="middle">E2</text>
+<rect x="746" y="100" width="42" height="34" rx="4" fill="#FFFFFF" stroke="#D3D1C7"/>
+<text class="g" x="767" y="122" text-anchor="middle">E3</text>
+<rect x="793" y="100" width="42" height="34" rx="4" fill="#FFFFFF" stroke="#D3D1C7"/>
+<text class="g" x="814" y="122" text-anchor="middle">E4</text>
+<rect x="840" y="100" width="40" height="34" rx="4" fill="#FFFFFF" stroke="#D3D1C7"/>
+<text class="g" x="860" y="122" text-anchor="middle">E5</text>
+<text class="w" x="658" y="156">队头</text>
+<path d="M673 146 L673 138" stroke="#EF9F27" stroke-width="1.6" marker-end="url(#a18)"/>
+
+<rect x="646" y="186" width="240" height="110" rx="8" fill="#FFFFFF" stroke="#3B3A34"/>
+<text class="b" x="660" y="208">BookKeeper（W=2 / A=2）</text>
+<rect x="660" y="220" width="94" height="28" rx="6" fill="#FFFFFF" stroke="#D3D1C7"/>
+<text class="n" x="707" y="239" text-anchor="middle">Bookie 1</text>
+<rect x="766" y="220" width="94" height="28" rx="6" fill="#FFFFFF" stroke="#D3D1C7"/>
+<text class="n" x="813" y="239" text-anchor="middle">Bookie 2</text>
+<text class="g" x="660" y="266">回调可能乱序到达：② 先于 ① 回来</text>
+<text class="r" x="660" y="284">不是队头的完成 → 队头 failed，整本走恢复</text>
+<path d="M590 178 L700 182" stroke="#B4B2A9" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#d18)"/>
+<path d="M830 182 L760 178" stroke="#639922" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#g18)"/>
+
+<rect x="30" y="286" width="580" height="124" rx="10" fill="#FBFAF6" stroke="#ECEAE2"/>
+<text class="b" x="44" y="308">消费者能看到哪：lastConfirmedEntry 之前</text>
+<rect x="44" y="320" width="70" height="34" rx="4" fill="#EAF3DE" stroke="#639922"/>
+<text class="n" x="79" y="342" text-anchor="middle">E1</text>
+<rect x="122" y="320" width="70" height="34" rx="4" fill="#EAF3DE" stroke="#639922"/>
+<text class="n" x="157" y="342" text-anchor="middle">E2</text>
+<rect x="200" y="320" width="70" height="34" rx="4" fill="#EAF3DE" stroke="#639922"/>
+<text class="n" x="235" y="342" text-anchor="middle">E3</text>
+<rect x="278" y="320" width="70" height="34" rx="4" fill="#F5F4EF" stroke="#D3D1C7" stroke-dasharray="4 3"/>
+<text class="g" x="313" y="342" text-anchor="middle">E4</text>
+<rect x="356" y="320" width="70" height="34" rx="4" fill="#F5F4EF" stroke="#D3D1C7" stroke-dasharray="4 3"/>
+<text class="g" x="391" y="342" text-anchor="middle">E5</text>
+<text class="h" x="448" y="342">LAC 在这里</text>
+<path d="M440 356 L440 348" stroke="#639922" stroke-width="2" marker-end="url(#g18)"/>
+<text class="g" x="44" y="378">已确认可读</text>
+<text class="g" x="278" y="378">已写入、未确认：读者看不到</text>
+<text class="n" x="44" y="396">一条慢写卡住队头 → LAC 不前进 → 后面所有读一起等</text>
+
+<rect x="630" y="286" width="256" height="124" rx="10" fill="#FFFFFF" stroke="#3B3A34"/>
+<text class="b" x="644" y="308">去重：producerName + sequenceId</text>
+<path d="M646 336 L872 336" stroke="#B4B2A9" stroke-width="2"/>
+<path d="M680 328 L680 344" stroke="#639922" stroke-width="2"/>
+<text class="h" x="666" y="322">persisted</text>
+<path d="M790 328 L790 344" stroke="#EF9F27" stroke-width="2"/>
+<text class="w" x="776" y="322">pushed</text>
+<text class="g" x="646" y="358">≤persisted：Dup</text>
+<text class="g" x="748" y="358">夹中间：Unknown</text>
+<text class="g" x="846" y="358">新消息</text>
+<text class="n" x="644" y="382">Unknown 不是失败：让客户端稍后重试，</text>
+<text class="n" x="644" y="398">Broker 不猜「可能重复」</text>
+</svg>

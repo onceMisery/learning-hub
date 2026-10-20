@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="450" viewBox="0 0 920 450" role="img" aria-label="三种分发与顺序边界">
+<title>三种分发与顺序边界</title>
+<style>
+text{font-family:'Microsoft YaHei','PingFang SC','Hiragino Sans GB',sans-serif}
+.t{font-size:20px;font-weight:700;fill:#1F1E1A}
+.s{font-size:12px;fill:#6B695F}
+.b{font-size:12.5px;font-weight:600;fill:#1F1E1A}
+.n{font-size:10.5px;fill:#3B3A34}
+.g{font-size:10px;fill:#6B695F}
+.h{font-size:10px;font-weight:600;fill:#4C7A1A}
+.w{font-size:10px;font-weight:600;fill:#854F0B}
+</style>
+<rect x="0" y="0" width="920" height="450" fill="#FFFFFF"/>
+<text class="t" x="30" y="34">消费端：三种分发，三种顺序边界</text>
+<text class="s" x="30" y="54">共用一条 entries 序列，差别只在「谁读、按什么切」</text>
+<defs>
+<marker id="a19" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="g19" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+
+<rect x="30" y="76" width="164" height="66" rx="8" fill="#FBFAF6" stroke="#ECEAE2"/>
+<text class="b" x="44" y="98">Exclusive / Failover</text>
+<text class="n" x="44" y="118">PD1：一个 active</text>
+<rect x="214" y="86" width="120" height="46" rx="6" fill="#FFF6E8" stroke="#EF9F27"/>
+<text class="n" x="274" y="114" text-anchor="middle">entries 有序</text>
+<path d="M334 109 L372 109" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#a19)"/>
+<rect x="376" y="80" width="180" height="58" rx="8" fill="#FFFFFF" stroke="#3B3A34"/>
+<text class="b" x="466" y="102" text-anchor="middle">PD1 单 active</text>
+<text class="n" x="466" y="122" text-anchor="middle">写完一批才读下一批</text>
+<path d="M556 109 L594 109" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#a19)"/>
+<rect x="598" y="84" width="140" height="50" rx="8" fill="#EAF3DE" stroke="#639922"/>
+<text class="b" x="668" y="106" text-anchor="middle">C1（唯一收）</text>
+<text class="n" x="668" y="123" text-anchor="middle">并行度 1</text>
+<text class="g" x="756" y="104">顺序最稳；</text>
+<text class="g" x="756" y="120">换人时要等旧 connection 释放</text>
+
+<line x1="30" y1="166" x2="890" y2="166" stroke="#ECEAE2"/>
+
+<rect x="30" y="184" width="164" height="66" rx="8" fill="#FBFAF6" stroke="#ECEAE2"/>
+<text class="b" x="44" y="206">Shared</text>
+<text class="n" x="44" y="226">PDN：轮询取连续段</text>
+<rect x="214" y="194" width="120" height="46" rx="6" fill="#FFF6E8" stroke="#EF9F27"/>
+<text class="n" x="274" y="222" text-anchor="middle">entries 有序</text>
+<path d="M334 217 L372 217" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#a19)"/>
+<rect x="376" y="188" width="180" height="58" rx="8" fill="#FFFFFF" stroke="#3B3A34"/>
+<text class="b" x="466" y="210" text-anchor="middle">PDN round-robin</text>
+<text class="n" x="466" y="230" text-anchor="middle">subList(start, end)</text>
+<path d="M556 217 L594 217" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#a19)"/>
+<rect x="598" y="184" width="140" height="26" rx="6" fill="#EAF3DE" stroke="#639922"/>
+<text class="n" x="668" y="201" text-anchor="middle">C1：E1 E2</text>
+<rect x="598" y="214" width="140" height="26" rx="6" fill="#EAF3DE" stroke="#639922"/>
+<text class="n" x="668" y="231" text-anchor="middle">C2：E3 E4</text>
+<rect x="598" y="244" width="140" height="26" rx="6" fill="#EAF3DE" stroke="#639922"/>
+<text class="n" x="668" y="261" text-anchor="middle">C3：E5 E6</text>
+<text class="g" x="756" y="200">start 只增：</text>
+<text class="g" x="756" y="216">每个 consumer 内有序</text>
+<text class="g" x="756" y="232">跨 consumer 无序</text>
+<text class="g" x="756" y="248">吞吐最高</text>
+
+<line x1="30" y1="286" x2="890" y2="286" stroke="#ECEAE2"/>
+
+<rect x="30" y="304" width="164" height="66" rx="8" fill="#FBFAF6" stroke="#ECEAE2"/>
+<text class="b" x="44" y="326">Key_Shared</text>
+<text class="n" x="44" y="346">PSK：按 hash 固定</text>
+<rect x="214" y="314" width="120" height="46" rx="6" fill="#FFF6E8" stroke="#EF9F27"/>
+<text class="n" x="274" y="342" text-anchor="middle">entries 有序</text>
+<path d="M334 337 L372 337" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#a19)"/>
+<rect x="376" y="308" width="270" height="100" rx="8" fill="#FFFFFF" stroke="#3B3A34"/>
+<text class="b" x="390" y="330">PersistentStickyKey</text>
+<text class="n" x="390" y="348">hash(key) 取 16 位 → 环上最近点</text>
+<text class="n" x="390" y="366">同 key 恒落同一 consumer</text>
+<text class="h" x="390" y="384">默认：一致性哈希环（每个 consumer 100 个副本点）</text>
+<text class="n" x="390" y="400">迁移时 draining：旧 owner ack 清完才换</text>
+<path d="M646 358 L688 358" stroke="#639922" stroke-width="1.6" marker-end="url(#g19)"/>
+<circle cx="772" cy="358" r="52" fill="none" stroke="#B4B2A9" stroke-width="1.4"/>
+<path d="M772 306 A52 52 0 0 1 818 332" fill="none" stroke="#EF9F27" stroke-width="6"/>
+<path d="M820 336 A52 52 0 0 1 792 404" fill="none" stroke="#639922" stroke-width="6"/>
+<path d="M786 406 A52 52 0 0 1 724 330" fill="none" stroke="#C46A0A" stroke-width="6"/>
+<circle cx="800" cy="316" r="4" fill="#3B3A34"/>
+<circle cx="806" cy="392" r="4" fill="#3B3A34"/>
+<circle cx="730" cy="318" r="4" fill="#3B3A34"/>
+<text class="n" x="772" y="352" text-anchor="middle">A → C1</text>
+<text class="n" x="772" y="368" text-anchor="middle">B → C2</text>
+<text class="n" x="772" y="384" text-anchor="middle">C → C3</text>
+<text class="g" x="838" y="316">C1</text>
+<text class="g" x="846" y="400">C2</text>
+<text class="g" x="700" y="316">C3</text>
+
+<rect x="30" y="418" width="860" height="24" rx="6" fill="#FFF6E8" stroke="#F2D9A7"/>
+<text class="w" x="44" y="434">选错订阅，后面所有顺序假设都不成立：要保 key 顺序就别用 Shared；要 Key_Shared 不乱序就别开 allowOutOfOrderDelivery。</text>
+</svg>

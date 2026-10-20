@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="430" viewBox="0 0 920 430" role="img" aria-label="两层生产者与顺序边界">
+<title>两层生产者与顺序边界</title>
+<style>
+text{font-family:'Microsoft YaHei','PingFang SC','Hiragino Sans GB',sans-serif}
+.t{font-size:20px;font-weight:700;fill:#1F1E1A}
+.s{font-size:12px;fill:#6B695F}
+.b{font-size:12.5px;font-weight:600;fill:#1F1E1A}
+.n{font-size:10.5px;fill:#3B3A34}
+.g{font-size:10px;fill:#6B695F}
+.h{font-size:10px;font-weight:600;fill:#4C7A1A}
+.w{font-size:10px;font-weight:600;fill:#854F0B}
+</style>
+<rect x="0" y="0" width="920" height="430" fill="#FFFFFF"/>
+<text class="t" x="30" y="34">一次发送的落点：两层生产者与一条队列</text>
+<text class="s" x="30" y="54">分区层只做路由与扇出；顺序只在单个分区 producer 的队列里成立</text>
+<defs>
+<marker id="a17" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="d17" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#B4B2A9" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+
+<rect x="30" y="76" width="230" height="150" rx="10" fill="#FFF6E8" stroke="#EF9F27"/>
+<text class="b" x="44" y="98">PartitionedProducerImpl</text>
+<text class="n" x="44" y="116">partitions &gt; 0 才是这一层</text>
+<text class="n" x="44" y="134">choosePartition → 校验 → 扇出</text>
+<rect x="44" y="146" width="202" height="26" rx="6" fill="#FFFFFF" stroke="#D3D1C7"/>
+<text class="n" x="56" y="163">ProducerImpl · partition 0</text>
+<rect x="44" y="176" width="202" height="26" rx="6" fill="#FFFFFF" stroke="#D3D1C7"/>
+<text class="n" x="56" y="193">ProducerImpl · partition 1</text>
+<rect x="44" y="206" width="202" height="26" rx="6" fill="#FFFFFF" stroke="#D3D1C7"/>
+<text class="n" x="56" y="223">ProducerImpl · partition 2</text>
+
+<rect x="300" y="76" width="240" height="106" rx="10" fill="#FFFFFF" stroke="#3B3A34"/>
+<text class="b" x="314" y="98">MessageRouter</text>
+<text class="n" x="314" y="118">有 key：hash(key) % n</text>
+<text class="n" x="314" y="136">无 key + batching：10ms 换一个分区</text>
+<text class="n" x="314" y="154">无 key + 无 batch：逐条自增</text>
+<text class="g" x="314" y="172">SinglePartition 只对无 key 生效</text>
+<path d="M260 126 L296 126" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#a17)"/>
+<text class="g" x="262" y="118">选分区</text>
+
+<rect x="580" y="70" width="310" height="200" rx="10" fill="#FBFAF6" stroke="#B4B2A9" stroke-dasharray="6 5"/>
+<text class="b" x="594" y="92">一个分区 producer 的内部</text>
+<rect x="594" y="104" width="282" height="34" rx="6" fill="#FFFFFF" stroke="#3B3A34"/>
+<text class="n" x="606" y="118">batch 容器（默认开，1ms / 1000 条 / 128KB）</text>
+<text class="g" x="606" y="133">满了或到点 → 压成一个 ByteBuf</text>
+<rect x="594" y="148" width="282" height="34" rx="6" fill="#FFF6E8" stroke="#EF9F27"/>
+<text class="n" x="606" y="162">pendingMessages（FIFO 队列）</text>
+<text class="g" x="606" y="177">sequenceId 在锁内分配，入队即定序</text>
+<rect x="594" y="192" width="282" height="34" rx="6" fill="#FFFFFF" stroke="#3B3A34"/>
+<text class="n" x="606" y="206">连接 event loop：按队列顺序 writeAndFlush</text>
+<text class="g" x="606" y="221">ack 回来只认队头 sequenceId</text>
+<path d="M574 126 L576 126" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#a17)"/>
+
+<rect x="30" y="300" width="860" height="106" rx="10" fill="#FFFFFF" stroke="#ECEAE2"/>
+<text class="b" x="44" y="322">排序边界画在哪里</text>
+<path d="M44 336 L286 336" stroke="#EF9F27" stroke-width="3"/>
+<text class="w" x="44" y="356">同一分区内：有序</text>
+<text class="n" x="44" y="372">单队列 + 队头 ack；失败路径不保序</text>
+<path d="M330 336 L572 336" stroke="#B4B2A9" stroke-width="2" stroke-dasharray="6 5"/>
+<text class="g" x="330" y="356">跨分区：无序</text>
+<text class="n" x="330" y="372">各自 sequence / 连接 / pending，无全局序</text>
+<path d="M616 336 L858 336" stroke="#639922" stroke-width="3"/>
+<text class="h" x="616" y="356">跨分区想保序：只能自己定 key</text>
+<text class="n" x="616" y="372">改分区数会改 hash 落点</text>
+</svg>
