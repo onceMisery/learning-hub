@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>半结构化数据：Variant 的二进制编码与拆分 · Parquet 互动原理实验室 第 7 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#fff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:960px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#fff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:38px 0 22px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:710px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#fff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:500;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:11.5px;fill:#3B3A34}
+.tn{font-size:12.5px;font-weight:500;fill:#1F1E1A}
+.tag{font-size:10px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:68px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+section{padding:34px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:13.5px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 9px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#scene [opacity]{transition:opacity .24s ease}
+#eng .hl,#eng2 .hl{stroke:#D96C06 !important;stroke-width:2.2 !important}
+.stage circle{fill:#fff;stroke:#B4B2A9;stroke-width:1.4;transition:fill .18s,stroke .18s}
+.stage.done circle{fill:#EAF3DE;stroke:#639922}
+.stage.on circle{fill:#EF9F27;stroke:#C46A0A;stroke-width:2}
+.stage text{font-size:10px;fill:#6B695F}
+.stage.on text{fill:#854F0B;font-weight:600}
+.subview{margin:8px 0 4px;background:#fff;border:1px dashed #D3D1C7;border-radius:10px;padding:8px 10px}
+.subview .viewtitle{font-size:12px;font-weight:600;color:#854F0B;margin-bottom:4px}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.figcap b{color:#3B3A34;font-weight:600}
+@media (prefers-reduced-motion: reduce){#scene [opacity]{transition:none}}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：半结构化数据</a>
+  <span class="idx">第 7 / 8 章</span>
+</div>
+<div class="page">
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · VARIANT & SHREDDING</div>
+<h1>半结构化数据：Variant 的二进制编码与拆分</h1>
+<p>JSON 字符串能存不能裁；Variant 把字段名收进字典、值写成自描述二进制，再把热字段拆成普通列。这页看一个对象怎么进列存，又怎么拼回来。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span><span class="mnode">② 静态分解</span><span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span><span class="mnode">⑤ 环境场景</span><span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 560" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>半结构化数据：Variant 的二进制编码与拆分</title>
+<defs>
+<marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="g" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="b" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2563EB" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="r" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<pattern id="hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="7" stroke="#D3D1C7" stroke-width="0.7"/></pattern>
+</defs>
+<text class="th" x="500" y="22" text-anchor="middle">半结构化数据：Variant 的二进制编码与拆分</text>
+<text class="ts" x="500" y="41" text-anchor="middle">主图 = metadata + value + typed_value；副图 = 四种缺失/null/拆分状态；共用同一相位</text>
+<g id="scene">
+<g class="stage" id="st0"><circle cx="58" cy="74" r="13"/><text x="58" y="78" text-anchor="middle">1</text><text x="58" y="100" text-anchor="middle">字段名</text></g>
+<line x1="74" y1="74" x2="166" y2="74" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st1"><circle cx="182" cy="74" r="13"/><text x="182" y="78" text-anchor="middle">2</text><text x="182" y="100" text-anchor="middle">编码值</text></g>
+<line x1="198" y1="74" x2="290" y2="74" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st2"><circle cx="306" cy="74" r="13"/><text x="306" y="78" text-anchor="middle">3</text><text x="306" y="100" text-anchor="middle">对象布局</text></g>
+<line x1="322" y1="74" x2="414" y2="74" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st3"><circle cx="430" cy="74" r="13"/><text x="430" y="78" text-anchor="middle">4</text><text x="430" y="100" text-anchor="middle">按路径读</text></g>
+<line x1="446" y1="74" x2="538" y2="74" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st4"><circle cx="554" cy="74" r="13"/><text x="554" y="78" text-anchor="middle">5</text><text x="554" y="100" text-anchor="middle">拆热字段</text></g>
+<line x1="570" y1="74" x2="662" y2="74" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st5"><circle cx="678" cy="74" r="13"/><text x="678" y="78" text-anchor="middle">6</text><text x="678" y="100" text-anchor="middle">处理异常</text></g>
+<line x1="694" y1="74" x2="786" y2="74" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st6"><circle cx="802" cy="74" r="13"/><text x="802" y="78" text-anchor="middle">7</text><text x="802" y="100" text-anchor="middle">重建</text></g>
+<line x1="818" y1="74" x2="910" y2="74" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st7"><circle cx="926" cy="74" r="13"/><text x="926" y="78" text-anchor="middle">8</text><text x="926" y="100" text-anchor="middle">兼容</text></g>
+<rect x="30" y="132" width="410" height="390" rx="12" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/><text class="tn" x="44" y="154" text-anchor="start">原始对象：字段名重复，值稀疏</text><rect id="p7json" x="44" y="170" width="178" height="140" rx="8" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/><text class="tag" x="58" y="194" text-anchor="start">{</text><text class="tag" x="58" y="214" text-anchor="start">  "b": 2,</text><text class="tag" x="58" y="234" text-anchor="start">  "a": 1</text><text class="tag" x="58" y="254" text-anchor="start">}</text><text class="tag" x="58" y="284" text-anchor="start">字段名只存一次</text><text class="tag" x="58" y="300" text-anchor="start">热字段可拆列</text><rect id="p7meta" x="252" y="170" width="174" height="140" rx="8" fill="#EFF6FF" stroke="#2563EB" stroke-width="1.1"/><text class="tn" x="266" y="194" text-anchor="start">metadata</text><text class="tag" x="266" y="216" text-anchor="start">header 01</text><text class="tag" x="266" y="234" text-anchor="start">dict_size 02</text><text class="tag" x="266" y="252" text-anchor="start">offsets 00 01 02</text><text class="tag" x="266" y="270" text-anchor="start">bytes 61 62</text><text class="tag" x="266" y="290" text-anchor="start">a=0, b=1</text><rect id="p7value" x="44" y="330" width="382" height="86" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.1"/><text class="tn" x="58" y="352" text-anchor="start">value：自描述二进制</text><text class="tag" x="58" y="372" text-anchor="start">02        object, header=0</text><text class="tag" x="58" y="390" text-anchor="start" fill="#4C7A1A">02 00 01 00 02 04 03 01 03 02</text><text class="tag" x="44" y="440" text-anchor="start">field_id 按字段名字典序；值可乱序</text><text class="tag" x="44" y="458" text-anchor="start">缺失 = 两者都 null；null = value 里放 00</text><text class="tag" x="44" y="486" text-anchor="start">查询路径时，未拆分的 value 仍要整段解析</text><rect x="470" y="132" width="500" height="390" rx="12" fill="#FFFFFF" stroke="#ECEAE2" stroke-width="1.2"/><text class="tn" x="484" y="154" text-anchor="start">Shredding：热字段拆成 typed_value 列</text><rect id="p7shred" x="484" y="170" width="230" height="40" rx="5" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1"/><text class="tag" x="498" y="188" text-anchor="start">event_type.value</text><text class="tag" x="650" y="188" text-anchor="start">fallback</text><rect id="p7typed" x="484" y="216" width="230" height="40" rx="5" fill="#EAF3DE" stroke="#639922" stroke-width="1"/><text class="tag" x="498" y="234" text-anchor="start">event_type.typed_value</text><text class="tag" x="650" y="234" text-anchor="start">STRING</text><rect x="484" y="262" width="230" height="40" rx="5" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1"/><text class="tag" x="498" y="280" text-anchor="start">event_ts.value</text><text class="tag" x="650" y="280" text-anchor="start">fallback</text><rect x="484" y="308" width="230" height="40" rx="5" fill="#EAF3DE" stroke="#639922" stroke-width="1"/><text class="tag" x="498" y="326" text-anchor="start">event_ts.typed_value</text><text class="tag" x="650" y="326" text-anchor="start">INT64</text><text class="tag" x="730" y="188" text-anchor="start">热字段走 typed_value：</text><text class="tag" x="730" y="206" text-anchor="start" fill="#4C7A1A">列裁剪 + 统计 + 页索引</text><text class="tag" x="730" y="234" text-anchor="start">冷字段留在 value：</text><text class="tag" x="730" y="252" text-anchor="start" fill="#854F0B">保留半结构化灵活性</text><text class="tag" x="730" y="286" text-anchor="start">缺失和 null 要分开：</text><text class="tag" x="730" y="304" text-anchor="start">missing → 两者 null</text><text class="tag" x="730" y="322" text-anchor="start">null → value 里 00</text><rect x="484" y="366" width="470" height="70" rx="8" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1"/><text class="tag" x="498" y="388" text-anchor="start">重建：typed_value 优先</text><text class="tag" x="498" y="406" text-anchor="start">对象 → 合并 value 与 typed_value（key 不重叠）</text><text class="tag" x="498" y="424" text-anchor="start">数组/原始类型 → 不能和 value 同时非空</text><text class="tag" x="484" y="470" text-anchor="start">不同文件可以有不同 shredding schema</text><text class="tag" x="484" y="488" text-anchor="start">必要时统一重建成 Variant 再处理</text>
+</g>
+<circle id="tok" cx="70" cy="220" r="7" fill="#EF9F27" stroke="#D97E06" stroke-width="1.4"/>
+</svg>
+
+<div class="subview">
+<div class="viewtitle">第二视图 · value / typed_value 的四种组合：缺失、null、fallback、拆分值</div>
+<svg id="eng2" viewBox="0 0 1000 220" role="img" xmlns="http://www.w3.org/2000/svg">
+<g id="scene2"><rect x="20" y="18" width="960" height="184" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/><text class="tn" x="36" y="40" text-anchor="start">value / typed_value 的四种组合，决定“缺失、null、原值、拆分值”</text><rect x="36" y="56" width="440" height="44" rx="5" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1"/><text class="tag" x="48" y="76" text-anchor="start">value=null, typed_value=null</text><text class="tag" x="48" y="92" text-anchor="start">字段缺失（不是 null）</text><rect x="488" y="56" width="440" height="44" rx="5" fill="#EAF3DE" stroke="#639922" stroke-width="1"/><text class="tag" x="500" y="76" text-anchor="start">value=00, typed_value=null</text><text class="tag" x="500" y="92" text-anchor="start">字段存在，值为 null</text><rect x="36" y="112" width="440" height="44" rx="5" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1"/><text class="tag" x="48" y="132" text-anchor="start">value=原值, typed_value=null</text><text class="tag" x="48" y="148" text-anchor="start">类型不在 shredded 范围</text><rect x="488" y="112" width="440" height="44" rx="5" fill="#EFF6FF" stroke="#2563EB" stroke-width="1"/><text class="tag" x="500" y="132" text-anchor="start">value=剩余对象, typed_value=对象</text><text class="tag" x="500" y="148" text-anchor="start">部分拆分：两边 key 不能重叠</text><text class="tag" x="36" y="180" text-anchor="start">读法：先看 typed_value 是否非空；为空再看 value；两者都空才是缺失。</text></g>
+<circle id="tok2" cx="80" cy="110" r="6" fill="#639922" stroke="#4C7A1A" stroke-width="1.4"/>
+</svg>
+</div>
+
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.5" max="2" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm">默认 ≈ 5.6 秒 / 轮</span>
+</div>
+<div class="readout">
+<span class="ro">进度 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">读数 <b id="roKey">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav"><button class="btn" onclick="prevStep()">‹ 上一步</button><button class="btn warn" onclick="nextStep()">下一步 ›</button></span>
+</div>
+<p class="figcap">进度 0° = 建字典，630° = 兼容重建；主图橙色点沿 Variant 的编码路径移动，副图是 value/typed_value 的语义矩阵。<br>口径：VariantEncoding.md:20-478、VariantShredding.md:20-354、parquet.thrift:416-421；示例中的 metadata 字节为示意。</p>
+</div>
+</div>
+
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：JSON 字符串为什么不够</h2></div>
+<p class="sec-sub">查询一条路径，要把整段 JSON 解出来；列裁剪、统计、页索引都用不上。</p>
+<div class="quote">「先看读路径：半结构化数据的瓶颈，通常在“解整段”而不是“存”。」</div>
+<p>Variant 把值和字段名编码成二进制：字段名进字典，值用自描述头。更关键的是 shredding：把热字段拆成普通 Parquet 列，让列裁剪和谓词下推重新生效。</p>
+<div class="flow"><span class="node">JSON</span><span class="arr">→</span><span class="node box">metadata + value</span><span class="arr">→</span><span class="node box">typed_value</span><span class="arr">→</span><span class="node">列裁剪 / 统计</span></div>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：metadata、value、typed_value</h2></div>
+<p class="sec-sub">点部件卡片，主图里对应的结构会高亮。</p>
+<div class="quote">「分解到同一层：字典、值、拆分区各管一件事。」</div>
+<div class="partgroup"><div class="gname">Variant 的三个面</div><div class="parts">
+<button class="part" data-part="json"><b>原始对象</b><span>字段名重复、值稀疏；直接存 JSON 每次都要整段解析。</span></button>
+<button class="part" data-part="meta"><b>metadata</b><span>字段名字典 + offset；field_id 指向它。</span></button>
+<button class="part" data-part="value"><b>value</b><span>1 字节头 + 对象/数组/原始值；自包含，可按路径解。</span></button>
+<button class="part" data-part="shred"><b>value（fallback）</b><span>类型不符合 shredded 时，原值仍留在 value。</span></button>
+<button class="part" data-part="typed"><b>typed_value</b><span>热字段用普通 Parquet 列；享受列裁剪/统计/页索引。</span></button>
+</div></div>
+<table class="grid">
+<tr><th>basic_type</th><th>ID</th><th>头部</th><th>value_data</th></tr>
+<tr><td>primitive</td><td>0</td><td>primitive 类型 ID</td><td>按类型表</td></tr>
+<tr><td>short string</td><td>1</td><td>长度 0–63</td><td>UTF-8 字节</td></tr>
+<tr><td>object</td><td>2</td><td>size 字段宽度 + is_large</td><td>field_id + offset + values</td></tr>
+<tr><td>array</td><td>3</td><td>offset 宽度 + is_large</td><td>offset + values</td></tr>
+</table>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：编码、拆分、重建</h2></div>
+<p class="sec-sub">用 8 个步骤看一个对象怎么进列存，又怎么拼回来。</p>
+<div class="quote">「动态分析看的是状态：缺失、null、fallback、拆分值，各有各的格子。」</div>
+<table class="grid">
+<tr><th>阶段</th><th>做什么</th><th>关键规则</th><th>易错点</th></tr>
+<tr><td>① 字段名</td><td>建 metadata 字典</td><td>UTF-8；offset_size 1–4B</td><td>sorted_strings 假设</td></tr>
+<tr><td>② 编码值</td><td>写 value_metadata</td><td>basic_type + header</td><td>short string 长度</td></tr>
+<tr><td>③ 对象</td><td>field_id / offset / values</td><td>field_id 字典序；offset 相对首值</td><td>offset 非单调</td></tr>
+<tr><td>④ 路径读</td><td>解整段 value</td><td>未拆分时无法只读一列</td><td>以为能列裁剪</td></tr>
+<tr><td>⑤ 拆分</td><td>热字段进 typed_value</td><td>metadata 共享</td><td>列数膨胀</td></tr>
+<tr><td>⑥ 异常</td><td>类型不符回退</td><td>value/typed_value 互斥</td><td>两者同时非空</td></tr>
+<tr><td>⑦ 重建</td><td>typed_value 优先</td><td>部分拆分合并 value</td><td>key 重叠</td></tr>
+<tr><td>⑧ 兼容</td><td>统一重建</td><td>不同文件 schema 可不同</td><td>假设统一 schema</td></tr>
+</table>
+<p><b>shredding 不是“把 JSON 拍平”，而是“热字段列存 + 冷字段兜底”。</b>拆分边界选错，列数变多、收益变小。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：缺失、null 与部分拆分</h2></div>
+<p class="sec-sub">把主图的 value/typed_value 和副图的四种组合对照起来。</p>
+<div class="quote">「融合的关键是状态映射：每个格子对应一种语义。」</div>
+<table class="grid">
+<tr><th>场景</th><th>value</th><th>typed_value</th><th>读法</th></tr>
+<tr><td>字段缺失</td><td>null</td><td>null</td><td>不返回该字段</td></tr>
+<tr><td>字段为 null</td><td>00</td><td>null</td><td>返回 Variant null</td></tr>
+<tr><td>类型不符</td><td>原值</td><td>null</td><td>按 Variant 解</td></tr>
+<tr><td>完全拆分</td><td>null</td><td>拆分值</td><td>按 typed_value 解</td></tr>
+<tr><td>部分拆分</td><td>剩余对象</td><td>拆分子对象</td><td>合并两边 key</td></tr>
+</table>
+<p class="hint">读法：先看 typed_value 是否非空；为空再看 value；两者都空才是缺失。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：Variant 的适用边界</h2></div>
+<p class="sec-sub">不是所有 JSON 都值得拆；拆多了也是成本。</p>
+<div class="quote">「环境属性 = 查询热点 + 类型稳定性 + 兼容性。」</div>
+<div class="envcards">
+<div class="env"><b>适合事件表</b><span>字段稀疏、类型多变，但有几条固定热路径。</span></div>
+<div class="env"><b>适合渐进演进</b><span>先整行 Variant，再把 top 3–5 字段拆成 typed_value。</span></div>
+<div class="env"><b>不适合稳定表</b><span>字段固定、类型固定；普通列更简单。</span></div>
+<div class="env"><b>不适合超宽对象</b><span>几千个字段，metadata 字典和 field_id 列表会很大。</span></div>
+<div class="env"><b>不适合写敏感</b><span>shredding 判断和双写会增加写路径成本。</span></div>
+<div class="env"><b>schema 冲突</b><span>不同文件可以拆不同字段；读取器要能统一重建。</span></div>
+</div>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">能说清“metadata 是字典、typed_value 是热字段列”，才算懂 Variant。</p>
+<div id="quiz"></div>
+</section>
+
+
+<div class="summary">
+<h2>一页带走</h2>
+<p class="chant">字段名进字典，热字段进列；缺失和 null 必须分开。</p>
+<p>· Variant = metadata（字段名字典）+ value（自描述二进制），group 标 VARIANT(1)。</p>
+<p>· value 用 1 字节头区分 primitive / short string / object / array。</p>
+<p>· object 的 field_id 按字段名字典序；offset 相对第一个 value，值可乱序。</p>
+<p>· shredding 把热字段拆成 typed_value；value 兜底，缺失/null 要分清。</p>
+<p>· 拆分带来列裁剪和谓词下推，代价是列数、写入复杂度和 schema 冲突。</p>
+</div>
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+<script>
+var STEPS=[{"d": 0, "t": "字段名", "x": "把对象里的 key 收进 metadata 字典，只存一次。", "k": "metadata"}, {"d": 90, "t": "编码值", "x": "value 第一字节区分 primitive / short string / object / array。", "k": "basic_type"}, {"d": 180, "t": "对象布局", "x": "num_elements、field_id（字典序）、offset、values。", "k": "object"}, {"d": 270, "t": "按路径读", "x": "未拆分的 value 要整段解析；shredding 才能按列读。", "k": "path read"}, {"d": 360, "t": "拆热字段", "x": "event_type / event_ts 进 typed_value；冷字段留 value。", "k": "typed_value"}, {"d": 450, "t": "处理异常", "x": "类型不符的值回退到 value；null 与缺失分开。", "k": "fallback / null"}, {"d": 540, "t": "重建", "x": "typed_value 优先；部分拆分时合并 value，key 不重叠。", "k": "construct"}, {"d": 630, "t": "兼容", "x": "不同文件 shredding schema 可以不同；必要时统一重建成 Variant。", "k": "compat"}];
+var CHIPS=[{"k": "meta", "l": "metadata"}, {"k": "value", "l": "value"}, {"k": "shred", "l": "shredding"}, {"k": "null", "l": "null/缺失"}, {"k": "compat", "l": "兼容"}];
+var PARTS={"json": ["p7json"], "meta": ["p7meta"], "value": ["p7value"], "shred": ["p7shred"], "typed": ["p7typed"]};
+var QUIZ=[{"q": "Variant 的 metadata 存的是什么？", "opts": ["所有值", "字段名字典 + offset", "schema 树"], "a": 1, "exp": "metadata 是字段名的字典；value 里的 field_id 指向它。"}, {"q": "object 的 field_id 必须按什么顺序？", "opts": ["值的大小", "字段名的字典序", "写入顺序"], "a": 1, "exp": "field_id 和 field_offset 按字段名字典序；值本身可以乱序。"}, {"q": "字段“缺失”和“值为 null”在 value/typed_value 里怎么区分？", "opts": ["都置 null", "缺失=两者都 null；null=value 里放 00", "缺失=value 里放 00"], "a": 1, "exp": "Variant null 是 basic_type 0 + primitive 0，编码为 00。"}, {"q": "部分拆分的对象，value 里还能包含已拆分的字段吗？", "opts": ["能", "不能：两边 key 必须不重叠", "只能包含 null"], "a": 1, "exp": "规范要求 shredded 字段不出现在 value 里；否则读取结果不一致。"}, {"q": "shredding 的主要收益是什么？", "opts": ["减少 metadata", "热字段变成普通 Parquet 列，可用列裁剪/统计/页索引", "自动压缩 JSON"], "a": 1, "exp": "typed_value 是普通列，能享受 Parquet 的列存能力。"}];
+var TOK=[[133, 240], [255, 240], [255, 320], [360, 390], [484, 190], [484, 240], [600, 190], [700, 380]];
+var TOK2=[[930, 78], [930, 90], [930, 104], [930, 118], [930, 134], [930, 146], [930, 160], [930, 174]];
+
+var TOK=[[133,240],[255,240],[255,320],[360,390],[484,190],[484,240],[600,190],[700,380]];
+var TOK2=[[256,78],[256,78],[256,78],[256,78],[700,78],[700,134],[700,134],[700,78]];
+function pageRender(th,si){
+  setOp('p7json',1);setOp('p7meta',th>=90?1:0.55);setOp('p7value',th>=180?1:0.55);setOp('p7shred',th>=360?1:0.55);setOp('p7typed',th>=360?1:0.55);
+  setChip('meta',th>=90?'已建':'待命');setChip('value',th>=180?'已编码':'待命');setChip('shred',th>=360?'已拆':'待命');setChip('null',th>=450?'已区分':'待命');setChip('compat',th>=630?'可重建':'待命');
+  setText('roKey',th<90?'字段名':th<180?'basic_type':th<270?'object 布局':th<360?'path read':th<450?'typed_value':th<540?'fallback / null':th<630?'construct':'compat');
+}
+
+
+var PERIOD=5600, PHASE_MAX=720, STEP_DUR=600;
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto', run=!reduced, speed=1, phase=0, last=performance.now();
+var stepFrom=0, stepTo=null, stepElapsed=0, stepIdx=-1, dots=[], ticking=false;
+function $(id){return document.getElementById(id);}
+function setText(id,s){var n=$(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setOp(id,v){var n=$(id);if(n)n.setAttribute('opacity',Math.max(0,Math.min(1,v)).toFixed(2));}
+function setW(id,v){var n=$(id);if(n)n.setAttribute('width',Math.max(0,v).toFixed(1));}
+function setAttr(id,k,v){var n=$(id);if(n)n.setAttribute(k,v);}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){t=clamp(t,0,1);return t*t*(3-2*t);}
+function setChip(k,v){var n=chipEls[k];if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',/^(开|是|已|命中|完成|一致|通过|留下|已读|已加密|已解密|写入|可读)/.test(v));n.classList.toggle('off',/^(关|否|待命|—|不|跳过|未)/.test(v));}
+function stageAt(th){return clamp(Math.floor(th/90),0,STEPS.length-1);}
+function tokAt(pts,th){var i=stageAt(th),a=pts[Math.min(i,pts.length-1)],b=pts[Math.min(i+1,pts.length-1)];var t=smooth((th%90)/90);return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t];}
+function render(th){
+  var pr=Math.round(((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX);
+  setText('roPhase',pr+'°');
+  var si=stageAt(pr);
+  if(mode==='step'&&stepIdx>=0)si=stepIdx;
+  setText('roStep',STEPS[si]?STEPS[si].t:'—');
+  setText('roKey',STEPS[si]?STEPS[si].k:'—');
+  document.querySelectorAll('#eng .stage').forEach(function(n,i){n.classList.toggle('on',i===si);n.classList.toggle('done',i<si);});
+  var p=tokAt(TOK,pr);setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));
+  if(typeof TOK2!=='undefined'){var q=tokAt(TOK2,pr);setAttr('tok2','cx',q[0].toFixed(1));setAttr('tok2','cy',q[1].toFixed(1));}
+  pageRender(pr,si);
+}
+function tick(now){
+  ticking=false;
+  var dt=Math.min(50,now-last);last=now;
+  if(run&&mode==='auto')phase=(phase+dt/PERIOD*PHASE_MAX)%PHASE_MAX;
+  if(mode==='step'&&stepTo!==null){
+    stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);var p=stepElapsed/STEP_DUR,e=smooth(p);
+    phase=stepFrom+(stepTo-stepFrom)*e;if(p>=1){phase=stepTo;stepTo=null;}
+  }
+  render(phase);
+  if(run||stepTo!==null){ticking=true;requestAnimationFrame(tick);}
+}
+function wake(){if(ticking)return;ticking=true;last=performance.now();requestAnimationFrame(tick);}
+function setAuto(on){mode='auto';run=on;stepTo=null;if(on){wake();}var b=$('engBtn');if(b)b.textContent=on?'暂停':'播放';if(on){stepIdx=-1;dots.forEach(function(d){d.classList.remove('on');});var t=$('stepT'),x=$('stepX');if(t)t.textContent='自动运转模式';if(x)x.textContent='点下方步骤点可切换到分步演示，随你点击定格。';}}
+window.goStep=function(i){stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;wake();var target=STEPS[stepIdx].d;if(reduced||Math.abs(target-phase)>180){phase=target;stepTo=null;render(phase);}else{stepFrom=phase;stepTo=target;stepElapsed=0;render(phase);}var b=$('engBtn');if(b)b.textContent='继续自动运转';dots.forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});var t=$('stepT'),x=$('stepX');if(t)t.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;if(x)x.textContent=STEPS[stepIdx].x;};
+window.prevStep=function(){goStep(stepIdx-1);};window.nextStep=function(){goStep(stepIdx+1);};
+var chipEls={};CHIPS.forEach(function(c){var box=$('stateChips');var s=document.createElement('span');s.className='chip';s.innerHTML=c.l+' <b>--</b>';box.appendChild(s);chipEls[c.k]=s;});
+var stepBar=$('stepBar');
+STEPS.forEach(function(s,n){var b=document.createElement('button');b.className='stepnode';b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+s.t+'</span>';b.onclick=function(){goStep(n);};stepBar.appendChild(b);dots.push(b);});
+var engBtn=$('engBtn');engBtn.textContent=run?'暂停':'播放';engBtn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+var spd=$('engSpd');if(spd){spd.oninput=function(){speed=parseFloat(spd.value);$('engSpdV').textContent=speed+'×';};}
+/* 速度通过修改 PERIOD 的比例实现，保留原时间轴语义 */
+var basePeriod=PERIOD;if(spd){spd.oninput=function(){speed=parseFloat(spd.value);$('engSpdV').textContent=speed+'×';PERIOD=basePeriod/speed;};}
+document.querySelectorAll('.part').forEach(function(btn){btn.onclick=function(){var ids=(PARTS[btn.dataset.part]||[]);document.querySelectorAll('#eng .hl,#eng2 .hl').forEach(function(n){n.classList.remove('hl');});ids.forEach(function(id){var n=$(id);if(n)n.classList.add('hl');});};});
+var quizBox=$('quiz');QUIZ.forEach(function(q,n){var d=document.createElement('div');d.className='q';var html='<div class="qt">'+(n+1)+'. '+q.q+'</div>';q.opts.forEach(function(o,j){html+='<button class="opt" data-q="'+n+'" data-o="'+j+'">'+o+'</button>';});html+='<div class="exp"><b>答案：</b>'+q.opts[q.a]+'<br>'+q.exp+'</div>';d.innerHTML=html;quizBox.appendChild(d);});
+quizBox.querySelectorAll('.opt').forEach(function(b){b.onclick=function(){var q=QUIZ[+b.dataset.q];var box=b.closest('.q');if(box.classList.contains('done'))return;box.classList.add('done');b.classList.add(+b.dataset.o===q.a?'right':'wrong');box.querySelectorAll('.opt').forEach(function(o){if(+o.dataset.o===q.a)o.classList.add('right');});};});
+if(reduced){run=false;if(engBtn)engBtn.textContent='播放';phase=0;render(0);}else{wake();}
+
+</script>
+</body>
+</html>

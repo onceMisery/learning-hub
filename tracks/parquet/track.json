@@ -1,0 +1,145 @@
+{
+  "id": "parquet",
+  "title": "数据湖 · 读 Parquet 格式",
+  "subtitle": "沿着一个查询的读取路径，把文件布局、Thrift 元数据、Dremel 嵌套、编码压缩与页级索引读成一套能复述的列式存储",
+  "order": 55,
+  "status": "active",
+  "accent": "cyan",
+  "tags": [
+    "Parquet",
+    "列式存储",
+    "Dremel",
+    "数据湖",
+    "Thrift",
+    "Variant"
+  ],
+  "toolchain": "Apache Parquet Format 2.15.0-SNAPSHOT",
+  "verifiedAt": "2026-10-22",
+  "outline": [
+    "文件布局与结构：一个查询只读三页，凭什么",
+    "Thrift 元数据定义：目录里到底写了什么",
+    "数据模型：物理类型、逻辑注解与 Dremel 层级",
+    "编码与压缩：同类值排在一起，才压得动",
+    "优化特性：先看小抄，再决定翻哪页",
+    "安全性与可扩展性：给每个抽屉单独上锁",
+    "半结构化数据：给 JSON 配一本字典和几张常用列",
+    "错误恢复与配置：坏在哪一层，损失到哪一层"
+  ],
+  "sections": [
+    {
+      "id": "tutorial",
+      "title": "教程",
+      "path": "tutorial",
+      "order": 10,
+      "pages": [
+        {
+          "file": "01-文件布局与结构.md",
+          "slug": "01-file-layout",
+          "title": "文件布局与结构：一个查询只读三页，凭什么",
+          "tags": [
+            "Row Group",
+            "Column Chunk",
+            "Page",
+            "Footer",
+            "读取路径"
+          ]
+        },
+        {
+          "file": "02-Thrift元数据定义.md",
+          "slug": "02-thrift-metadata",
+          "title": "Thrift 元数据定义：目录里到底写了什么",
+          "tags": [
+            "Thrift",
+            "FileMetaData",
+            "ColumnChunk",
+            "PageHeader",
+            "兼容性"
+          ]
+        },
+        {
+          "file": "03-数据模型.md",
+          "slug": "03-data-model",
+          "title": "数据模型：物理类型、逻辑注解与 Dremel 层级",
+          "tags": [
+            "LogicalType",
+            "LIST",
+            "MAP",
+            "Definition Level",
+            "Repetition Level",
+            "GEOMETRY"
+          ]
+        },
+        {
+          "file": "04-编码与压缩.md",
+          "slug": "04-encoding-compression",
+          "title": "编码与压缩：同类值排在一起，才压得动",
+          "tags": [
+            "Dictionary",
+            "RLE",
+            "DELTA_BINARY_PACKED",
+            "BYTE_STREAM_SPLIT",
+            "ALP",
+            "ZSTD"
+          ]
+        },
+        {
+          "file": "05-优化特性.md",
+          "slug": "05-optimization",
+          "title": "优化特性：先看小抄，再决定翻哪页",
+          "tags": [
+            "ColumnIndex",
+            "OffsetIndex",
+            "Bloom Filter",
+            "Statistics",
+            "谓词下推"
+          ]
+        },
+        {
+          "file": "06-安全性与可扩展性.md",
+          "slug": "06-security-extensibility",
+          "title": "安全性与可扩展性：给每个抽屉单独上锁",
+          "tags": [
+            "Modular Encryption",
+            "AES-GCM",
+            "AAD",
+            "Plaintext Footer",
+            "Binary Protocol Extensions"
+          ]
+        },
+        {
+          "file": "07-半结构化数据.md",
+          "slug": "07-variant",
+          "title": "半结构化数据：给 JSON 配一本字典和几张常用列",
+          "tags": [
+            "Variant",
+            "Shredding",
+            "typed_value",
+            "JSON",
+            "数据跳过"
+          ]
+        },
+        {
+          "file": "08-错误恢复与配置.md",
+          "slug": "08-recovery-config",
+          "title": "错误恢复与配置：坏在哪一层，损失到哪一层",
+          "tags": [
+            "CRC32",
+            "错误恢复",
+            "Row Group 大小",
+            "Page 大小",
+            "读端内存"
+          ]
+        }
+      ]
+    }
+  ],
+  "codeRoots": [],
+  "assets": [
+    "assets"
+  ],
+  "lab": {
+    "title": "Parquet 互动原理实验室",
+    "subtitle": "八章动态图解：从文件布局、元数据树、Dremel 层级，到字典与 ALP、页索引与布隆过滤、模块加密、Variant 拆分与损坏边界。每页都能自动运转，也能按步骤定格。",
+    "route": "/parquet/lab"
+  }
+}

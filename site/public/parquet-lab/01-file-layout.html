@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>文件布局与结构：一个查询只读三页 · Parquet 互动原理实验室 第 1 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#fff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:960px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#fff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:38px 0 22px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:710px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#fff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:500;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:11.5px;fill:#3B3A34}
+.tn{font-size:12.5px;font-weight:500;fill:#1F1E1A}
+.tag{font-size:10px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:68px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+section{padding:34px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:13.5px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 9px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#scene [opacity]{transition:opacity .24s ease}
+#eng .hl,#eng2 .hl{stroke:#D96C06 !important;stroke-width:2.2 !important}
+.stage circle{fill:#fff;stroke:#B4B2A9;stroke-width:1.4;transition:fill .18s,stroke .18s}
+.stage.done circle{fill:#EAF3DE;stroke:#639922}
+.stage.on circle{fill:#EF9F27;stroke:#C46A0A;stroke-width:2}
+.stage text{font-size:10px;fill:#6B695F}
+.stage.on text{fill:#854F0B;font-weight:600}
+.subview{margin:8px 0 4px;background:#fff;border:1px dashed #D3D1C7;border-radius:10px;padding:8px 10px}
+.subview .viewtitle{font-size:12px;font-weight:600;color:#854F0B;margin-bottom:4px}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.figcap b{color:#3B3A34;font-weight:600}
+@media (prefers-reduced-motion: reduce){#scene [opacity]{transition:none}}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：文件布局与结构</a>
+  <span class="idx">第 1 / 8 章</span>
+</div>
+<div class="page">
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · 文件布局</div>
+<h1>文件布局与结构：一个查询只读三页，凭什么</h1>
+<p>文件不是一张大表，而是行组、列块、页和尾部目录叠起来的结构。这页把 writer 的正向写和 reader 的反向找放在同一条时间轴上，看看三次 I/O 是怎么被省出来的。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span><span class="mnode">② 静态分解</span><span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span><span class="mnode">⑤ 环境场景</span><span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 560" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>文件布局与结构：一个查询只读三页</title>
+<defs>
+<marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="g" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="b" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2563EB" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="r" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<pattern id="hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="7" stroke="#D3D1C7" stroke-width="0.7"/></pattern>
+</defs>
+<text class="th" x="500" y="22" text-anchor="middle">文件布局与结构：一个查询只读三页</text>
+<text class="ts" x="500" y="41" text-anchor="middle">主图 = 文件带与读取路径；副图 = 一个数据页的内部；共用同一相位</text>
+<g id="scene">
+<g class="stage" id="st0"><circle cx="58" cy="74" r="13"/><text x="58" y="78" text-anchor="middle">1</text><text x="58" y="100" text-anchor="middle">写 PAR1</text></g>
+<line x1="74" y1="74" x2="166" y2="74" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st1"><circle cx="182" cy="74" r="13"/><text x="182" y="78" text-anchor="middle">2</text><text x="182" y="100" text-anchor="middle">写 RG1</text></g>
+<line x1="198" y1="74" x2="290" y2="74" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st2"><circle cx="306" cy="74" r="13"/><text x="306" y="78" text-anchor="middle">3</text><text x="306" y="100" text-anchor="middle">写 RG2</text></g>
+<line x1="322" y1="74" x2="414" y2="74" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st3"><circle cx="430" cy="74" r="13"/><text x="430" y="78" text-anchor="middle">4</text><text x="430" y="100" text-anchor="middle">写 footer</text></g>
+<line x1="446" y1="74" x2="538" y2="74" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st4"><circle cx="554" cy="74" r="13"/><text x="554" y="78" text-anchor="middle">5</text><text x="554" y="100" text-anchor="middle">读末尾</text></g>
+<line x1="570" y1="74" x2="662" y2="74" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st5"><circle cx="678" cy="74" r="13"/><text x="678" y="78" text-anchor="middle">6</text><text x="678" y="100" text-anchor="middle">读 footer</text></g>
+<line x1="694" y1="74" x2="786" y2="74" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st6"><circle cx="802" cy="74" r="13"/><text x="802" y="78" text-anchor="middle">7</text><text x="802" y="100" text-anchor="middle">裁行组</text></g>
+<line x1="818" y1="74" x2="910" y2="74" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st7"><circle cx="926" cy="74" r="13"/><text x="926" y="78" text-anchor="middle">8</text><text x="926" y="100" text-anchor="middle">读三页</text></g>
+<rect id="p1file" x="40" y="140" width="920" height="120" rx="12" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/><text class="tag" x="52" y="162" text-anchor="start">磁盘上的文件</text><rect x="52" y="174" width="38" height="58" rx="4" fill="#FFFFFF" stroke="#1F1E1A" stroke-width="1.2"/><text class="tag" x="71" y="208" text-anchor="middle">PAR1</text><rect id="p1rg1" x="94" y="174" width="190" height="58" rx="5" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/><text class="tn" x="189" y="196" text-anchor="middle">Row Group 1</text><text class="tag" x="189" y="214" text-anchor="middle">event_id / event_type / user</text><rect id="p1rg2" x="288" y="174" width="190" height="58" rx="5" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/><text class="tn" x="383" y="196" text-anchor="middle">Row Group 2</text><text class="tag" x="383" y="214" text-anchor="middle">列块连续；页连续</text><rect id="p1footer" x="482" y="174" width="258" height="58" rx="5" fill="#EFF6FF" stroke="#2563EB" stroke-width="1.2"/><text class="tn" x="611" y="196" text-anchor="middle">FileMetaData（footer）</text><text class="tag" x="611" y="214" text-anchor="middle">schema / row_groups / offsets</text><rect x="744" y="174" width="42" height="58" rx="4" fill="#F5F4EF" stroke="#B4B2A9" stroke-width="1.2"/><text class="tag" x="765" y="208" text-anchor="middle">len</text><rect x="790" y="174" width="38" height="58" rx="4" fill="#FFFFFF" stroke="#1F1E1A" stroke-width="1.2"/><text class="tag" x="809" y="208" text-anchor="middle">PAR1</text><rect x="832" y="174" width="112" height="58" rx="5" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2" stroke-dasharray="4 3"/><text class="tag" x="888" y="196" text-anchor="middle">读取从尾部开始</text><text class="tag" x="888" y="214" text-anchor="middle">末尾 8 字节</text><text class="tn" x="40" y="292" text-anchor="start">读取路径</text><rect x="40" y="306" width="150" height="62" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/><text class="tn" x="115" y="329" text-anchor="middle">① 读末尾 8 字节</text><text class="tag" x="115" y="347" text-anchor="middle">len + PAR1</text><rect x="214" y="306" width="150" height="62" rx="7" fill="#EFF6FF" stroke="#2563EB" stroke-width="1.2"/><text class="tn" x="289" y="329" text-anchor="middle">② 解析 footer</text><text class="tag" x="289" y="347" text-anchor="middle">schema / offsets</text><rect x="388" y="306" width="150" height="62" rx="7" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/><text class="tn" x="463" y="329" text-anchor="middle">③ 裁行组</text><text class="tag" x="463" y="347" text-anchor="middle">统计 / 页索引</text><rect x="562" y="306" width="150" height="62" rx="7" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/><text class="tn" x="637" y="329" text-anchor="middle">④ 读列块</text><text class="tag" x="637" y="347" text-anchor="middle">页头 + 页体</text><rect x="736" y="306" width="224" height="62" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/><text class="tn" x="848" y="329" text-anchor="middle">⑤ 解码 + 还原行</text><text class="tag" x="848" y="347" text-anchor="middle">def / rep level</text><line x1="190" y1="337" x2="210" y2="337" stroke="#C46A0A" stroke-width="1.4" marker-end="url(#a)"/><line x1="364" y1="337" x2="384" y2="337" stroke="#C46A0A" stroke-width="1.4" marker-end="url(#a)"/><line x1="538" y1="337" x2="558" y2="337" stroke="#C46A0A" stroke-width="1.4" marker-end="url(#a)"/><line x1="712" y1="337" x2="732" y2="337" stroke="#C46A0A" stroke-width="1.4" marker-end="url(#a)"/><rect id="p1page" x="40" y="400" width="920" height="98" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/><text class="tn" x="52" y="422" text-anchor="start">页的解剖（数据页 v1）</text><rect x="52" y="434" width="150" height="46" rx="5" fill="#EFF6FF" stroke="#2563EB" stroke-width="1.1"/><text class="tb" x="127" y="452" text-anchor="middle">PageHeader</text><text class="tag" x="127" y="468" text-anchor="middle">不压缩</text><rect x="212" y="434" width="150" height="46" rx="5" fill="#EAF3DE" stroke="#639922" stroke-width="1.1"/><text class="tb" x="287" y="452" text-anchor="middle">repetition levels</text><text class="tag" x="287" y="468" text-anchor="middle">可省略</text><rect x="372" y="434" width="150" height="46" rx="5" fill="#EAF3DE" stroke="#639922" stroke-width="1.1"/><text class="tb" x="447" y="452" text-anchor="middle">definition levels</text><text class="tag" x="447" y="468" text-anchor="middle">NULL 在这里</text><rect x="532" y="434" width="200" height="46" rx="5" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1"/><text class="tb" x="632" y="452" text-anchor="middle">encoded values</text><text class="tag" x="632" y="468" text-anchor="middle">字典 / RLE / Delta</text><text class="tag" x="748" y="452" text-anchor="start">任一层说不命中，</text><text class="tag" x="748" y="468" text-anchor="start">后面的 I/O 就省了</text>
+</g>
+<circle id="tok" cx="70" cy="220" r="7" fill="#EF9F27" stroke="#D97E06" stroke-width="1.4"/>
+</svg>
+
+<div class="subview">
+<div class="viewtitle">第二视图 · 同一相位下的页解剖：页头、levels、values 与 CRC</div>
+<svg id="eng2" viewBox="0 0 1000 220" role="img" xmlns="http://www.w3.org/2000/svg">
+<g id="scene2"><rect x="20" y="18" width="960" height="184" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/><text class="tn" x="36" y="40" text-anchor="start">同一个页：页头给长度，levels 给位置，values 给内容</text><rect x="36" y="54" width="200" height="58" rx="6" fill="#EFF6FF" stroke="#2563EB" stroke-width="1.1"/><text class="tb" x="136" y="77" text-anchor="middle">PageHeader</text><text class="tag" x="136" y="96" text-anchor="middle">compressed_page_size</text><rect x="248" y="54" width="180" height="58" rx="6" fill="#EAF3DE" stroke="#639922" stroke-width="1.1"/><text class="tb" x="338" y="77" text-anchor="middle">rep levels</text><text class="tag" x="338" y="96" text-anchor="middle">RLE（v1 带长度）</text><rect x="440" y="54" width="180" height="58" rx="6" fill="#EAF3DE" stroke="#639922" stroke-width="1.1"/><text class="tb" x="530" y="77" text-anchor="middle">def levels</text><text class="tag" x="530" y="96" text-anchor="middle">NULL 只在这里</text><rect x="632" y="54" width="200" height="58" rx="6" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1"/><text class="tb" x="732" y="77" text-anchor="middle">encoded values</text><text class="tag" x="732" y="96" text-anchor="middle">字典下标 / 原值</text><rect x="844" y="54" width="120" height="58" rx="6" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.1"/><text class="tb" x="904" y="77" text-anchor="middle">CRC32</text><text class="tag" x="904" y="96" text-anchor="middle">只覆盖页体</text><line x1="236" y1="83" x2="244" y2="83" stroke="#C46A0A" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#a)"/><line x1="428" y1="83" x2="436" y2="83" stroke="#C46A0A" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#a)"/><line x1="620" y1="83" x2="628" y2="83" stroke="#C46A0A" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#a)"/><text class="tag" x="36" y="142" text-anchor="start">读法：先读页头拿到 compressed_page_size；页体解压/解密后再解码；CRC 校验发生在解压之前。</text><text class="tag" x="36" y="160" text-anchor="start">v1 的 levels 跟着整页压缩；v2 的 levels 不压缩，页头直接给字节长度。</text><text class="tag" x="36" y="178" text-anchor="start">分步到第 8 步时，只读 event_type 的 3 个候选页，其他列与页被裁掉。</text></g>
+<circle id="tok2" cx="80" cy="110" r="6" fill="#639922" stroke="#4C7A1A" stroke-width="1.4"/>
+</svg>
+</div>
+
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.5" max="2" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm">默认 ≈ 5.6 秒 / 轮</span>
+</div>
+<div class="readout">
+<span class="ro">进度 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">读数 <b id="roKey">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav"><button class="btn" onclick="prevStep()">‹ 上一步</button><button class="btn warn" onclick="nextStep()">下一步 ›</button></span>
+</div>
+<p class="figcap">进度 0° = 开始写，630° = 只读候选页；主图的橙色点是 writer/reader 的当前位置，副图是页内字节的顺序。<br>口径：parquet-format 2.15.0-SNAPSHOT；布局见 README.md:92-124、183-223；页头/页体大小见 parquet.thrift:830-868。动画中的行组、页数和字节数为演示值。</p>
+</div>
+</div>
+
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：一条查询只读三页</h2></div>
+<p class="sec-sub">先不看代码，只问：文件里到底有什么，reader 凭什么跳过其余部分？</p>
+<div class="quote">「观察一个系统，先分清它的静态结构、动态过程和外部依赖。」</div>
+<p>同一张 <code>events</code> 表，按天切成 1 GB 的文件。查询只命中几十行，却可能扫完整个文件；也可能像开头那条 SQL 一样，只读三页。差别不在 SQL，而在文件有没有给出「不用读」的证据。</p>
+<div class="flow">
+<span class="node">文件</span><span class="arr">→</span><span class="node box">行组</span><span class="arr">→</span><span class="node box">列块</span><span class="arr">→</span><span class="node box">页</span>
+<span class="arr">→</span><span class="node">footer 目录</span><span class="arr">→</span><span class="node">只读候选页</span>
+</div>
+<p>这张流程图里的每一层都有自己的「目录」：footer 记行组和列块的偏移，行组统计记值域，页索引记每页的 min/max。目录越细，能跳过的 I/O 越多，元数据也越大。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：四层结构与三个尺寸</h2></div>
+<p class="sec-sub">点部件卡片，动画中对应的结构会高亮。</p>
+<div class="quote">「分解要 MECE：同一层粒度一致，不重不漏。」</div>
+<div class="partgroup"><div class="gname">文件里的四层</div><div class="parts">
+<button class="part" data-part="file"><b>File</b><span>魔数 + 行组 + footer + 长度 + 魔数；读写的最小完整单位。</span></button>
+<button class="part" data-part="rg"><b>Row Group</b><span>一批行；并行读取、统计裁剪、内存预算的单位。</span></button>
+<button class="part" data-part="chunk"><b>Column Chunk</b><span>某列在一个行组里的全部数据；列投影和压缩的单位。</span></button>
+<button class="part" data-part="page"><b>Page</b><span>编码、压缩、页级跳过的单位；不是 I/O 块，也不是一行。</span></button>
+<button class="part" data-part="footer"><b>Footer</b><span>FileMetaData：schema、行组、列块偏移、统计、排序规则。</span></button>
+</div></div>
+<table class="grid">
+<tr><th>尺寸</th><th>规范建议</th><th>调大了</th><th>调小了</th></tr>
+<tr><td>Row Group</td><td>512 MB–1 GB</td><td>写缓存高、单任务内存高、裁剪粗</td><td>元数据多、并行碎片多</td></tr>
+<tr><td>Column Chunk</td><td>由行组和列宽决定</td><td>单列读取时间长</td><td>固定开销占比高</td></tr>
+<tr><td>Page</td><td>~8 KB（很多实现默认 1 MB）</td><td>跳过粒度粗、解压慢</td><td>页头/索引开销高</td></tr>
+</table>
+<p class="hint">三个尺寸不是一回事：行组管并行与内存，列块管投影与压缩，页管编码与跳过。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：写一遍，读一遍</h2></div>
+<p class="sec-sub">用 8 个步骤看 writer 怎么写、reader 怎么反向找。</p>
+<div class="quote">「动态分析看的是时间轴上的顺序、状态变化和因果链。」</div>
+<table class="grid">
+<tr><th>阶段</th><th>writer</th><th>reader</th><th>关键状态</th></tr>
+<tr><td>① 魔数</td><td>写 PAR1</td><td>—</td><td>文件还不完整</td></tr>
+<tr><td>②–③ 行组</td><td>按列写列块，页背靠背</td><td>—</td><td>只有数据，没有目录</td></tr>
+<tr><td>④ footer</td><td>写 FileMetaData + 长度 + PAR1</td><td>—</td><td>文件可读</td></tr>
+<tr><td>⑤ 尾部</td><td>—</td><td>读最后 8 字节</td><td>拿到 footer 长度</td></tr>
+<tr><td>⑥ 解析</td><td>—</td><td>Thrift 解析 schema / offsets</td><td>知道每列在哪</td></tr>
+<tr><td>⑦ 裁剪</td><td>—</td><td>统计 / 布隆 / 页索引</td><td>只留候选页</td></tr>
+<tr><td>⑧ 读取</td><td>—</td><td>页头 + 页体 + 解码</td><td>还原行</td></tr>
+</table>
+<p><b>写是正向的，读是反向的。</b>writer 从文件头往尾写；reader 从文件尾往头找目录，再跳回数据。这个不对称是理解 Parquet 所有偏移字段的起点。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：目录与数据的对应</h2></div>
+<p class="sec-sub">把动画里的文件带和读取步骤叠起来看。</p>
+<div class="quote">「动静融合的关键是映射：每个部件在每一步里负责什么。」</div>
+<table class="grid">
+<tr><th>读取步骤</th><th>用到的结构</th><th>拿到的信息</th><th>省掉了什么</th></tr>
+<tr><td>读末尾 8 字节</td><td>文件尾部</td><td>footer 长度</td><td>全文件扫描</td></tr>
+<tr><td>解析 footer</td><td>FileMetaData</td><td>schema / row_groups / offsets</td><td>猜列的位置</td></tr>
+<tr><td>裁行组</td><td>Statistics</td><td>值域 / null 数</td><td>不命中的行组</td></tr>
+<tr><td>裁页</td><td>ColumnIndex / BloomFilter</td><td>每页 min/max / 可能存在</td><td>不命中的页</td></tr>
+<tr><td>读列块</td><td>ColumnMetaData + PageHeader</td><td>页偏移 / 压缩后大小 / 编码</td><td>不需要的列</td></tr>
+<tr><td>还原行</td><td>def / rep level</td><td>NULL 与嵌套位置</td><td>不做全量反序列化</td></tr>
+</table>
+<p class="hint">读法：先问「这一步省掉了哪一层 I/O」，再看它依赖哪个元数据。没有元数据，就没有跳过。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：文件之外还有什么</h2></div>
+<p class="sec-sub">Parquet 文件不是孤岛；它依赖存储、清单和读端预算。</p>
+<div class="quote">「环境属性 = 外在关系 + 依赖 + 失效后果。」</div>
+<div class="envcards">
+<div class="env"><b>对象存储 / HDFS</b><span>块大小、随机读成本、原子 rename 能力，直接影响行组大小和失败恢复。</span></div>
+<div class="env"><b>表格式清单</b><span>Iceberg / Delta / Hive Metastore 存文件级统计与 schema，让裁剪在打开文件之前就开始。</span></div>
+<div class="env"><b>写入端内存</b><span>单遍写要在内存里攒够一个行组；行组越大，写端峰值越高。</span></div>
+<div class="env"><b>读取端预算</b><span>行组、页、批次大小共同决定单任务峰值；一次读太多，RSS 会像「泄露」。</span></div>
+<div class="env"><b>并发度</b><span>行组是并行单位；行组太少，多核吃不饱；行组太多，调度和元数据成本上升。</span></div>
+<div class="env"><b>编码/压缩支持</b><span>reader 不支持 ALP/新编码时，文件可能打不开；跨团队共享要先确认兼容性。</span></div>
+</div>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">能说清「写是正向、读是反向」，才算真的懂布局。</p>
+<div id="quiz"></div>
+</section>
+
+
+<div class="summary">
+<h2>一页带走</h2>
+<p class="chant">写是正向的，读是反向的；footer 是反向找路的起点。</p>
+<p>· footer 在尾部，是单遍写的必然结果；读取从最后 8 字节开始。</p>
+<p>· 文件 → 行组 → 列块 → 页，四层各有各的「目录」和跳过粒度。</p>
+<p>· 页是编码/压缩/跳过的单位，不是 I/O 块；页头必须能独立解析。</p>
+<p>· 行组大小、列块大小、页大小是三笔不同的账，不能一起调。</p>
+<p>· 边界与简化：动画里的字节数、行组数、页数都是演示值；真实布局以 parquet-format 规范为准。</p>
+</div>
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+<script>
+var STEPS=[{"d": 0, "t": "写 PAR1", "x": "writer 在文件开头写下魔数。此时还没有任何目录，读取器不会打开它。", "k": "写魔数"}, {"d": 90, "t": "写 RG1", "x": "收满一个行组，按列写列块；同一个行组内，列块一个接一个。", "k": "RG1 列块"}, {"d": 180, "t": "写 RG2", "x": "第二个行组重复同样的动作；行组之间是横向切的。", "k": "RG2 列块"}, {"d": 270, "t": "写 footer", "x": "所有数据落完，writer 才知道偏移与统计，一次性写 FileMetaData，再补长度和 PAR1。", "k": "footer 完成"}, {"d": 360, "t": "读末尾", "x": "reader 先读最后 8 字节：4 字节 footer 长度 + 4 字节 PAR1。", "k": "尾部 8 字节"}, {"d": 450, "t": "解析 footer", "x": "按 Thrift 解析 FileMetaData，拿到 schema、行组和每个列块的偏移。", "k": "schema / offsets"}, {"d": 540, "t": "裁行组 / 页", "x": "统计、布隆过滤器、页索引逐层排除；只留下可能命中的页。", "k": "跳过 5 页"}, {"d": 630, "t": "读三页", "x": "只读 event_type 的 3 个候选页；其他列和页根本没有发生 I/O。", "k": "只读 3 页"}];
+var CHIPS=[{"k": "write", "l": "写入"}, {"k": "footer", "l": "footer"}, {"k": "skip", "l": "裁剪"}, {"k": "read", "l": "读取"}, {"k": "crc", "l": "CRC"}];
+var PARTS={"file": ["p1file"], "rg": ["p1rg1", "p1rg2"], "chunk": ["p1rg1"], "page": ["p1page"], "footer": ["p1footer"]};
+var QUIZ=[{"q": "为什么 footer 放在文件尾部？", "opts": ["因为读取器喜欢从后往前读", "因为 Parquet 是单遍写：写完所有列块才知道偏移和统计", "因为 HDFS 只允许从尾部读"], "a": 1, "exp": "writer 一边收数据一边追加列块，最后才把目录写成 FileMetaData；单遍写换来了写入吞吐。"}, {"q": "读取器如何定位 footer？", "opts": ["从头顺序扫描到 footer", "读最后 8 字节：4 字节长度 + 4 字节 PAR1，再反向 seek", "读取文件开头的 schema"], "a": 1, "exp": "两个 PAR1 一个在头一个在尾；尾部的长度告诉 reader footer 从哪开始。"}, {"q": "页头为什么不能跟页体一起压缩？", "opts": ["因为 Thrift 不支持压缩", "因为 reader 必须先读页头，才知道页体该解压到多大", "因为页头要加密"], "a": 1, "exp": "compressed_page_size / uncompressed_page_size 都在页头里，页头必须可独立解析。"}, {"q": "字典页可以放在列块的什么位置？", "opts": ["任意位置", "列块最前面，且一个列块最多一个", "footer 里"], "a": 1, "exp": "数据页里的字典下标依赖字典页；不先读字典页，下标就没有意义。"}, {"q": "「页」最适合被理解成什么单位？", "opts": ["I/O 块", "编码、压缩和跳过的单位", "一行数据"], "a": 1, "exp": "页是压缩/编码/页级跳过的单位；顺序扫描的 I/O 块通常是列块或更大的连续区间。"}];
+var TOK=[[70, 220], [190, 220], [380, 220], [610, 220], [900, 220], [610, 330], [463, 337], [848, 337]];
+var TOK2=[[136, 83], [338, 83], [530, 83], [732, 83], [904, 83], [904, 83], [732, 83], [338, 83]];
+
+var TOK=[[70,220],[190,220],[380,220],[610,220],[900,220],[610,330],[463,337],[848,337]];
+var TOK2=[[136,83],[338,83],[530,83],[732,83],[904,83],[904,83],[732,83],[338,83]];
+function pageRender(th,si){
+  var writeDone=th>=270, readStart=th>=360, footerRead=th>=450, pruned=th>=540, pagesRead=th>=630;
+  setChip('write',writeDone?'完成':'待命');
+  setChip('footer',footerRead?'已解析':'待命');
+  setChip('skip',pruned?'留下 3 页':'待命');
+  setChip('read',pagesRead?'已读 3 页':'待命');
+  setChip('crc',pagesRead?'待校验':'—');
+  setOp('p1file',1);
+  setOp('p1rg1',th>=90?1:0.45);setOp('p1rg2',th>=180?1:0.45);setOp('p1footer',th>=270?1:0.45);
+  setOp('p1page',th>=540?1:0.5);
+  setText('roKey',th<90?'写 PAR1':th<180?'RG1 列块':th<270?'RG2 列块':th<360?'footer 完成':th<450?'尾部 8 字节':th<540?'schema / offsets':th<630?'候选 3 页':'解码 3 页');
+}
+
+
+var PERIOD=5600, PHASE_MAX=720, STEP_DUR=600;
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto', run=!reduced, speed=1, phase=0, last=performance.now();
+var stepFrom=0, stepTo=null, stepElapsed=0, stepIdx=-1, dots=[], ticking=false;
+function $(id){return document.getElementById(id);}
+function setText(id,s){var n=$(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setOp(id,v){var n=$(id);if(n)n.setAttribute('opacity',Math.max(0,Math.min(1,v)).toFixed(2));}
+function setW(id,v){var n=$(id);if(n)n.setAttribute('width',Math.max(0,v).toFixed(1));}
+function setAttr(id,k,v){var n=$(id);if(n)n.setAttribute(k,v);}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){t=clamp(t,0,1);return t*t*(3-2*t);}
+function setChip(k,v){var n=chipEls[k];if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',/^(开|是|已|命中|完成|一致|通过|留下|已读|已加密|已解密|写入|可读)/.test(v));n.classList.toggle('off',/^(关|否|待命|—|不|跳过|未)/.test(v));}
+function stageAt(th){return clamp(Math.floor(th/90),0,STEPS.length-1);}
+function tokAt(pts,th){var i=stageAt(th),a=pts[Math.min(i,pts.length-1)],b=pts[Math.min(i+1,pts.length-1)];var t=smooth((th%90)/90);return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t];}
+function render(th){
+  var pr=Math.round(((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX);
+  setText('roPhase',pr+'°');
+  var si=stageAt(pr);
+  if(mode==='step'&&stepIdx>=0)si=stepIdx;
+  setText('roStep',STEPS[si]?STEPS[si].t:'—');
+  setText('roKey',STEPS[si]?STEPS[si].k:'—');
+  document.querySelectorAll('#eng .stage').forEach(function(n,i){n.classList.toggle('on',i===si);n.classList.toggle('done',i<si);});
+  var p=tokAt(TOK,pr);setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));
+  if(typeof TOK2!=='undefined'){var q=tokAt(TOK2,pr);setAttr('tok2','cx',q[0].toFixed(1));setAttr('tok2','cy',q[1].toFixed(1));}
+  pageRender(pr,si);
+}
+function tick(now){
+  ticking=false;
+  var dt=Math.min(50,now-last);last=now;
+  if(run&&mode==='auto')phase=(phase+dt/PERIOD*PHASE_MAX)%PHASE_MAX;
+  if(mode==='step'&&stepTo!==null){
+    stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);var p=stepElapsed/STEP_DUR,e=smooth(p);
+    phase=stepFrom+(stepTo-stepFrom)*e;if(p>=1){phase=stepTo;stepTo=null;}
+  }
+  render(phase);
+  if(run||stepTo!==null){ticking=true;requestAnimationFrame(tick);}
+}
+function wake(){if(ticking)return;ticking=true;last=performance.now();requestAnimationFrame(tick);}
+function setAuto(on){mode='auto';run=on;stepTo=null;if(on){wake();}var b=$('engBtn');if(b)b.textContent=on?'暂停':'播放';if(on){stepIdx=-1;dots.forEach(function(d){d.classList.remove('on');});var t=$('stepT'),x=$('stepX');if(t)t.textContent='自动运转模式';if(x)x.textContent='点下方步骤点可切换到分步演示，随你点击定格。';}}
+window.goStep=function(i){stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;wake();var target=STEPS[stepIdx].d;if(reduced||Math.abs(target-phase)>180){phase=target;stepTo=null;render(phase);}else{stepFrom=phase;stepTo=target;stepElapsed=0;render(phase);}var b=$('engBtn');if(b)b.textContent='继续自动运转';dots.forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});var t=$('stepT'),x=$('stepX');if(t)t.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;if(x)x.textContent=STEPS[stepIdx].x;};
+window.prevStep=function(){goStep(stepIdx-1);};window.nextStep=function(){goStep(stepIdx+1);};
+var chipEls={};CHIPS.forEach(function(c){var box=$('stateChips');var s=document.createElement('span');s.className='chip';s.innerHTML=c.l+' <b>--</b>';box.appendChild(s);chipEls[c.k]=s;});
+var stepBar=$('stepBar');
+STEPS.forEach(function(s,n){var b=document.createElement('button');b.className='stepnode';b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+s.t+'</span>';b.onclick=function(){goStep(n);};stepBar.appendChild(b);dots.push(b);});
+var engBtn=$('engBtn');engBtn.textContent=run?'暂停':'播放';engBtn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+var spd=$('engSpd');if(spd){spd.oninput=function(){speed=parseFloat(spd.value);$('engSpdV').textContent=speed+'×';};}
+/* 速度通过修改 PERIOD 的比例实现，保留原时间轴语义 */
+var basePeriod=PERIOD;if(spd){spd.oninput=function(){speed=parseFloat(spd.value);$('engSpdV').textContent=speed+'×';PERIOD=basePeriod/speed;};}
+document.querySelectorAll('.part').forEach(function(btn){btn.onclick=function(){var ids=(PARTS[btn.dataset.part]||[]);document.querySelectorAll('#eng .hl,#eng2 .hl').forEach(function(n){n.classList.remove('hl');});ids.forEach(function(id){var n=$(id);if(n)n.classList.add('hl');});};});
+var quizBox=$('quiz');QUIZ.forEach(function(q,n){var d=document.createElement('div');d.className='q';var html='<div class="qt">'+(n+1)+'. '+q.q+'</div>';q.opts.forEach(function(o,j){html+='<button class="opt" data-q="'+n+'" data-o="'+j+'">'+o+'</button>';});html+='<div class="exp"><b>答案：</b>'+q.opts[q.a]+'<br>'+q.exp+'</div>';d.innerHTML=html;quizBox.appendChild(d);});
+quizBox.querySelectorAll('.opt').forEach(function(b){b.onclick=function(){var q=QUIZ[+b.dataset.q];var box=b.closest('.q');if(box.classList.contains('done'))return;box.classList.add('done');b.classList.add(+b.dataset.o===q.a?'right':'wrong');box.querySelectorAll('.opt').forEach(function(o){if(+o.dataset.o===q.a)o.classList.add('right');});};});
+if(reduced){run=false;if(engBtn)engBtn.textContent='播放';phase=0;render(0);}else{wake();}
+
+</script>
+</body>
+</html>

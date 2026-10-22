@@ -8,6 +8,7 @@ import { ComparePage } from '@/pages/ComparePage';
 import { ProgressPage } from '@/pages/ProgressPage';
 import { AgentLabPage } from '@/pages/AgentLabPage';
 import { MiddlewareLabPage } from '@/pages/MiddlewareLabPage';
+import { ParquetLabPage } from '@/pages/ParquetLabPage';
 import { SeataLabPage } from '@/pages/SeataLabPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 
@@ -34,6 +35,7 @@ export function App() {
           <Route path="/progress" element={<ProgressPage />} />
           <Route path="/agent/lab/:chapterId?" element={<AgentLabPage />} />
           <Route path="/middleware/lab/:chapterId?" element={<MiddlewareLabPage />} />
+          <Route path="/parquet/lab/:chapterId?" element={<ParquetLabPage />} />
           <Route path="/seata/lab/:chapterId?" element={<SeataLabPage />} />
           <Route path="/:trackId" element={<TrackPage />} />
           <Route path="/:trackId/:sectionId/:slug" element={<DocPage />} />
