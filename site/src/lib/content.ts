@@ -18,8 +18,33 @@ const ROOT = `${BASE.endsWith('/') ? BASE : `${BASE}/`}content/`;
 
 const indexCache: { value: ContentIndex | null } = { value: null };
 const pageCache = new Map<string, PageDocument>();
+/**
+ * 页面正文按 LRU 留最近 12 篇。
+ *
+ * 一页 JSON 里带着整篇的 block 与高亮 HTML；如果只进不出，读得越多驻留越大，
+ * 长会话里看起来就像内存泄漏。12 篇足够覆盖前进/后退与相邻章节，超出就丢最旧的。
+ */
+const PAGE_CACHE_LIMIT = 12;
 const inflight = new Map<string, Promise<unknown>>();
 let searchCache: SearchDoc[] | null = null;
+
+function rememberPage(pageId: string, doc: PageDocument): void {
+  pageCache.delete(pageId);
+  pageCache.set(pageId, doc);
+  while (pageCache.size > PAGE_CACHE_LIMIT) {
+    const oldest = pageCache.keys().next().value;
+    if (oldest === undefined) break;
+    pageCache.delete(oldest);
+  }
+}
+
+function recallPage(pageId: string): PageDocument | undefined {
+  const doc = pageCache.get(pageId);
+  if (!doc) return undefined;
+  pageCache.delete(pageId);
+  pageCache.set(pageId, doc);
+  return doc;
+}
 
 /** 统一的请求失败类型，便于 UI 区分「网络错误」与「内容缺失」 */
 export class ContentError extends Error {
@@ -121,14 +146,14 @@ export async function loadIndex(signal?: AbortSignal): Promise<ContentIndex> {
 }
 
 export async function loadPage(pageId: string, signal?: AbortSignal): Promise<PageDocument> {
-  const cached = pageCache.get(pageId);
+  const cached = recallPage(pageId);
   if (cached) return cached;
   const file = `${pageId.replace(/\//g, '__')}.json`;
   const doc = await waitFor(
     dedupe(`page:${pageId}`, () => fetchJson<PageDocument>(`pages/${file}`)),
     signal,
   );
-  pageCache.set(pageId, doc);
+  rememberPage(pageId, doc);
   return doc;
 }
 
