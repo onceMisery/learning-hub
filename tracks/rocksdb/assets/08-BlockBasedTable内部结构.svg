@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 690" width="1000" height="690" font-family="Microsoft YaHei, sans-serif">
+<defs>
+<marker id="blkB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="blkO" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="blkG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<rect x="0" y="0" width="1000" height="690" fill="#ffffff"/>
+<text x="500" y="34" font-size="20" fill="#1F1E1A" text-anchor="middle" font-weight="600">BlockBasedTable 内部结构：前缀压缩、restart point 与三张小抄</text>
+<text x="500" y="56" font-size="12" fill="#6B695F" text-anchor="middle" font-weight="400">块内：每 16 个键留一个完整键当路标；块外：filter → index → data 三级定位</text>
+<text x="960" y="28" font-size="11" fill="#6B695F" text-anchor="end">蓝：块结构</text>
+<text x="960" y="44" font-size="11" fill="#6B695F" text-anchor="end">橙：entry 字节</text>
+<text x="960" y="60" font-size="11" fill="#6B695F" text-anchor="end">绿：定位命中</text>
+
+<rect x="40" y="80" width="920" height="300" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="56" y="102" font-size="13" fill="#1F1E1A" font-weight="600">data block 内部：entry = 共享长度 + 非共享长度 + 值长度 + 键增量 + 值</text>
+<text x="56" y="120" font-size="10.5" fill="#6B695F">以 device_47 → device_47:temp → device_48 三个键为例（value_len 各自跟着键走）</text>
+
+<rect x="56" y="132" width="200" height="40" rx="5" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/>
+<text x="66" y="149" font-size="10.5" fill="#1F1E1A" font-weight="600">entry 1（restart，shared=0）</text>
+<text x="66" y="165" font-size="10.5" fill="#C46A0A" font-weight="600">0 9 vlen · device_47 · value</text>
+<rect x="266" y="132" width="220" height="40" rx="5" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/>
+<text x="276" y="149" font-size="10.5" fill="#1F1E1A" font-weight="600">entry 2（shared=9）</text>
+<text x="276" y="165" font-size="10.5" fill="#C46A0A" font-weight="600">9 6 vlen · :temp · value</text>
+<rect x="496" y="132" width="200" height="40" rx="5" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/>
+<text x="506" y="149" font-size="10.5" fill="#1F1E1A" font-weight="600">entry 3（shared=8）</text>
+<text x="506" y="165" font-size="10.5" fill="#C46A0A" font-weight="600">8 1 vlen · 8 · value</text>
+
+<text x="56" y="200" font-size="11" fill="#6B695F">键材料 9+15+9=33 字节 → 编码后 9+6+1=16 字节，省 17 字节；值永远原样跟在键增量后面。</text>
+
+<rect x="56" y="216" width="286" height="46" rx="5" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="70" y="235" font-size="11" fill="#1F1E1A" font-weight="600">entry 1（offset 0）＝ restart point</text>
+<text x="70" y="253" font-size="10.5" fill="#2F6FA8">完整键入账，二分从这里开始</text>
+<rect x="352" y="216" width="286" height="46" rx="5" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="366" y="235" font-size="11" fill="#1F1E1A" font-weight="600">entry 17（默认间隔 16）＝ restart point</text>
+<text x="366" y="253" font-size="10.5" fill="#2F6FA8">shared 强制归 0，整键重存</text>
+<rect x="648" y="216" width="296" height="46" rx="5" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/>
+<text x="662" y="235" font-size="11" fill="#1F1E1A" font-weight="600">块尾：restarts[] 数组 + num_restarts</text>
+<text x="662" y="253" font-size="10.5" fill="#639922">每项 4 字节，是块内二分的索引</text>
+
+<path d="M199 262 L 199 286" fill="none" stroke="#2F6FA8" stroke-width="1.4" marker-end="url(#blkB)"/>
+<path d="M495 262 L 495 286" fill="none" stroke="#2F6FA8" stroke-width="1.4" marker-end="url(#blkB)"/>
+<path d="M796 262 L 796 286" fill="none" stroke="#639922" stroke-width="1.4" marker-end="url(#blkG)"/>
+<text x="56" y="306" font-size="10.5" fill="#6B695F">Seek("device_48")：对 restart 数组二分（块内 64 键 → 4 个路标 → 约 2 次比较）→ 落到最后一个 ≤ 目标的路标 →</text>
+<text x="56" y="323" font-size="10.5" fill="#6B695F">线性扫 ≤ 16 个 entry。kDataBlockBinaryAndHash 再加一张哈希表，键 → restart 下标直达（块 ≤ 64 KB 时生效）。</text>
+<text x="56" y="348" font-size="10.5" fill="#6B695F">相邻 entry 间无分隔符，靠「非共享长度」切界；varint32 的 shared=0 恰好是 restart 的签名。</text>
+<text x="56" y="368" font-size="10.5" fill="#C46A0A" font-weight="600">一条 entry 的代价：shared + non_shared + value_len 三个 varint32（约 3~5 字节），换来键前缀只存一次。</text>
+
+<rect x="40" y="396" width="620" height="186" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="56" y="418" font-size="13" fill="#1F1E1A" font-weight="600">块外定位：filter 挡门，index 发地址，data 给数据</text>
+<rect x="56" y="430" width="140" height="52" rx="6" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/>
+<text x="126" y="450" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">filter block</text>
+<text x="126" y="468" font-size="10" fill="#639922" text-anchor="middle">键不在 → 整文件免读</text>
+<path d="M196 456 L 216 456" fill="none" stroke="#639922" stroke-width="1.4" marker-end="url(#blkG)"/>
+<rect x="218" y="430" width="140" height="52" rx="6" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="288" y="450" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">index block</text>
+<text x="288" y="468" font-size="10" fill="#2F6FA8" text-anchor="middle">分隔键 → BlockHandle</text>
+<path d="M358 456 L 378 456" fill="none" stroke="#2F6FA8" stroke-width="1.4" marker-end="url(#blkB)"/>
+<rect x="380" y="430" width="140" height="52" rx="6" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/>
+<text x="450" y="450" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">data block</text>
+<text x="450" y="468" font-size="10" fill="#C46A0A" text-anchor="middle">块内二分 + 线性扫描</text>
+<text x="56" y="506" font-size="10.5" fill="#6B695F">索引项里的键不是块内最后一个键，而是「上一块末键与下一块首键之间随便挑一个更短的」——</text>
+<text x="56" y="523" font-size="10.5" fill="#6B695F">缩短索引（FindShortestSeparator）。块太大时索引自己也会爆：kTwoLevelIndexSearch 把索引切成</text>
+<text x="56" y="540" font-size="10.5" fill="#6B695F">4 KB 的分区，顶层索引指向各分区，分区进块缓存按需加载。</text>
+<text x="56" y="565" font-size="10.5" fill="#2F6FA8" font-weight="600">分区分割线也由 flush 策略决定：metadata_block_size = 4096（与 block_size 同源不同参）。</text>
+
+<rect x="680" y="396" width="280" height="186" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="696" y="418" font-size="13" fill="#1F1E1A" font-weight="600">凑不满 4 KB 也切块</text>
+<text x="696" y="440" font-size="10.5" fill="#6B695F">条件一：当前估计 ≥ block_size(4096)</text>
+<text x="696" y="458" font-size="10.5" fill="#6B695F">条件二：再放一个 KV 就超，且</text>
+<text x="696" y="475" font-size="10.5" fill="#6B695F">当前已超过 (100-10)% = 3686 字节</text>
+<rect x="696" y="490" width="248" height="80" rx="6" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/>
+<text x="708" y="510" font-size="10.5" fill="#1F1E1A" font-weight="600">举例：2 MB 的值独占一块</text>
+<text x="708" y="529" font-size="10.5" fill="#6B695F">第一个键放进去 2 MB &gt; 4 KB，</text>
+<text x="708" y="547" font-size="10.5" fill="#6B695F">第二个键放不下 → 立即切。</text>
+<text x="708" y="565" font-size="10.5" fill="#6B695F">一个 2 MB 值 ≈ 512 个满块的空间</text>
+
+<rect x="40" y="596" width="920" height="76" rx="8" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="56" y="618" font-size="11.5" fill="#1F1E1A" font-weight="600">一次点查的完整小抄账单：filter（1 次）→ index（1 次）→ data（1 次），块缓存兜住后逐级递减。</text>
+<text x="56" y="638" font-size="11.5" fill="#6B695F">25 万块的大索引自身约 5~10 MB——分区索引把它拆成 4 KB 小片按需上缓存，读键只碰两三个分区。</text>
+<text x="56" y="658" font-size="11.5" fill="#6B695F">Parquet 把同样的赌注押在行组上：排序 → 统计/布隆小抄 → 只翻可能命中的页。块太小抄就厚，块太大跳过就粗。</text>
+</svg>

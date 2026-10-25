@@ -1,0 +1,141 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 690" width="1000" height="690" font-family="Microsoft YaHei, sans-serif">
+<defs>
+<marker id="ovlW" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="ovlG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="ovlB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="ovlR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<rect x="0" y="0" width="1000" height="690" fill="#ffffff"/>
+<text x="500" y="34" font-size="20" fill="#1F1E1A" text-anchor="middle" font-weight="600">RocksDB 全景：一条 KV 的三条流水线</text>
+<text x="500" y="56" font-size="12" fill="#6B695F" text-anchor="middle" font-weight="400">跟随 device_47 的一生：写 3 次删 1 次，留下 4 份痕迹，压实收敛成 0 份，读取时挑出对的那份</text>
+<text x="976" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">橙色：数据流（请求）</text>
+<text x="976" y="42" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">蓝色：内存结构</text>
+<text x="976" y="58" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色：落盘 / 持久化</text>
+<text x="976" y="74" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">红色：删除 / 终止</text>
+
+<!-- ============ 第一条流水线：写 ============ -->
+<text x="28" y="90" font-size="13" fill="#C46A0A" text-anchor="start" font-weight="600">写流水线：一次 Put（内存里攒账）</text>
+<rect x="28" y="102" width="164" height="66" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="40" y="124" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">① WriteBatch 组包</text>
+<text x="40" y="142" font-size="10.5" fill="#6B695F" text-anchor="start">一个原子写单元</text>
+<text x="40" y="158" font-size="10.5" fill="#6B695F" text-anchor="start">write_batch.h:64</text>
+
+<rect x="232" y="102" width="180" height="66" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="244" y="124" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">② 排队 + 组提交</text>
+<text x="244" y="142" font-size="10.5" fill="#6B695F" text-anchor="start">leader 合并同车写</text>
+<text x="244" y="158" font-size="10.5" fill="#6B695F" text-anchor="start">至多一次 fsync</text>
+
+<rect x="452" y="102" width="180" height="66" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="464" y="124" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">③ 追加 WAL</text>
+<text x="464" y="142" font-size="10.5" fill="#6B695F" text-anchor="start">000005.log｜块 32KB</text>
+<text x="464" y="158" font-size="10.5" fill="#6B695F" text-anchor="start">log_writer.h:75</text>
+
+<rect x="672" y="102" width="180" height="66" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="684" y="124" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">④ 写 MemTable 跳表</text>
+<text x="684" y="142" font-size="10.5" fill="#6B695F" text-anchor="start">攒 64MB（options.h:192）</text>
+<text x="684" y="158" font-size="10.5" fill="#6B695F" text-anchor="start">最多 2 个在内存</text>
+
+<path d="M192 135 L232 135" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#ovlW)"/>
+<path d="M412 135 L452 135" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#ovlW)"/>
+<path d="M632 135 L672 135" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#ovlW)"/>
+<text x="880" y="126" font-size="10.5" fill="#6B695F" text-anchor="start">seq=7/8/9 Put</text>
+<text x="880" y="142" font-size="10.5" fill="#E24B4A" text-anchor="start">seq=10 Delete</text>
+<text x="880" y="158" font-size="10.5" fill="#6B695F" text-anchor="start">都在这里攒着</text>
+
+<!-- 满了 -> flush 的弯箭头 -->
+<path d="M762 168 L762 225 L124 225 L124 264" fill="none" stroke="#639922" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#ovlG)"/>
+<rect x="290" y="212" width="350" height="26" rx="6" fill="#EAF3DE" stroke="#D3D1C7" stroke-width="1"/>
+<text x="465" y="229" font-size="11" fill="#639922" text-anchor="middle" font-weight="600">MemTable 满 64MB（最多 2 个）→ 转 immutable，等 flush</text>
+
+<!-- ============ 第二条流水线：flush + 压实 ============ -->
+<text x="28" y="256" font-size="13" fill="#639922" text-anchor="start" font-weight="600">flush + 压实流水线：落盘与收敛</text>
+<rect x="28" y="266" width="180" height="64" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="40" y="288" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">⑤ flush → L0 SST</text>
+<text x="40" y="306" font-size="10.5" fill="#6B695F" text-anchor="start">BuildTable（builder.cc:74）</text>
+<text x="40" y="321" font-size="10.5" fill="#6B695F" text-anchor="start">整本顺序写，写完不改</text>
+
+<path d="M208 298 L252 298" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#ovlG)"/>
+<text x="230" y="288" font-size="11" fill="#6B695F" text-anchor="middle">写出</text>
+
+<rect x="256" y="266" width="92" height="64" rx="8" fill="#ffffff" stroke="#639922" stroke-width="1.3"/>
+<text x="302" y="290" font-size="13" fill="#1F1E1A" text-anchor="middle" font-weight="600">L0</text>
+<text x="302" y="307" font-size="10" fill="#6B695F" text-anchor="middle">文件可重叠</text>
+<text x="302" y="321" font-size="10" fill="#C46A0A" text-anchor="middle">攒 4 个触发压实</text>
+
+<path d="M348 298 L384 298" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#ovlG)"/>
+<text x="366" y="288" font-size="11" fill="#639922" text-anchor="middle" font-weight="600">⑥ 压实</text>
+
+<rect x="388" y="266" width="80" height="64" rx="8" fill="#ffffff" stroke="#639922" stroke-width="1.3"/>
+<text x="428" y="290" font-size="13" fill="#1F1E1A" text-anchor="middle" font-weight="600">L1</text>
+<text x="428" y="307" font-size="10" fill="#6B695F" text-anchor="middle">层内不重叠</text>
+<text x="428" y="321" font-size="10" fill="#6B695F" text-anchor="middle">点查最多 1 文件</text>
+
+<path d="M468 298 L504 298" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#ovlG)"/>
+<rect x="508" y="266" width="80" height="64" rx="8" fill="#ffffff" stroke="#639922" stroke-width="1.3"/>
+<text x="548" y="290" font-size="13" fill="#1F1E1A" text-anchor="middle" font-weight="600">L2</text>
+<text x="548" y="313" font-size="10" fill="#6B695F" text-anchor="middle">容量 ×10</text>
+<path d="M588 298 L624 298" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#ovlG)"/>
+<rect x="628" y="266" width="80" height="64" rx="8" fill="#ffffff" stroke="#639922" stroke-width="1.3"/>
+<text x="668" y="290" font-size="13" fill="#1F1E1A" text-anchor="middle" font-weight="600">L3</text>
+<text x="668" y="313" font-size="10" fill="#6B695F" text-anchor="middle">…</text>
+<path d="M708 298 L744 298" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#ovlG)"/>
+<rect x="748" y="266" width="80" height="64" rx="8" fill="#ffffff" stroke="#639922" stroke-width="1.3"/>
+<text x="788" y="290" font-size="13" fill="#1F1E1A" text-anchor="middle" font-weight="600">L4</text>
+<text x="788" y="313" font-size="10" fill="#6B695F" text-anchor="middle">…</text>
+<path d="M828 298 L864 298" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#ovlG)"/>
+<rect x="868" y="266" width="80" height="64" rx="8" fill="#ffffff" stroke="#639922" stroke-width="1.3"/>
+<text x="908" y="290" font-size="13" fill="#1F1E1A" text-anchor="middle" font-weight="600">L5</text>
+<text x="908" y="313" font-size="10" fill="#6B695F" text-anchor="middle">…</text>
+<path d="M908 330 L908 350" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#ovlG)"/>
+<rect x="868" y="354" width="80" height="44" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="908" y="374" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">L6 最底层</text>
+<text x="908" y="390" font-size="10" fill="#639922" text-anchor="middle">墓碑在此消失</text>
+<text x="256" y="356" font-size="10.5" fill="#6B695F" text-anchor="start">L0 攒 4 个文件触发（options.h:256）｜整棵树共 7 层（advanced_options.h:538）</text>
+<text x="256" y="374" font-size="10.5" fill="#6B695F" text-anchor="start">压实 = 把几层里的同键版本归并重写成新 SST：device_47 的 4 份痕迹</text>
+<text x="256" y="392" font-size="10.5" fill="#E24B4A" text-anchor="start">（seq7/8/9 三个 Put + seq10 墓碑）在层层归并里越减越少，最底层收敛为 0 份。</text>
+
+<!-- ============ 第三条流水线：读 ============ -->
+<text x="28" y="440" font-size="13" fill="#2F6FA8" text-anchor="start" font-weight="600">读流水线：一次 Get（从新到旧问，第一次命中即返回）</text>
+<rect x="28" y="452" width="164" height="66" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="40" y="474" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">⑦ Get(device_47)</text>
+<text x="40" y="492" font-size="10.5" fill="#6B695F" text-anchor="start">db.h:778｜带快照 seq</text>
+<text x="40" y="508" font-size="10.5" fill="#6B695F" text-anchor="start">从 4 份里挑对的</text>
+
+<path d="M192 485 L224 485" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#ovlB)"/>
+
+<rect x="228" y="452" width="196" height="66" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="240" y="474" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">⑧ SuperVersion 快照视图</text>
+<text x="240" y="492" font-size="10.5" fill="#6B695F" text-anchor="start">column_family.h:209</text>
+<text x="240" y="508" font-size="10.5" fill="#6B695F" text-anchor="start">memtable + imm + Version</text>
+
+<path d="M424 485 L456 485" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#ovlB)"/>
+
+<rect x="460" y="452" width="180" height="66" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="472" y="474" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">⑨ 问 MemTable（新→旧）</text>
+<text x="472" y="492" font-size="10.5" fill="#6B695F" text-anchor="start">mutable → immutable 队列</text>
+<text x="472" y="508" font-size="10.5" fill="#6B695F" text-anchor="start">seq=10 墓碑 → 直接 NotFound</text>
+
+<path d="M640 485 L672 485" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#ovlB)"/>
+
+<rect x="676" y="452" width="180" height="66" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="688" y="474" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">⑩ Version::Get 逐层问</text>
+<text x="688" y="492" font-size="10.5" fill="#6B695F" text-anchor="start">version_set.h:969</text>
+<text x="688" y="508" font-size="10.5" fill="#6B695F" text-anchor="start">L0 逐文件 → L1+ 二分</text>
+
+<path d="M856 485 L888 485" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#ovlB)"/>
+
+<rect x="892" y="452" width="80" height="66" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="932" y="474" font-size="13" fill="#1F1E1A" text-anchor="middle" font-weight="600">SST 块</text>
+<text x="932" y="492" font-size="10" fill="#6B695F" text-anchor="middle">block 4KB</text>
+<text x="932" y="508" font-size="10" fill="#6B695F" text-anchor="middle">table.h:400</text>
+
+<path d="M932 452 L932 418 L766 418 L766 448" fill="none" stroke="#2F6FA8" stroke-width="1.4" stroke-dasharray="4 4" marker-end="url(#ovlB)"/>
+<text x="849" y="408" font-size="10.5" fill="#2F6FA8" text-anchor="middle">先问 Block Cache（默认 32MB），miss 才读盘</text>
+<text x="460" y="540" font-size="10.5" fill="#6B695F" text-anchor="start">命中层越深读越贵：L0 命中最便宜，每深一层就多一次布隆与索引；全部问完没有 → NotFound。</text>
+<text x="460" y="558" font-size="10.5" fill="#6B695F" text-anchor="start">压实在前面把层数和版本数摁住，读才不用真的一层层翻到底（Block Cache 默认 32MB，block_based_table_factory.cc:629）。</text>
+
+<!-- ============ 底部总结 ============ -->
+<rect x="28" y="590" width="944" height="72" rx="8" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="44" y="616" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">一张图的一句话：写永远只落在内存账本尾部（①–④），flush 与压实把账整册落盘、层层归并（⑤⑥），读从新到旧问一圈、第一次命中即返回（⑦–⑩）。</text>
+<text x="44" y="640" font-size="11" fill="#6B695F" text-anchor="start">三条流水线彼此独立运转：写入不被读拖慢，读不被写的中间状态污染，唯一的账本（Version）由压实完成后一次原子替换来更新。</text>
+</svg>

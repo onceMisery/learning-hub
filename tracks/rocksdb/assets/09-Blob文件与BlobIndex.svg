@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 680" width="1000" height="680" font-family="Microsoft YaHei, sans-serif">
+<defs>
+<marker id="bloB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="bloO" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="bloG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="bloR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<rect x="0" y="0" width="1000" height="680" fill="#ffffff"/>
+<text x="500" y="34" font-size="20" fill="#1F1E1A" text-anchor="middle" font-weight="600">Blob 文件与 BlobIndex：SST 里只留一张提货单</text>
+<text x="500" y="56" font-size="12" fill="#6B695F" text-anchor="middle" font-weight="400">enable_blob_files=true 后，值 ≥ min_blob_size 的部分在 flush/压实被切进 blob file，SST 里留下 8 字节级指针</text>
+<text x="960" y="28" font-size="11" fill="#6B695F" text-anchor="end">蓝：文件结构</text>
+<text x="960" y="44" font-size="11" fill="#6B695F" text-anchor="end">橙：读取 / GC 数据流</text>
+<text x="960" y="60" font-size="11" fill="#6B695F" text-anchor="end">红：垃圾回收</text>
+
+<rect x="40" y="84" width="330" height="250" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="56" y="106" font-size="13" fill="#1F1E1A" font-weight="600">SST（base DB）里发生了什么</text>
+<rect x="56" y="120" width="298" height="34" rx="5" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="68" y="141" font-size="11" fill="#1F1E1A">entry: device_46 → v1.2KB（正常值，留块里）</text>
+<rect x="56" y="160" width="298" height="52" rx="5" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.4"/>
+<text x="68" y="180" font-size="11" fill="#1F1E1A" font-weight="600">entry: device_47 → BlobIndex（kBlob=1）</text>
+<text x="68" y="200" font-size="10.5" fill="#C46A0A" font-weight="600">01 05 69 80 80 80 01 00 —— 8 字节</text>
+<rect x="56" y="218" width="298" height="34" rx="5" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="68" y="239" font-size="11" fill="#1F1E1A">entry: device_48 → v0.8KB（正常值，留块里）</text>
+<text x="56" y="272" font-size="10.5" fill="#6B695F">BlobIndex 字段：type | file_number | offset | size | compression</text>
+<text x="56" y="289" font-size="10.5" fill="#6B695F">编码用 varint64；offset 指向 value 本身，读记录头要回退 key+32 字节</text>
+<text x="56" y="312" font-size="10.5" fill="#C46A0A" font-weight="600">2 MB 的值 → 8 字节指针，块结构再也不背大值</text>
+
+<rect x="630" y="84" width="330" height="250" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="646" y="106" font-size="13" fill="#1F1E1A" font-weight="600">000005.blob 的物理布局</text>
+<rect x="646" y="120" width="298" height="36" rx="5" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/>
+<text x="658" y="134" font-size="10.5" fill="#1F1E1A" font-weight="600">header 30B：magic 0x00248f37</text>
+<text x="658" y="150" font-size="10.5" fill="#6B695F">version | cf id | flags | compression | 过期范围</text>
+<rect x="646" y="162" width="298" height="70" rx="5" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="658" y="180" font-size="10.5" fill="#1F1E1A" font-weight="600">record：32B 头 + key + value</text>
+<text x="658" y="197" font-size="10.5" fill="#6B695F">key_len | val_len | expiration | headerCRC | blobCRC</text>
+<text x="658" y="214" font-size="10.5" fill="#6B695F">headerCRC 盖 3 个长度字段；blobCRC 盖 key+value</text>
+<text x="658" y="228" font-size="10.5" fill="#2F6FA8" font-weight="600">BlobIndex 的 offset 指向这里的 value 起点</text>
+<rect x="646" y="238" width="298" height="36" rx="5" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/>
+<text x="658" y="252" font-size="10.5" fill="#1F1E1A" font-weight="600">footer 32B（正常关闭才写）</text>
+<text x="658" y="268" font-size="10.5" fill="#6B695F">magic | blob count | 过期范围 | footer CRC</text>
+<text x="646" y="294" font-size="10.5" fill="#6B695F">单文件上限 blob_file_size 默认 256 MB，满了就换新文件</text>
+<text x="646" y="312" font-size="10.5" fill="#6B695F">文件名同编号规则：000005.blob</text>
+
+<path d="M374 186 L 626 186" fill="none" stroke="#C46A0A" stroke-width="1.8" marker-end="url(#bloO)"/>
+<text x="500" y="177" font-size="11" fill="#C46A0A" text-anchor="middle" font-weight="600">file 5 + offset 105 + size 2MB</text>
+
+<rect x="40" y="354" width="450" height="214" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="56" y="376" font-size="13" fill="#1F1E1A" font-weight="600">读路径：Get 命中 BlobIndex 之后</text>
+<rect x="56" y="388" width="120" height="44" rx="6" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="116" y="406" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">Get 返回</text>
+<text x="116" y="422" font-size="10" fill="#2F6FA8" text-anchor="middle">kTypeBlobIndex</text>
+<path d="M176 410 L 196 410" fill="none" stroke="#C46A0A" stroke-width="1.4" marker-end="url(#bloO)"/>
+<rect x="198" y="388" width="120" height="44" rx="6" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="258" y="406" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">blob cache</text>
+<text x="258" y="422" font-size="10" fill="#2F6FA8" text-anchor="middle">键 = 文件号+偏移</text>
+<path d="M318 410 L 338 410" fill="none" stroke="#C46A0A" stroke-width="1.4" marker-end="url(#bloO)"/>
+<rect x="340" y="388" width="134" height="44" rx="6" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/>
+<text x="407" y="406" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">blob file 读 record</text>
+<text x="407" y="422" font-size="10" fill="#C46A0A" text-anchor="middle">BlobFileCache 缓存 reader</text>
+<path d="M407 432 L 407 452" fill="none" stroke="#639922" stroke-width="1.4" marker-end="url(#bloG)"/>
+<rect x="340" y="454" width="134" height="44" rx="6" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/>
+<text x="407" y="472" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">验 CRC + 解压</text>
+<text x="407" y="488" font-size="10" fill="#639922" text-anchor="middle">key 回对才放行</text>
+<text x="56" y="452" font-size="10.5" fill="#6B695F">未命中缓存才碰盘：一次 record 级随机读（</text>
+<text x="56" y="470" font-size="10.5" fill="#6B695F">偏移 = BlobIndex.offset − key − 32）；压实侧可配</text>
+<text x="56" y="488" font-size="10.5" fill="#6B695F">blob_compaction_readahead_size 预取整段</text>
+<text x="56" y="512" font-size="10.5" fill="#2F6FA8" font-weight="600">键的 I/O 走块缓存，值的 I/O 走 blob cache——两本账分开记</text>
+<text x="56" y="532" font-size="10.5" fill="#6B695F">point 读的顺序：SST 块 → BlobIndex → blob file → 值，间接 +1 层</text>
+
+<rect x="510" y="354" width="450" height="214" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="526" y="376" font-size="13" fill="#1F1E1A" font-weight="600">GC：压实时顺路给 blob 文件称重</text>
+<rect x="526" y="388" width="196" height="52" rx="6" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="624" y="407" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">BlobGarbageMeter</text>
+<text x="624" y="425" font-size="10" fill="#2F6FA8" text-anchor="middle">输入引用 inflow − 输出引用 outflow</text>
+<path d="M722 414 L 742 414" fill="none" stroke="#E24B4A" stroke-width="1.4" marker-end="url(#bloR)"/>
+<rect x="744" y="388" width="200" height="52" rx="6" fill="#FFF6E8" stroke="#E24B4A" stroke-width="1.2"/>
+<text x="844" y="407" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">垃圾字节进 MANIFEST</text>
+<text x="844" y="425" font-size="10" fill="#E24B4A" text-anchor="middle">BlobFileGarbage 挂在 VersionEdit 上</text>
+<rect x="526" y="452" width="418" height="100" rx="6" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.2"/>
+<text x="540" y="472" font-size="10.5" fill="#1F1E1A" font-weight="600">举例：blob 文件 10 装了 100 MB，一轮压实后</text>
+<text x="540" y="490" font-size="10.5" fill="#6B695F">剩 20 MB 有效引用 → 垃圾 80%。age_cutoff=0.25 表示</text>
+<text x="540" y="508" font-size="10.5" fill="#6B695F">最老 25% 的 blob 文件里的 blob 一遇压实就搬迁重写；</text>
+<text x="540" y="526" font-size="10.5" fill="#6B695F">这批文件的垃圾占比超过 force_threshold（默认 1.0 = 永不）</text>
+<text x="540" y="544" font-size="10.5" fill="#6B695F">时，反过来给引用它们的 SST 强排一轮针对性压实。</text>
+
+<rect x="40" y="584" width="920" height="76" rx="8" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="56" y="606" font-size="11.5" fill="#1F1E1A" font-weight="600">写放大的账：2 MB 值 × 7 层 LSM = 14 MB 写盘；切出 blob 后，SST 每层只搬 8 字节，blob 文件不被压实触碰。</text>
+<text x="56" y="626" font-size="11.5" fill="#6B695F">代价是点查多一层间接、GC 要靠后续压实逐步清垃圾——min_blob_size 就是在这两本账之间画线。</text>
+<text x="56" y="646" font-size="11.5" fill="#6B695F">blob_file_starting_level 还能让浅层完整保留 LSM 语义，到指定层以下才把大值切出去。</text>
+</svg>

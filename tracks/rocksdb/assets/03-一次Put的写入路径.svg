@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 660" width="1000" height="660" font-family="Microsoft YaHei, sans-serif">
+<defs>
+<marker id="putO" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="putG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="putB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="putR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<rect x="0" y="0" width="1000" height="660" fill="#ffffff"/>
+<text x="500" y="34" font-size="20" fill="#1F1E1A" text-anchor="middle" font-weight="600">一次 Put 的写入路径：八道关卡</text>
+<text x="500" y="56" font-size="12" fill="#6B695F" text-anchor="middle" font-weight="400">排队 → 组队 → 杂事与停顿 → 写 WAL → 写 memtable → 发布 seq；红色是可能停住的闸机</text>
+<text x="960" y="28" font-size="11" fill="#6B695F" text-anchor="end">橙：写入主路径</text>
+<text x="960" y="44" font-size="11" fill="#6B695F" text-anchor="end">绿：持久化（WAL / 返回）</text>
+<text x="960" y="60" font-size="11" fill="#6B695F" text-anchor="end">红：停顿 / 风险</text>
+
+<rect x="40" y="84" width="260" height="52" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="56" y="105" font-size="13" fill="#1F1E1A" font-weight="600">① 建 WriteBatch</text>
+<text x="56" y="124" font-size="11" fill="#6B695F">12 字节头 + 记录序列（db/write_batch.cc:10）</text>
+
+<rect x="370" y="84" width="260" height="52" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="386" y="105" font-size="13" fill="#1F1E1A" font-weight="600">② WriteThread 排队</text>
+<text x="386" y="124" font-size="11" fill="#6B695F">STATE_INIT → 等待成为 leader</text>
+
+<rect x="700" y="84" width="260" height="52" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="716" y="105" font-size="13" fill="#1F1E1A" font-weight="600">③ 组队（组提交）</text>
+<text x="716" y="124" font-size="11" fill="#6B695F">组上限 1 MB；小写保护 128 KB（1/8）</text>
+
+<path d="M300 110 L366 110" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#putO)"/>
+<path d="M630 110 L696 110" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#putO)"/>
+
+<rect x="700" y="160" width="260" height="58" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="716" y="181" font-size="13" fill="#1F1E1A" font-weight="600">④ leader 办杂事</text>
+<text x="716" y="200" font-size="11" fill="#6B695F">WAL 超限切换 / WBM flush / 调度 compaction</text>
+<path d="M830 136 L830 156" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#putO)"/>
+
+<rect x="700" y="242" width="260" height="58" rx="8" fill="#FDEEEE" stroke="#E24B4A" stroke-width="1.3"/>
+<text x="716" y="263" font-size="13" fill="#1F1E1A" font-weight="600">⑤ 写停顿闸机（DelayWrite）</text>
+<text x="716" y="282" font-size="11" fill="#E24B4A">memtable≥2 个 / L0≥20、36 个 / 压实积压 64、256 GB</text>
+<path d="M830 218 L830 238" fill="none" stroke="#E24B4A" stroke-width="1.6" marker-end="url(#putR)"/>
+<text x="842" y="233" font-size="10.5" fill="#E24B4A">超线先睡</text>
+
+<rect x="700" y="324" width="260" height="56" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="716" y="345" font-size="13" fill="#1F1E1A" font-weight="600">⑥ 写 WAL（整组一次）</text>
+<text x="716" y="364" font-size="11" fill="#639922">sync=true：整组分摊一次 fdatasync</text>
+<path d="M830 300 L830 320" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#putO)"/>
+
+<rect x="700" y="404" width="260" height="56" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="716" y="425" font-size="13" fill="#1F1E1A" font-weight="600">⑦ 写 memtable（跳表）</text>
+<text x="716" y="444" font-size="11" fill="#6B695F">MemTableInserter 逐条插，data_size 累加</text>
+<path d="M830 380 L830 400" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#putO)"/>
+
+<rect x="700" y="484" width="260" height="52" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="716" y="505" font-size="13" fill="#1F1E1A" font-weight="600">⑧ SetLastSequence，返回</text>
+<text x="716" y="524" font-size="11" fill="#639922">同车 follower 一起被唤醒（STATE_COMPLETED）</text>
+<path d="M830 460 L830 480" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#putG)"/>
+
+<rect x="40" y="160" width="600" height="180" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="56" y="184" font-size="13" fill="#1F1E1A" font-weight="600">组提交：3 个并发写合成一趟车（1 次 Append，sync 时 1 次 fsync）</text>
+<rect x="56" y="200" width="150" height="40" rx="6" fill="#ffffff" stroke="#C46A0A" stroke-width="1"/>
+<text x="131" y="216" font-size="11" fill="#1F1E1A" text-anchor="middle">写 A（leader）</text>
+<text x="131" y="232" font-size="10" fill="#6B695F" text-anchor="middle">batch 28 字节</text>
+<rect x="246" y="200" width="150" height="40" rx="6" fill="#ffffff" stroke="#C46A0A" stroke-width="1"/>
+<text x="321" y="216" font-size="11" fill="#1F1E1A" text-anchor="middle">写 B（搭车）</text>
+<text x="321" y="232" font-size="10" fill="#6B695F" text-anchor="middle">WRITE_DONE_BY_OTHER</text>
+<rect x="436" y="200" width="150" height="40" rx="6" fill="#ffffff" stroke="#C46A0A" stroke-width="1"/>
+<text x="511" y="216" font-size="11" fill="#1F1E1A" text-anchor="middle">写 C（搭车）</text>
+<text x="511" y="232" font-size="10" fill="#6B695F" text-anchor="middle">WRITE_DONE_BY_OTHER</text>
+<path d="M206 220 L242 220 M396 220 L432 220" fill="none" stroke="#C46A0A" stroke-width="1.4" marker-end="url(#putO)"/>
+<path d="M586 220 L640 220 L640 326 L696 342" fill="none" stroke="#C46A0A" stroke-width="1.4" marker-end="url(#putO)"/>
+<text x="56" y="268" font-size="11" fill="#6B695F">规则一：sync 写绝不和非 sync 写同车（write_thread.cc:513）</text>
+<text x="56" y="288" font-size="11" fill="#6B695F">规则二：leader 的 batch &lt; 128 KB 时，组上限收紧为「自己 + 128 KB」</text>
+<text x="56" y="308" font-size="11" fill="#6B695F">规则三：组内 batch 首尾拼接后一次写入 WAL，seq 按条数连续分配</text>
+
+<rect x="40" y="364" width="600" height="172" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="56" y="388" font-size="13" fill="#1F1E1A" font-weight="600">WAL 物理格式：32 KB 的块，7 字节的头（log_format.h:54-57）</text>
+<rect x="56" y="404" width="528" height="46" rx="4" fill="#ffffff" stroke="#639922" stroke-width="1.2"/>
+<rect x="56" y="404" width="70" height="46" fill="#EAF3DE" stroke="#639922" stroke-width="1"/>
+<text x="91" y="431" font-size="10.5" fill="#1F1E1A" text-anchor="middle">CRC 4B</text>
+<rect x="126" y="404" width="60" height="46" fill="#EAF3DE" stroke="#639922" stroke-width="1"/>
+<text x="156" y="431" font-size="10.5" fill="#1F1E1A" text-anchor="middle">len 2B</text>
+<rect x="186" y="404" width="46" height="46" fill="#EAF3DE" stroke="#639922" stroke-width="1"/>
+<text x="209" y="431" font-size="10.5" fill="#1F1E1A" text-anchor="middle">type 1B</text>
+<rect x="232" y="404" width="352" height="46" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1"/>
+<text x="408" y="431" font-size="11" fill="#1F1E1A" text-anchor="middle">batch 载荷（49 字节 → type=FULL）</text>
+<text x="56" y="472" font-size="11" fill="#6B695F">块尾放不下一个 7 字节头 → 补零跳到下一块；50 KB 的大 batch 拆 FIRST / MIDDLE / LAST 三片</text>
+<text x="56" y="492" font-size="11" fill="#6B695F">恢复时逐片校验 CRC、把分片拼回：坏块只丢最后几条，前面的照常重放进 memtable</text>
+<text x="56" y="516" font-size="11" fill="#C46A0A" font-weight="600">sync=false：只 Flush 到 page cache，进程崩不丢，掉电丢；sync=true 掉电也不丢</text>
+
+<rect x="40" y="568" width="920" height="56" rx="8" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="56" y="590" font-size="11.5" fill="#1F1E1A" font-weight="600">为什么先 WAL 后 memtable：memtable 在内存里，崩溃即失忆；WAL 是唯一的持久化凭证。</text>
+<text x="56" y="610" font-size="11.5" fill="#6B695F">崩溃恢复 = 重放 WAL：把记录按 seq 重新插进新 memtable，写路径由此获得「掉电也不丢已确认写」的语义。</text>
+</svg>

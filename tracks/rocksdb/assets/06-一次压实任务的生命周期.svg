@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 680" width="1000" height="680" font-family="Microsoft YaHei, sans-serif">
+<defs>
+<marker id="lcO" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="lcB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="lcG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="lcR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<rect x="0" y="0" width="1000" height="680" fill="#ffffff"/>
+<text x="500" y="34" font-size="20" fill="#1F1E1A" text-anchor="middle" font-weight="600">一次压实任务的生命周期：PickCompaction → Compaction → 安装</text>
+<text x="500" y="56" font-size="12" fill="#6B695F" text-anchor="middle" font-weight="400">挑文件（持锁）→ 后台归并（松锁）→ VersionEdit 原子换账本；中途失败旧 Version 不动</text>
+<text x="968" y="28" font-size="11" fill="#6B695F" text-anchor="end">蓝：结构 / 任务</text>
+<text x="968" y="44" font-size="11" fill="#6B695F" text-anchor="end">橙：数据流</text>
+<text x="968" y="60" font-size="11" fill="#6B695F" text-anchor="end">绿：免重写 / 持久化</text>
+
+<!-- lane headers -->
+<rect x="24" y="78" width="300" height="30" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="174" y="98" font-size="13" fill="#1F1E1A" text-anchor="middle" font-weight="600">谁该搬：Picker（持 DB 锁）</text>
+<rect x="344" y="78" width="310" height="30" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="499" y="98" font-size="13" fill="#1F1E1A" text-anchor="middle" font-weight="600">怎么搬：CompactionJob（后台线程）</text>
+<rect x="674" y="78" width="302" height="30" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="825" y="98" font-size="13" fill="#1F1E1A" text-anchor="middle" font-weight="600">原子安装：VersionEdit → MANIFEST</text>
+
+<!-- col1 -->
+<rect x="40" y="124" width="268" height="62" rx="8" fill="#ffffff" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="56" y="146" font-size="12.5" fill="#1F1E1A" font-weight="600">① 打分挑层</text>
+<text x="56" y="164" font-size="11" fill="#6B695F">L0 = 文件数/4；L1+ = 层尺寸/层目标</text>
+<text x="56" y="180" font-size="11" fill="#6B695F">score ≥ 1 的层里挑分数最高者</text>
+<path d="M174 186 L174 204" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#lcB)"/>
+
+<rect x="40" y="206" width="268" height="62" rx="8" fill="#ffffff" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="56" y="228" font-size="12.5" fill="#1F1E1A" font-weight="600">② 挑文件并扩成「干净切口」</text>
+<text x="56" y="246" font-size="11" fill="#6B695F">按 CompactionPri 排序取头名</text>
+<text x="56" y="262" font-size="11" fill="#6B695F">ExpandInputsToCleanCut 拉齐同层重叠</text>
+<path d="M174 268 L174 286" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#lcB)"/>
+
+<rect x="40" y="288" width="268" height="66" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="56" y="310" font-size="12.5" fill="#1F1E1A" font-weight="600">③ trivial move 判定</text>
+<text x="56" y="328" font-size="11" fill="#6B695F">单输入层 + 不重叠 + 压缩一致</text>
+<text x="56" y="344" font-size="11" fill="#639922">满足 → 文件只改层号，不重写</text>
+<path d="M308 321 C 360 321 430 250 688 237" fill="none" stroke="#639922" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#lcG)"/>
+<text x="470" y="308" font-size="10.5" fill="#639922">绿色捷径：edit 只改文件层号，直达 ⑨ LogAndApply</text>
+<path d="M174 354 L174 372" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#lcO)"/>
+<text x="186" y="370" font-size="10.5" fill="#C46A0A">需要重写 → 交给 CompactionJob</text>
+
+<rect x="40" y="374" width="268" height="56" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="56" y="396" font-size="12.5" fill="#1F1E1A" font-weight="600">构造 Compaction 对象</text>
+<text x="56" y="414" font-size="11" fill="#6B695F">输入标记 being_compacted，登记 grandparents</text>
+
+<!-- col2 -->
+<rect x="360" y="124" width="278" height="62" rx="8" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="376" y="146" font-size="12.5" fill="#1F1E1A" font-weight="600">④ Prepare：切 subcompaction</text>
+<text x="376" y="164" font-size="11" fill="#6B695F">每个输入文件问 128 个键锚点，按累计</text>
+<text x="376" y="180" font-size="11" fill="#6B695F">尺寸均分成 max_subcompactions 段（默认 1）</text>
+<path d="M499 186 L499 204" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#lcO)"/>
+
+<rect x="360" y="206" width="278" height="50" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="376" y="227" font-size="12.5" fill="#1F1E1A" font-weight="600">⑤ 多线程并行跑 subcompaction</text>
+<text x="376" y="246" font-size="11" fill="#6B695F">每段持有 [start,end) 键范围，互不重叠</text>
+<path d="M499 256 L499 274" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#lcO)"/>
+
+<rect x="360" y="276" width="278" height="96" rx="8" fill="#ffffff" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="376" y="298" font-size="12.5" fill="#1F1E1A" font-weight="600">⑥ CompactionIterator 逐键归并</text>
+<text x="376" y="316" font-size="11" fill="#6B695F">同键版本按快照分带：同带只留最新一版</text>
+<text x="376" y="332" font-size="11" fill="#6B695F">墓碑：早于最早快照且更深层无此键 → 丢</text>
+<text x="376" y="348" font-size="11" fill="#6B695F">Merge 操作数在此刻折算成一个值</text>
+<text x="376" y="364" font-size="10.5" fill="#C46A0A">统计：COMPACTION_KEY_DROP_* 四类丢弃计数</text>
+<path d="M499 372 L499 390" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#lcO)"/>
+
+<rect x="360" y="392" width="278" height="62" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="376" y="414" font-size="12.5" fill="#1F1E1A" font-weight="600">⑦ AddToOutput 写新 SST</text>
+<text x="376" y="432" font-size="11" fill="#6B695F">攒到 target_file_size（默认 64MB）切新文件；</text>
+<text x="376" y="448" font-size="11" fill="#6B695F">跨祖父母边界提前切，避免下次读放大</text>
+
+<!-- col3 -->
+<rect x="690" y="124" width="270" height="62" rx="8" fill="#ffffff" stroke="#639922" stroke-width="1.3"/>
+<text x="706" y="146" font-size="12.5" fill="#1F1E1A" font-weight="600">⑧ Install：组装 VersionEdit</text>
+<text x="706" y="164" font-size="11" fill="#6B695F">AddInputDeletions：删全部输入文件</text>
+<text x="706" y="180" font-size="11" fill="#6B695F">AddOutputsEdit：加全部新 SST</text>
+<path d="M825 186 L825 204" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#lcG)"/>
+
+<rect x="690" y="206" width="270" height="62" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="706" y="228" font-size="12.5" fill="#1F1E1A" font-weight="600">⑨ LogAndApply 写 MANIFEST</text>
+<text x="706" y="246" font-size="11" fill="#6B695F">edit 追加进 MANIFEST 再换内存 Version，</text>
+<text x="706" y="262" font-size="11" fill="#6B695F">一次加锁完成，读者看不到中间态</text>
+<path d="M825 268 L825 286" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#lcG)"/>
+
+<rect x="690" y="288" width="270" height="62" rx="8" fill="#ffffff" stroke="#639922" stroke-width="1.3"/>
+<text x="706" y="310" font-size="12.5" fill="#1F1E1A" font-weight="600">⑩ 换 SuperVersion、回收旧文件</text>
+<text x="706" y="328" font-size="11" fill="#6B695F">新 Version 生效 → 输入文件引用归零</text>
+<text x="706" y="344" font-size="11" fill="#639922">之后才从磁盘删除（失败则原样保留）</text>
+
+<path d="M638 423 C 668 423 664 155 690 155" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#lcO)"/>
+<text x="668" y="392" font-size="10.5" fill="#C46A0A" text-anchor="end">归并完成</text>
+
+<!-- bottom: twin path -->
+<rect x="24" y="452" width="952" height="88" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="44" y="476" font-size="12.5" fill="#1F1E1A" font-weight="600">孪生兄弟：flush 走的是同一条流水线</text>
+<rect x="44" y="490" width="170" height="38" rx="6" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/>
+<text x="129" y="508" font-size="11" fill="#1F1E1A" text-anchor="middle">immutable memtable</text>
+<text x="129" y="522" font-size="10" fill="#6B695F" text-anchor="middle">FlushJob（HIGH 线程池）</text>
+<path d="M218 509 L268 509" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#lcO)"/>
+<rect x="272" y="490" width="230" height="38" rx="6" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="387" y="508" font-size="11" fill="#1F1E1A" text-anchor="middle">BuildTable：同一个 CompactionIterator</text>
+<text x="387" y="522" font-size="10" fill="#6B695F" text-anchor="middle">compaction=nullptr，只去重不跨文件 GC</text>
+<path d="M506 509 L556 509" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#lcO)"/>
+<rect x="560" y="490" width="170" height="38" rx="6" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/>
+<text x="645" y="508" font-size="11" fill="#1F1E1A" text-anchor="middle">L0 SST</text>
+<text x="645" y="522" font-size="10" fill="#6B695F" text-anchor="middle">TryInstallMemtableFlushResults</text>
+<text x="760" y="502" font-size="11" fill="#6B695F">flush 与压实的差别只有三处：</text>
+<text x="760" y="518" font-size="11" fill="#6B695F">输入是 memtable 而非 SST、输出固定 L0、</text>
+<text x="760" y="534" font-size="11" fill="#6B695F">iterator 看不到更深层，不做跨文件墓碑 GC。</text>
+
+<!-- bottom note -->
+<rect x="24" y="556" width="952" height="94" rx="8" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="44" y="582" font-size="12" fill="#1F1E1A" font-weight="600">并发与限流：max_background_jobs（默认 2）决定 Compaction/Flush 线程总数；最底层压实送 BOTTOM 线程池；</text>
+<text x="44" y="600" font-size="12" fill="#1F1E1A" font-weight="600">compaction_thread_limiter 可按 CF 限「在途任务数」（默认 nullptr 不限）。</text>
+<text x="44" y="622" font-size="11.5" fill="#6B695F">Remote Compaction：配了 compaction_service 时，subcompaction 先序列化发给远端 DB::OpenAndCompact，kUseLocal 才回退本机。</text>
+<text x="44" y="640" font-size="11.5" fill="#6B695F">所有默认值见 include/rocksdb/options.h、concurrent_task_limiter.h（11.13.0）。</text>
+</svg>

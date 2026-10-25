@@ -1,0 +1,220 @@
+{
+  "id": "rocksdb",
+  "title": "存储引擎 · 读 RocksDB 源码",
+  "subtitle": "沿着一条 KV 的写入、压实与读取，把 LSM Tree、WAL、Memtable、SST、Blob 与缓存体系读成一套能复述的写优化存储引擎",
+  "order": 70,
+  "status": "active",
+  "accent": "green",
+  "tags": [
+    "RocksDB",
+    "LSM-Tree",
+    "KV 存储",
+    "存储引擎",
+    "压实",
+    "SST"
+  ],
+  "toolchain": "RocksDB 11.13.0（master 分支）",
+  "verifiedAt": "2026-10-25",
+  "outline": [
+    "架构概述：一条 KV 的进来与出去",
+    "LSM Tree 与 Memtable：先把改动攒在内存里",
+    "写入路径与 WAL：一次 Put 要过几道关",
+    "读取路径与迭代器：从新到旧，一层一层问",
+    "压实策略：Level、Universal、FIFO 三本账",
+    "压实任务与选择器：谁该搬、谁来搬、怎么搬",
+    "SST 表格式：磁盘上的有序账本",
+    "基于块的表内部机制：把 SST 拆成一块一块",
+    "Blob 文件存储：大值单独安家",
+    "块缓存架构：读过的块留在内存里",
+    "二级缓存与分层缓存：内存装不下的去哪",
+    "内存管理：每一块内存都要有人记账"
+  ],
+  "sections": [
+    {
+      "id": "overview",
+      "title": "架构概述",
+      "path": "tutorial/overview",
+      "order": 10,
+      "pages": [
+        {
+          "file": "01-架构概述.md",
+          "slug": "01-architecture",
+          "title": "架构概述：一条 KV 的进来与出去",
+          "tags": [
+            "LSM-Tree",
+            "整体架构",
+            "写优化",
+            "Parquet 对比"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "engine",
+      "title": "核心引擎",
+      "path": "tutorial/engine",
+      "order": 20,
+      "pages": [
+        {
+          "file": "01-LSM-Tree与Memtable.md",
+          "slug": "01-lsm-memtable",
+          "title": "LSM Tree 与 Memtable：先把改动攒在内存里",
+          "tags": [
+            "LSM-Tree",
+            "Memtable",
+            "SkipList",
+            "Arena",
+            "Mutable/Immutable"
+          ]
+        },
+        {
+          "file": "02-写入路径与WAL.md",
+          "slug": "02-write-path-wal",
+          "title": "写入路径与 WAL：一次 Put 要过几道关",
+          "tags": [
+            "WriteBatch",
+            "WAL",
+            "WriteThread",
+            "流水线写",
+            "写停顿"
+          ]
+        },
+        {
+          "file": "03-读取路径与迭代器.md",
+          "slug": "03-read-path-iterator",
+          "title": "读取路径与迭代器：从新到旧，一层一层问",
+          "tags": [
+            "Get",
+            "MergeIterator",
+            "Snapshot",
+            "布隆过滤器",
+            "SequenceNumber"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "compaction",
+      "title": "压实系统",
+      "path": "tutorial/compaction",
+      "order": 30,
+      "pages": [
+        {
+          "file": "01-压实策略.md",
+          "slug": "01-compaction-strategy",
+          "title": "压实策略：Level、Universal、FIFO 三本账",
+          "tags": [
+            "Leveled",
+            "Universal",
+            "FIFO",
+            "写放大",
+            "level_compaction_dynamic_level_bytes"
+          ]
+        },
+        {
+          "file": "02-压实任务与选择器.md",
+          "slug": "02-compaction-job-picker",
+          "title": "压实任务与选择器：谁该搬、谁来搬、怎么搬",
+          "tags": [
+            "CompactionPicker",
+            "CompactionJob",
+            "CompactionIterator",
+            "Subcompaction",
+            "Remote Compaction"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "storage",
+      "title": "存储层",
+      "path": "tutorial/storage",
+      "order": 40,
+      "pages": [
+        {
+          "file": "01-SST表格式.md",
+          "slug": "01-sst-format",
+          "title": "SST 表格式：磁盘上的有序账本",
+          "tags": [
+            "SST",
+            "Footer",
+            "BlockHandle",
+            "TableProperties",
+            "校验和"
+          ]
+        },
+        {
+          "file": "02-基于块的表内部机制.md",
+          "slug": "02-block-based-table",
+          "title": "基于块的表内部机制：把 SST 拆成一块一块",
+          "tags": [
+            "Block",
+            "前缀压缩",
+            "Bloom Filter",
+            "分区索引",
+            "Ribbon Filter"
+          ]
+        },
+        {
+          "file": "03-Blob文件存储.md",
+          "slug": "03-blob-files",
+          "title": "Blob 文件存储：大值单独安家",
+          "tags": [
+            "BlobDB",
+            "BlobIndex",
+            "BlobGC",
+            "Integrated BlobDB",
+            "分层存储"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cache",
+      "title": "缓存与内存",
+      "path": "tutorial/cache",
+      "order": 50,
+      "pages": [
+        {
+          "file": "01-块缓存架构.md",
+          "slug": "01-block-cache",
+          "title": "块缓存架构：读过的块留在内存里",
+          "tags": [
+            "Block Cache",
+            "LRU",
+            "Clock",
+            "分片",
+            "Cache Key"
+          ]
+        },
+        {
+          "file": "02-二级缓存与分层缓存.md",
+          "slug": "02-secondary-tiered-cache",
+          "title": "二级缓存与分层缓存：内存装不下的去哪",
+          "tags": [
+            "SecondaryCache",
+            "CompressedSecondaryCache",
+            "TieredSecondaryCache",
+            "冷热分层"
+          ]
+        },
+        {
+          "file": "03-内存管理.md",
+          "slug": "03-memory-management",
+          "title": "内存管理：每一块内存都要有人记账",
+          "tags": [
+            "Arena",
+            "WriteBufferManager",
+            "Cache Reservation",
+            "MemoryAllocator",
+            "Jemalloc"
+          ]
+        }
+      ]
+    }
+  ],
+  "codeRoots": [],
+  "assets": [
+    "assets"
+  ]
+}

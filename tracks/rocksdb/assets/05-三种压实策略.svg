@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 680" width="1000" height="680" font-family="Microsoft YaHei, sans-serif">
+<defs>
+<marker id="stO" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="stR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="stG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<rect x="0" y="0" width="1000" height="680" fill="#ffffff"/>
+<text x="500" y="34" font-size="20" fill="#1F1E1A" text-anchor="middle" font-weight="600">三种压实策略：Leveled 金字塔、Universal 按时间归并、FIFO 环形队列</text>
+<text x="500" y="56" font-size="12" fill="#6B695F" text-anchor="middle" font-weight="400">同一个「重写不可变文件换性能」，三种形状，三本放大账</text>
+<text x="968" y="28" font-size="11" fill="#6B695F" text-anchor="end">蓝：结构 / 层</text>
+<text x="968" y="44" font-size="11" fill="#6B695F" text-anchor="end">橙：数据流 / 归并</text>
+<text x="968" y="60" font-size="11" fill="#6B695F" text-anchor="end">红：删除 / 丢弃</text>
+
+<!-- ======== Leveled ======== -->
+<rect x="24" y="84" width="314" height="400" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="181" y="110" font-size="15" fill="#1F1E1A" text-anchor="middle" font-weight="600">Leveled：层间归并（金字塔）</text>
+
+<!-- L0 -->
+<rect x="94" y="126" width="52" height="22" rx="4" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/>
+<text x="120" y="141" font-size="10" fill="#1F1E1A" text-anchor="middle">L0 f1</text>
+<rect x="152" y="126" width="52" height="22" rx="4" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/>
+<text x="178" y="141" font-size="10" fill="#1F1E1A" text-anchor="middle">L0 f2</text>
+<rect x="210" y="126" width="52" height="22" rx="4" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/>
+<text x="236" y="141" font-size="10" fill="#1F1E1A" text-anchor="middle">L0 f3</text>
+<rect x="268" y="126" width="52" height="22" rx="4" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/>
+<text x="294" y="141" font-size="10" fill="#1F1E1A" text-anchor="middle">L0 f4</text>
+<text x="308" y="120" font-size="10.5" fill="#E24B4A" text-anchor="end">攒满 4 个（默认触发值）</text>
+
+<!-- L1 -->
+<rect x="104" y="192" width="70" height="24" rx="4" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="139" y="208" font-size="10" fill="#1F1E1A" text-anchor="middle">L1 文件…</text>
+<rect x="180" y="192" width="70" height="24" rx="4" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="215" y="208" font-size="10" fill="#1F1E1A" text-anchor="middle">目标 256MB</text>
+<!-- L2 -->
+<rect x="74" y="258" width="90" height="24" rx="4" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="119" y="274" font-size="10" fill="#1F1E1A" text-anchor="middle">L2 文件…</text>
+<rect x="170" y="258" width="90" height="24" rx="4" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="215" y="274" font-size="10" fill="#1F1E1A" text-anchor="middle">目标 2.5GB</text>
+<!-- L3 -->
+<rect x="44" y="324" width="110" height="24" rx="4" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="99" y="340" font-size="10" fill="#1F1E1A" text-anchor="middle">L3 文件…</text>
+<rect x="160" y="324" width="110" height="24" rx="4" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="215" y="340" font-size="10" fill="#1F1E1A" text-anchor="middle">目标 25GB</text>
+<!-- L4 -->
+<rect x="40" y="390" width="130" height="24" rx="4" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="105" y="406" font-size="10" fill="#1F1E1A" text-anchor="middle">Ln-1（最底层）</text>
+<rect x="176" y="390" width="130" height="24" rx="4" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="241" y="406" font-size="10" fill="#1F1E1A" text-anchor="middle">目标 = 最大层尺寸</text>
+
+<path d="M180 150 C 160 168 148 176 140 188" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#stO)"/>
+<text x="66" y="172" font-size="10.5" fill="#C46A0A">每层超了就整体下推一层，</text>
+<text x="66" y="186" font-size="10.5" fill="#C46A0A">与下一层重叠文件归并重写</text>
+
+<text x="44" y="440" font-size="11" fill="#1F1E1A" font-weight="600">触发：score = 层尺寸/层目标 ≥ 1（L0 按文件数）</text>
+<text x="44" y="458" font-size="11" fill="#1F1E1A" font-weight="600">读放大最低（层内不重叠，一层问一个文件）</text>
+<text x="44" y="476" font-size="11" fill="#E24B4A" font-weight="600">写放大最高：一个文件下推可能重写整层</text>
+<text x="44" y="494" font-size="10.5" fill="#6B695F">dynamic_level_bytes=true（默认）：L1 是最底层，</text>
+<text x="44" y="510" font-size="10.5" fill="#6B695F">数据攒大后基座逐级上移，目标尺寸按 10 倍反推</text>
+
+<!-- ======== Universal ======== -->
+<rect x="346" y="84" width="308" height="400" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="500" y="110" font-size="15" fill="#1F1E1A" text-anchor="middle" font-weight="600">Universal：按新旧叠放（时间归并）</text>
+
+<!-- sorted runs stacked -->
+<rect x="400" y="126" width="200" height="24" rx="4" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/>
+<text x="500" y="142" font-size="10" fill="#1F1E1A" text-anchor="middle">run1（最新 flush，24MB）</text>
+<rect x="400" y="156" width="200" height="24" rx="4" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/>
+<text x="500" y="172" font-size="10" fill="#1F1E1A" text-anchor="middle">run2（20MB）</text>
+<rect x="400" y="186" width="200" height="24" rx="4" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="500" y="202" font-size="10" fill="#1F1E1A" text-anchor="middle">run3（17MB）</text>
+<rect x="400" y="216" width="200" height="24" rx="4" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="500" y="232" font-size="10" fill="#1F1E1A" text-anchor="middle">run4（14MB）</text>
+<rect x="400" y="246" width="200" height="24" rx="4" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="500" y="262" font-size="10" fill="#1F1E1A" text-anchor="middle">run5（最老 run，10MB）</text>
+
+<path d="M392 140 C 368 180 368 240 392 262" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#stO)"/>
+<text x="372" y="205" font-size="10.5" fill="#C46A0A" text-anchor="end">相邻 run 尺寸接近</text>
+<text x="372" y="220" font-size="10.5" fill="#C46A0A" text-anchor="end">（≥size_ratio）就合并</text>
+
+<path d="M410 284 L590 284" fill="none" stroke="#E24B4A" stroke-width="1.4" stroke-dasharray="4 3"/>
+<text x="500" y="302" font-size="10.5" fill="#E24B4A" text-anchor="middle">size-amp 合并：新 run 总和 ≥ 最老 run ×200% 时全量归并</text>
+
+<text x="366" y="330" font-size="11" fill="#1F1E1A" font-weight="600">触发：sorted runs ≥ level0_file_num_compaction_trigger（默认 4）</text>
+<text x="366" y="348" font-size="11" fill="#1F1E1A" font-weight="600">主链依次看：periodic → size-amp → size_ratio 归并</text>
+<text x="366" y="366" font-size="11" fill="#1F1E1A" font-weight="600">写/空间放大友好：一次合并的输入彼此接近</text>
+<text x="366" y="384" font-size="11" fill="#E24B4A" font-weight="600">读放大高：所有 run 都可能重叠，点查逐个问</text>
+<text x="366" y="402" font-size="10.5" fill="#6B695F">allow_trivial_move=true 时，不重叠的 run 直接换层不重写</text>
+<text x="366" y="418" font-size="10.5" fill="#6B695F">max_read_amp 限制 sorted run 数量（默认 -1 退回触发值）</text>
+<text x="366" y="434" font-size="10.5" fill="#6B695F">min_merge_width=2 / max_merge_width=UINT_MAX 圈定一次合并的</text>
+<text x="366" y="450" font-size="10.5" fill="#6B695F">run 个数上下限</text>
+
+<!-- ======== FIFO ======== -->
+<rect x="662" y="84" width="314" height="400" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="819" y="110" font-size="15" fill="#1F1E1A" text-anchor="middle" font-weight="600">FIFO：全在 L0 的环形队列</text>
+
+<!-- ring -->
+<rect x="712" y="130" width="110" height="22" rx="4" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/>
+<text x="767" y="145" font-size="10" fill="#1F1E1A" text-anchor="middle">新 flush 文件</text>
+<rect x="712" y="158" width="110" height="22" rx="4" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/>
+<text x="767" y="173" font-size="10" fill="#1F1E1A" text-anchor="middle">稍旧</text>
+<rect x="712" y="186" width="110" height="22" rx="4" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="767" y="201" font-size="10" fill="#1F1E1A" text-anchor="middle">更旧</text>
+<rect x="712" y="214" width="110" height="22" rx="4" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="767" y="229" font-size="10" fill="#1F1E1A" text-anchor="middle">最旧</text>
+<path d="M700 144 C 676 180 676 210 700 222" fill="none" stroke="#E24B4A" stroke-width="1.6" marker-end="url(#stR)"/>
+<text x="688" y="188" font-size="10.5" fill="#E24B4A" text-anchor="end">超容量/过期</text>
+<text x="688" y="203" font-size="10.5" fill="#E24B4A" text-anchor="end">最旧整文件删</text>
+<path d="M830 141 L 856 141" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#stO)"/>
+<text x="880" y="145" font-size="10.5" fill="#C46A0A">新文件从队头入</text>
+
+<text x="682" y="262" font-size="11" fill="#1F1E1A" font-weight="600">触发：SST 总量 ≥ max_table_files_size（默认 1GB）</text>
+<text x="682" y="280" font-size="11" fill="#1F1E1A" font-weight="600">或 ttl>0：所有键都过期（est newest key time &lt; now-ttl）</text>
+<text x="682" y="298" font-size="11" fill="#1F1E1A" font-weight="600">的文件整文件删——不重写任何数据</text>
+<text x="682" y="316" font-size="11" fill="#639922" font-weight="600">写放大≈0、空间由容量封顶</text>
+<text x="682" y="334" font-size="11" fill="#E24B4A" font-weight="600">不淘汰旧版本、不建 LSM：只适合 TTL/时序流</text>
+<text x="682" y="352" font-size="10.5" fill="#6B695F">allow_compaction=true 才会做 L0 内小文件归并，</text>
+<text x="682" y="368" font-size="10.5" fill="#6B695F">且单文件均摊超过 write_buffer_size 就不并</text>
+<text x="682" y="384" font-size="10.5" fill="#6B695F">score = 总量/上限；不足 1 时再看文件数和过期文件</text>
+<text x="682" y="400" font-size="10.5" fill="#6B695F">（version_set.cc ComputeCompactionScore 的 FIFO 分支）</text>
+
+<!-- bottom summary -->
+<rect x="24" y="500" width="952" height="70" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="44" y="526" font-size="12" fill="#1F1E1A" font-weight="600">选型一句话：点查密集、要低读放大 → Leveled（默认）；写入重、空间敏感 → Universal；TTL/丢弃型流水 → FIFO。</text>
+<text x="44" y="546" font-size="11.5" fill="#6B695F">三本账的换算关系：Leveled 读省写贵，Universal 写省读贵，FIFO 干脆不归并——省下所有放大，代价是不清理旧版本。</text>
+<text x="44" y="563" font-size="11.5" fill="#6B695F">所有默认值均取自 include/rocksdb/advanced_options.h、universal_compaction.h、options.h（11.13.0）。</text>
+</svg>

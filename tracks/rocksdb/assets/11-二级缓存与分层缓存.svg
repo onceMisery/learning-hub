@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 660" width="1000" height="660" font-family="Microsoft YaHei, sans-serif">
+<defs>
+<marker id="c11a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="c11g" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<rect x="0" y="0" width="1000" height="660" fill="#ffffff"/>
+<text x="500" y="34" font-size="20" fill="#1F1E1A" text-anchor="middle" font-weight="600">二级缓存与分层缓存：一个块的逐级回落与升舱</text>
+<text x="500" y="56" font-size="12" fill="#6B695F" text-anchor="middle" font-weight="400">主缓存驱逐不丢块：先进 DRAM 压缩区，再到 NVMe 层；miss 时反向逐级 Promote 回主缓存</text>
+<text x="960" y="28" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">橙色：降级 / 数据流</text>
+<text x="960" y="44" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色：升舱 / 预热</text>
+<text x="960" y="60" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">蓝色：结构 / 组件</text>
+
+<rect x="30" y="90" width="300" height="350" rx="10" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3" stroke-dasharray="6 4"/>
+<text x="46" y="114" font-size="13" fill="#C46A0A" text-anchor="start" font-weight="600">举例：块 X 的完整往返</text>
+<text x="46" y="140" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="600">① 驱逐#1：插占位</text>
+<text x="46" y="158" font-size="10.5" fill="#1F1E1A" text-anchor="start">主缓存 LRU 驱逐 X → EvictionHandler</text>
+<text x="46" y="174" font-size="10.5" fill="#1F1E1A" text-anchor="start">Insert 进压缩层：没有 X 的占位条目 →</text>
+<text x="46" y="190" font-size="10.5" fill="#1F1E1A" text-anchor="start">只插 0 字节占位，X 本体暂不存</text>
+<text x="46" y="216" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="600">② 驱逐#2：真收</text>
+<text x="46" y="234" font-size="10.5" fill="#1F1E1A" text-anchor="start">期间 X 又被读过、回过主缓存，再次被</text>
+<text x="46" y="250" font-size="10.5" fill="#1F1E1A" text-anchor="start">挤出时占位已在 → 这次压缩后真正入库</text>
+<text x="46" y="276" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="600">③ 三读 X：升舱</text>
+<text x="46" y="294" font-size="10.5" fill="#1F1E1A" text-anchor="start">主缓存 miss、二级命中 → 解压、</text>
+<text x="46" y="310" font-size="10.5" fill="#1F1E1A" text-anchor="start">create_cb 重建块对象 → Promote</text>
+<text x="46" y="326" font-size="10.5" fill="#1F1E1A" text-anchor="start">插回主缓存（standalone + 占位）</text>
+<text x="46" y="352" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="600">④ 全 miss：读盘</text>
+<text x="46" y="370" font-size="10.5" fill="#1F1E1A" text-anchor="start">从 SST 读出压缩块 → 解压进主缓存，</text>
+<text x="46" y="386" font-size="10.5" fill="#1F1E1A" text-anchor="start">顺路 InsertSaved 预热 NVMe 层</text>
+<text x="46" y="414" font-size="10.5" fill="#6B695F" text-anchor="start">ThreeQueue 三层模式下主缓存驱逐直接丢弃、</text>
+<text x="46" y="430" font-size="10.5" fill="#6B695F" text-anchor="start">压缩层满也直接淘汰——NVMe 只靠读盘预热</text>
+
+<rect x="360" y="90" width="380" height="78" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="376" y="114" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">主缓存：LRUCache / HyperClockCache</text>
+<text x="376" y="134" font-size="10.5" fill="#1F1E1A" text-anchor="start">存解压后的块对象，charge 显式记账</text>
+<text x="376" y="150" font-size="10.5" fill="#1F1E1A" text-anchor="start">LRU/Clock 驱逐 → 降级而不是丢弃</text>
+
+<rect x="360" y="228" width="380" height="96" rx="10" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="376" y="252" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">② CompressedSecondaryCache（仍在 DRAM）</text>
+<text x="376" y="272" font-size="10.5" fill="#1F1E1A" text-anchor="start">内部就是一个 LRUCache，存压缩后的字节：</text>
+<text x="376" y="288" font-size="10.5" fill="#1F1E1A" text-anchor="start">2 字节 tag（层级+压缩类型）+ 数据；按 jemalloc</text>
+<text x="376" y="304" font-size="10.5" fill="#1F1E1A" text-anchor="start">bin 切 chunk 对齐；filter 块默认不压</text>
+
+<rect x="360" y="384" width="380" height="78" rx="10" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="376" y="408" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">③ NVMe 层：nvm_sec_cache</text>
+<text x="376" y="428" font-size="10.5" fill="#1F1E1A" text-anchor="start">TieredSecondaryCache 把压缩层叠在 NVMe 上</text>
+<text x="376" y="444" font-size="10.5" fill="#1F1E1A" text-anchor="start">查序：压缩层 → NVMe 层；命中顺手向上带</text>
+
+<rect x="360" y="522" width="380" height="64" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="376" y="546" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">④ 盘上的 SST 文件</text>
+<text x="376" y="566" font-size="10.5" fill="#1F1E1A" text-anchor="start">最终兜底：读盘解压，读到的压缩块可顺路预热</text>
+
+<path d="M430 172 L430 224" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#c11a)"/>
+<text x="422" y="196" font-size="10.5" fill="#C46A0A" text-anchor="end" font-weight="600">① 驱逐降级 Insert（两层）</text>
+<path d="M670 224 L670 172" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#c11g)"/>
+<text x="678" y="196" font-size="10.5" fill="#639922" text-anchor="start" font-weight="600">③ Promote：解压重建插回</text>
+<path d="M430 328 L430 380" fill="none" stroke="#D3D1C7" stroke-width="1.4" stroke-dasharray="4 4"/>
+<text x="422" y="352" font-size="10.5" fill="#6B695F" text-anchor="end" font-weight="400">压缩层满：直接淘汰，不沉 NVMe</text>
+<path d="M670 380 L670 328" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#c11g)"/>
+<text x="678" y="352" font-size="10.5" fill="#639922" text-anchor="start" font-weight="600">NVMe 命中升回压缩层</text>
+<path d="M430 466 L430 518" fill="none" stroke="#D3D1C7" stroke-width="1.4" stroke-dasharray="4 4"/>
+<text x="422" y="490" font-size="10.5" fill="#6B695F" text-anchor="end" font-weight="400">终态淘汰（不回写）</text>
+<path d="M670 518 L670 466" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#c11g)"/>
+<text x="678" y="490" font-size="10.5" fill="#639922" text-anchor="start" font-weight="600">读盘顺路预热（InsertSaved）</text>
+
+<rect x="770" y="90" width="200" height="160" rx="10" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="786" y="114" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">准入策略（可指定）</text>
+<text x="786" y="136" font-size="10.5" fill="#1F1E1A" text-anchor="start">Placeholder：第二次才收</text>
+<text x="786" y="154" font-size="10.5" fill="#1F1E1A" text-anchor="start">AllowCacheHits：命中也收</text>
+<text x="786" y="172" font-size="10.5" fill="#1F1E1A" text-anchor="start">ThreeQueue：三层各一队</text>
+<text x="786" y="190" font-size="10.5" fill="#1F1E1A" text-anchor="start">AllowAll：全收（CPU 贵）</text>
+<text x="786" y="212" font-size="10.5" fill="#6B695F" text-anchor="start">Auto：有 NVMe 层选</text>
+<text x="786" y="228" font-size="10.5" fill="#6B695F" text-anchor="start">ThreeQueue，否则 Placeholder</text>
+
+<rect x="770" y="280" width="200" height="130" rx="10" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="786" y="304" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">运行期可调</text>
+<text x="786" y="326" font-size="10.5" fill="#1F1E1A" text-anchor="start">UpdateTieredCache 改三项：</text>
+<text x="786" y="344" font-size="10.5" fill="#1F1E1A" text-anchor="start">total_capacity（总预算）</text>
+<text x="786" y="362" font-size="10.5" fill="#1F1E1A" text-anchor="start">compressed_secondary_ratio</text>
+<text x="786" y="380" font-size="10.5" fill="#1F1E1A" text-anchor="start">adm_policy</text>
+<text x="786" y="398" font-size="10.5" fill="#6B695F" text-anchor="start">压缩区占比归零后不可再开</text>
+
+<rect x="770" y="440" width="200" height="146" rx="10" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="786" y="464" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">旧机制现状</text>
+<text x="786" y="486" font-size="10.5" fill="#1F1E1A" text-anchor="start">utilities/persistent_cache 仍在</text>
+<text x="786" y="502" font-size="10.5" fill="#1F1E1A" text-anchor="start">源码中、仍可接线，但官方投入</text>
+<text x="786" y="518" font-size="10.5" fill="#1F1E1A" text-anchor="start">已全部转向 SecondaryCache 体系</text>
+<text x="786" y="536" font-size="10.5" fill="#6B695F" text-anchor="start">（分层、压缩、异步、准入、</text>
+<text x="786" y="552" font-size="10.5" fill="#6B695F" text-anchor="start">动态调参都在新体系里）</text>
+<text x="786" y="572" font-size="10.5" fill="#6B695F" text-anchor="start">新方案不选旧持久缓存</text>
+
+<rect x="30" y="606" width="940" height="36" rx="8" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="46" y="629" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="600">本质：用 CPU 和便宜介质换有效容量——热块常驻 DRAM、温块压着存、冷块落 NVMe；每级 miss 都有上一级兜着，读放大换来的是命中率。</text>
+</svg>
