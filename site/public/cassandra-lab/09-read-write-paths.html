@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>读写路径 · Cassandra 互动原理实验室 第 10 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:960px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:720px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:600;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:12px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:600;fill:#1F1E1A}
+.tag{font-size:10.5px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:66px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .outbranch{display:inline-flex;flex-direction:column;align-items:flex-start;gap:6px}
+.flow .outline{display:inline-flex;align-items:center;gap:8px}
+.flow .flownote{font-size:12px;color:#6B695F;font-weight:600;margin-right:4px}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 10px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+#eng [opacity]{transition:opacity .28s ease}
+#eng2 [opacity]{transition:opacity .28s ease}
+@media (prefers-reduced-motion: reduce){#eng [opacity],#eng2 [opacity]{transition:none}}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:8px 4px 0;font-size:12px;color:#6B695F}
+.legend i{display:inline-block;width:18px;height:0;border-top:2px solid #C46A0A;vertical-align:middle;margin-right:5px}
+.legend i.g{border-color:#639922}
+.legend i.r{border-color:#E24B4A}
+.legend i.b{border-color:#2F6FA8}
+.legend i.dash{border-top-style:dashed}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：读写路径</a>
+  <span class="idx">第 10 / 15 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · READ &amp; WRITE PATHS</div>
+<h1>两条流水线的总装车间</h1>
+<p>第 8 章交货的 Mutation 与 ReadCommand，在 StorageProxy 装上最后的配送链。切换「写单 / 读单」各走一遍：写单看 UPDATE id=47（ts=1005）怎么发 3 等 2、node4 挂掉后 hint 怎么垫付；读单看 node4 DOWN 后 1 data + 1 digest 怎么刚好凑满 QUORUM=2、摘要不一致怎么修完才返回。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span>
+<span class="mnode">② 静态分解</span>
+<span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span>
+<span class="mnode">⑤ 环境场景</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 560" role="img" xmlns="http://www.w3.org/2000/svg"><title>读写两条流水线</title><defs><marker id="rA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="rB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="rG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker></defs><text class="th" x="500" y="24" text-anchor="middle" id="engTitle">写流水线：发 3 等 2，死副本欠条垫付</text><text class="ts" x="500" y="44" text-anchor="middle">协调者 node3（临时客串）｜名单 {node2, node4, node5}｜RF=3、CL=QUORUM、blockFor=2</text><text x="972" y="24" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">橙色：写路径 / ack</text><text x="972" y="40" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">蓝色：读路径 / 对账</text><text x="972" y="56" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">红色：DOWN / 异常</text><g id="stStrip"><rect id="st0" x="28" y="64" width="172" height="52" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/><text id="stL0" x="38" y="84" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">W1 接单分装</text><text id="stS0" x="38" y="102" font-size="9.5" fill="#6B695F" text-anchor="start">mutate:978</text><rect id="st1" x="212" y="64" width="172" height="52" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/><text id="stL1" x="222" y="84" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">W2 分发欠条</text><text id="stS1" x="222" y="102" font-size="9.5" fill="#6B695F" text-anchor="start">sendToHintedReplicas:1827</text><rect id="st2" x="396" y="64" width="172" height="52" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/><text id="stL2" x="406" y="84" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">W3 本地落地</text><text id="stS2" x="406" y="102" font-size="9.5" fill="#6B695F" text-anchor="start">先 CommitLog 后 Memtable</text><rect id="st3" x="580" y="64" width="172" height="52" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/><text id="stL3" x="590" y="84" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">W4 等确认</text><text id="stS3" x="590" y="102" font-size="9.5" fill="#6B695F" text-anchor="start">blockFor=2 倒数</text><rect id="st4" x="764" y="64" width="208" height="52" rx="8" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.2"/><text id="stL4" x="774" y="84" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">W5 善后</text><text id="stS4" x="774" y="102" font-size="9.5" fill="#6B695F" text-anchor="start">ANY 兜底 hint / 异常记账</text></g><g id="coordBox"><rect x="28" y="134" width="150" height="150" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="103" y="158" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">node3 协调者</text><text x="103" y="178" font-size="10" fill="#6B695F" text-anchor="middle">临时角色，非单例</text><text id="coordIn" x="103" y="200" font-size="10.5" fill="#C46A0A" text-anchor="middle" font-weight="600">写：mutate :978</text><text id="coordMid" x="103" y="222" font-size="10" fill="#6B695F" text-anchor="middle">名单=定位链（第 6 章）</text><text id="coordMid2" x="103" y="240" font-size="10" fill="#6B695F" text-anchor="middle">处理器从 2 倒数（第 7 章）</text><text id="coordOut" x="103" y="262" font-size="10.5" fill="#639922" text-anchor="middle" font-weight="600">等待演示…</text></g><g id="laneN2"><rect x="234" y="134" width="200" height="150" rx="10" fill="#ffffff" stroke="#639922" stroke-width="1.3"/><text x="334" y="156" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">node2（活）</text><text x="334" y="174" font-size="9.5" fill="#6B695F" text-anchor="middle">token +3.7×10^18｜snitch 第一</text><circle id="ackN2" cx="254" cy="148" r="10" fill="#639922" opacity="0"/><text x="254" y="152" font-size="9.5" fill="#ffffff" text-anchor="middle" font-weight="600">✓</text><circle id="dtaN2" cx="254" cy="170" r="10" fill="#2F6FA8" opacity="0"/><text id="dtaN2t" x="254" y="174" font-size="8" fill="#ffffff" text-anchor="middle" font-weight="600">D</text><text id="n2note" x="334" y="200" font-size="10.5" fill="#3B3A34" text-anchor="middle" font-weight="400">写：CommitLog→Memtable</text><text id="n2note2" x="334" y="220" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">ts=1005 落账</text><text id="n2note3" x="334" y="244" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">读：data 请求给最快的它</text><text id="n2note4" x="334" y="264" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">本地站见底部</text></g><g id="laneN4"><rect id="n4rect" x="474" y="134" width="200" height="150" rx="10" fill="#ffffff" stroke="#639922" stroke-width="1.3"/><rect id="downBadge" x="524" y="142" width="100" height="20" rx="5" fill="#E24B4A" opacity="0.9"/><text id="downTxt" x="574" y="156" font-size="10.5" fill="#ffffff" text-anchor="middle" font-weight="600">14:00 DOWN</text><text x="574" y="182" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">node4</text><text x="574" y="200" font-size="9.5" fill="#6B695F" text-anchor="middle">phi=8.0 @:18~20（第 5 章）</text><text id="n4note" x="574" y="224" font-size="10.5" fill="#E24B4A" text-anchor="middle" font-weight="600">写：expired 不等（:1904）</text><text id="n4note2" x="574" y="244" font-size="10.5" fill="#C46A0A" text-anchor="middle" font-weight="600">→ shouldHint ✓（≤3h）</text><text id="n4note3" x="574" y="264" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">读：候选池出局</text></g><g id="laneN5"><rect x="714" y="134" width="258" height="150" rx="10" fill="#ffffff" stroke="#639922" stroke-width="1.3"/><text x="843" y="156" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">node5（活）</text><text x="843" y="174" font-size="9.5" fill="#6B695F" text-anchor="middle">token -22.1×10^18｜跨零点入选</text><circle id="ackN5" cx="762" cy="148" r="10" fill="#639922" opacity="0"/><text x="762" y="152" font-size="9.5" fill="#ffffff" text-anchor="middle" font-weight="600">✓</text><circle id="dgN5" cx="762" cy="170" r="10" fill="#2F6FA8" opacity="0"/><text x="762" y="174" font-size="8" fill="#ffffff" text-anchor="middle" font-weight="600">M5</text><text id="n5note" x="843" y="200" font-size="10.5" fill="#3B3A34" text-anchor="middle" font-weight="400">写：第 3 份白赚</text><text id="n5note2" x="843" y="220" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">ack 迟到不等它</text><text id="n5note3" x="843" y="244" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">读：digest（16B MD5）</text><text id="n5note4" x="843" y="264" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">node4 挂后顶第二票</text></g><g id="hintCard"><rect x="28" y="300" width="300" height="96" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3" opacity="0.14"/><text x="42" y="322" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">hint 欠条（第 7 章，本章垫付）</text><text x="42" y="342" font-size="10.5" fill="#3B3A34" text-anchor="start">{Mutation 原件, 时刻, gcgs}，10s 一轮派发</text><text x="42" y="360" font-size="10.5" fill="#3B3A34" text-anchor="start">窗口 max_hint_window=3h；不计 ack（ANY 除外）</text><text x="42" y="382" font-size="10.5" fill="#854F0B" text-anchor="start" font-weight="600">重放原件同 ts=1005——重放无害</text></g><g id="localStrip"><rect x="340" y="300" width="632" height="96" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/><text id="localTtl" x="354" y="322" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">本地站（副本收件后，第 2~4 章那套）</text><rect id="lc1" x="354" y="334" width="180" height="48" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/><text id="lc1t" x="444" y="354" font-size="11" fill="#1F1E1A" text-anchor="middle" font-weight="600">CommitLog 追加</text><text id="lc1s" x="444" y="372" font-size="9.5" fill="#6B695F" text-anchor="middle">Keyspace.apply:549</text><path d="M534 358 L548 358" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#rG)"/><rect id="lc2" x="552" y="334" width="180" height="48" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/><text id="lc2t" x="642" y="354" font-size="11" fill="#1F1E1A" text-anchor="middle" font-weight="600">Memtable 插入</text><text id="lc2s" x="642" y="372" font-size="9.5" fill="#6B695F" text-anchor="middle">:579｜name='阿福2'@1005</text><path d="M732 358 L746 358" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#rB)"/><rect id="lc3" x="750" y="334" width="208" height="48" rx="8" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.2"/><text id="lc3t" x="854" y="354" font-size="11" fill="#1F1E1A" text-anchor="middle" font-weight="600">（读单时）SSTable 逐本</text><text id="lc3s" x="854" y="372" font-size="9.5" fill="#6B695F" text-anchor="middle">queryMemtableAndDisk:727 按 ts 归并</text></g><g id="wtCard"><rect x="28" y="406" width="300" height="76" rx="10" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3" opacity="0.14"/><text x="42" y="428" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">写超时分支：WriteTimeout</text><text x="42" y="448" font-size="10.5" fill="#3B3A34" text-anchor="start">10s（yaml:1396；代码默认 2s :159-160）</text><text x="42" y="466" font-size="10.5" fill="#3B3A34" text-anchor="start">没凑满 2 个 ack；可重试——同 ts 重放无害</text></g><g id="unavCard"><rect x="340" y="406" width="300" height="76" rx="10" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3" opacity="0.14"/><text x="354" y="428" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">事前分支：Unavailable</text><text x="354" y="448" font-size="10.5" fill="#3B3A34" text-anchor="start">活副本 &lt; blockFor（ReplicaPlans:143）</text><text x="354" y="466" font-size="10.5" fill="#3B3A34" text-anchor="start">CL=ALL 在 node4 DOWN 后的标准结局</text></g><g id="fixCard"><rect x="652" y="406" width="320" height="76" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3" opacity="0.14"/><text x="666" y="428" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">读修复分支：摘要不一致</text><text x="666" y="448" font-size="10.5" fill="#3B3A34" text-anchor="start">DataResolver:63 按 ts 拼版（1005 胜 1001）</text><text x="666" y="466" font-size="10.5" fill="#639922" text-anchor="start" font-weight="600">BlockingReadRepair:75 ——修完才返回（默认）</text></g><text x="28" y="508" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">读法：站条随相位点亮；✓=ack、D=data、M5=digest；node4 变红即 hint/出局分支接管；右侧分支卡亮起时点它可高亮。</text><text x="28" y="526" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">写读不对称：写发全部 3 个副本（writeNormal :647-681）、只等 2；读只联系前 blockFor=2 个活候选（forRead :891）。</text><text x="28" y="544" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">口径：apache/cassandra master（7.0-SNAPSHOT）；ts=1005、node4 14:00:00 卡死、hint 窗口 3h 均沿用全轨道。</text><circle id="tok" cx="-20" cy="-20" r="8" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/></svg>
+<svg id="eng2" viewBox="0 0 1000 180" role="img" xmlns="http://www.w3.org/2000/svg"><text x="40" y="26" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">相位总线：写单 / 读单各自一条 0°→720°</text><text x="960" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">切换单据时相位归零</text><rect id="seg0" x="40" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg0" x="89.1" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">接单</text><text id="sd0" x="89.1" y="96" font-size="10" fill="#6B695F" text-anchor="middle">0°</text><rect id="seg1" x="142.2" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg1" x="191.3" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd1" x="191.3" y="96" font-size="10" fill="#6B695F" text-anchor="middle">90°</text><rect id="seg2" x="244.4" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg2" x="293.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd2" x="293.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle">180°</text><rect id="seg3" x="346.7" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg3" x="395.8" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd3" x="395.8" y="96" font-size="10" fill="#6B695F" text-anchor="middle">270°</text><rect id="seg4" x="448.9" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg4" x="498" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd4" x="498" y="96" font-size="10" fill="#6B695F" text-anchor="middle">360°</text><rect id="seg5" x="551.1" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg5" x="600.2" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd5" x="600.2" y="96" font-size="10" fill="#6B695F" text-anchor="middle">450°</text><rect id="seg6" x="653.3" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg6" x="702.4" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd6" x="702.4" y="96" font-size="10" fill="#6B695F" text-anchor="middle">540°</text><rect id="seg7" x="755.6" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg7" x="804.7" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd7" x="804.7" y="96" font-size="10" fill="#6B695F" text-anchor="middle">630°</text><rect id="seg8" x="857.8" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg8" x="906.9" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">复盘</text><text id="sd8" x="906.9" y="96" font-size="10" fill="#6B695F" text-anchor="middle">680°</text><line id="subNow" x1="40" y1="44" x2="40" y2="126" stroke="#C46A0A" stroke-width="2"/><text x="500" y="152" font-size="11" fill="#6B695F" text-anchor="middle" font-weight="400">每格是一个可定格的关键时刻；分步时所有视图冻结到同一相位。</text></svg>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<button class="btn warn" id="scenBtn">切到读单</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 轮 / 6.4 秒</span>
+</div>
+
+<div class="readout">
+<span class="ro">相位 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">单据 <b id="roScen">写单</b></span>
+<span class="ro">blockFor <b id="roBf">2</b></span>
+<span class="ro">ack <b id="roAck">--</b></span>
+<span class="ro">结果 <b id="roRes">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格；橙色按钮切换写单/读单。</span>
+<span class="snav">
+<button class="btn" onclick="prevStep()">‹ 上一步</button>
+<button class="btn warn" onclick="nextStep()">下一步 ›</button>
+</span>
+</div>
+<div class="legend"><span><i></i>写路径 / ack</span><span><i class="b"></i>读路径 / data·digest</span><span><i class="g"></i>落地 / 修复</span><span><i class="r"></i>DOWN / 异常分支</span></div>
+<p class="figcap">写单 0°=接单、720°=复盘；读单同相位总线另走一轮——切换单据相位归零，两条流水线互不串台。<br>口径：apache/cassandra master（7.0-SNAPSHOT）；demo keyspace、RF=3、QUORUM=2；node4 14:00:00 卡死、phi=8.0、hint 窗口 3h 与全轨道一致。</p>
+</div>
+</div>
+
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：先把它当黑盒</h2></div>
+<p class="sec-sub">node4 卡死 40 分钟，面板上三件事——写照常成功、点查偶尔慢半拍、CL=ALL 的作业报错。</p>
+<div class="quote"><i>先把系统当黑盒：只看输入、输出和边界，不急着解释内部。</i></div>
+
+<p>对客户端来说，两条流水线的表观行为就三条：<b>写返回成功 = 有 blockFor=2 个副本各自收下</b>（第 3 个迟到不挡路）；<b>读返回 = data+digest 对完账</b>（摘要一致才算数）；<b>异常分事前事中</b>——ALL 缺一份当场被拒，QUORUM 等不齐才超时。</p>
+<div class="flow">
+<span class="node">UPDATE / SELECT id=47（输入）</span><span class="arr">→</span>
+<span class="node box">StorageProxy 两条流水线（黑盒）</span>
+<span class="outbranch">
+<span class="outline"><span class="arr">→</span><span class="node">写：发 3 等 2，死副本 hint 垫付</span></span>
+<span class="outline"><span class="arr">→</span><span class="node">读：1 data + 1 digest，对账返回</span></span>
+<span class="outline"><span class="arr">→</span><span class="node">ALL：事前 Unavailable；超时：事中可重试</span></span>
+</span>
+</div>
+<p>黑盒从不承诺「三份都写完才返回」，也从不承诺「读到的是绝对最新」——补齐靠 hint 与读修复，兜底靠第 13 章的 repair。反直觉的点先记一个：<b>写多读少</b>——写发给全部 3 个副本，读只联系 2 个。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：部件各管什么</h2></div>
+<p class="sec-sub">先把两条流水线的骨架钉住，再让时间进来。点下面的部件卡，动画里对应部分会亮起。</p>
+<div class="quote"><i>结构分解要 MECE：同一层只放同一粒度的部件。</i></div>
+<div class="figure"><svg viewBox="0 0 920 250" role="img" xmlns="http://www.w3.org/2000/svg"><text x="460" y="22" font-size="15" fill="#1F1E1A" text-anchor="middle" font-weight="600">总装车间五件套</text><text x="460" y="42" font-size="11.5" fill="#6B695F" text-anchor="middle" font-weight="400">接单的、分发的、落地的、数数的、对账的</text><rect x="20" y="64" width="168" height="130" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="34" y="88" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">① 协调者 StorageProxy</text><text x="34" y="110" font-size="10.5" fill="#6B695F" text-anchor="start">mutate:978 / read:2176</text><text x="34" y="128" font-size="10.5" fill="#3B3A34" text-anchor="start">每节点一份，临时客串</text><text x="34" y="146" font-size="10.5" fill="#3B3A34" text-anchor="start">对照 DBImpl 常驻单例</text><text x="34" y="168" font-size="10.5" fill="#6B695F" text-anchor="start">performWrite:1732</text><rect x="208" y="64" width="168" height="130" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="222" y="88" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">② 分发站</text><text x="222" y="110" font-size="10.5" fill="#6B695F" text-anchor="start">sendToHintedReplicas:1827</text><text x="222" y="128" font-size="10.5" fill="#3B3A34" text-anchor="start">写：遍历全部 contacts</text><text x="222" y="146" font-size="10.5" fill="#3B3A34" text-anchor="start">活直发 / 死 expired+hint</text><text x="222" y="168" font-size="10.5" fill="#6B695F" text-anchor="start">预序列化 :1853</text><rect x="396" y="64" width="168" height="130" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="410" y="88" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">③ 本地站</text><text x="410" y="110" font-size="10.5" fill="#6B695F" text-anchor="start">Keyspace.apply:437</text><text x="410" y="128" font-size="10.5" fill="#3B3A34" text-anchor="start">写：CommitLog(:549)→</text><text x="410" y="146" font-size="10.5" fill="#3B3A34" text-anchor="start">　 Memtable(:579)</text><text x="410" y="168" font-size="10.5" fill="#3B3A34" text-anchor="start">读：Memtable→SSTable(:727)</text><rect x="584" y="64" width="168" height="130" rx="10" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/><text x="598" y="88" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">④ 计数器</text><text x="598" y="110" font-size="10.5" fill="#6B695F" text-anchor="start">handler.get():1006</text><text x="598" y="128" font-size="10.5" fill="#3B3A34" text-anchor="start">写：ack 倒数到 0 放行</text><text x="598" y="146" font-size="10.5" fill="#3B3A34" text-anchor="start">读：ReadCallback 凑 R 份</text><text x="598" y="168" font-size="10.5" fill="#6B695F" text-anchor="start">超时→Timeout 异常</text><rect x="772" y="64" width="128" height="130" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="836" y="88" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">⑤ 对账修</text><text x="836" y="110" font-size="10.5" fill="#6B695F" text-anchor="middle">DigestResolver:105</text><text x="836" y="128" font-size="10.5" fill="#3B3A34" text-anchor="middle">MD5 摘要互比</text><text x="836" y="146" font-size="10.5" fill="#3B3A34" text-anchor="middle">DataResolver:63 拼 ts</text><text x="836" y="168" font-size="10.5" fill="#639922" text-anchor="middle" font-weight="600">Blocking 修完才回</text><path d="M188 128 L204 128" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#rA)"/><path d="M376 128 L392 128" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#rA)"/><path d="M564 128 L580 128" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#rA)"/><path d="M752 128 L768 128" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#rA)"/><rect x="20" y="204" width="880" height="40" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.2"/><text x="460" y="222" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">读侧名单：forRead:891 ——候选=活副本按 snitch 排序，contacts=前 blockFor 个（写则联系全部）</text><text x="460" y="238" font-size="10.5" fill="#6B695F" text-anchor="middle">执行器三档（getReadExecutor:196）：Never / Speculating（默认 99p）/ Always——只读侧有，写另有 additional_write_policy。</text></svg></div>
+<div class="partgroup"><div class="gname">调度与分发</div><div class="parts"><button class="part" data-part="coord"><b>1. 协调者 node3</b><span>StorageProxy 临时客串：接单、算名单、配处理器、等结果。</span></button><button class="part" data-part="lanes"><b>2. 三条副本泳道</b><span>node2/node4/node5；✓=ack，D=data，M5=digest；DOWN 后走分支。</span></button><button class="part" data-part="stations"><b>3. 五站进度条</b><span>写 W1~W5 / 读 R1~R5，随相位点亮——正文两张五站表的动画版。</span></button></div></div><div class="partgroup"><div class="gname">落地与分支</div><div class="parts"><button class="part" data-part="local"><b>4. 本地站</b><span>写：先 CommitLog 后 Memtable；读：Memtable→SSTable 按 ts 归并。</span></button><button class="part" data-part="hint"><b>5. hint 欠条卡</b><span>死副本垫付：{Mutation 原件,时刻,gcgs}，10s 派发，不计 ack。</span></button><button class="part" data-part="branches"><b>6. 三张分支卡</b><span>WriteTimeout（可重试）/ Unavailable（事前拒）/ 读修复（修完才回）。</span></button></div></div>
+<p class="hint">静态图与动画共用同一套编号和口径；把动画暂停，它就是一张可打印的结构图。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：一步一停看顺序</h2></div>
+<p class="sec-sub">两单各八个关键时刻——重点看「谁在等谁、等几个、等不到走哪条岔路」。</p>
+<div class="quote"><i>动态分析看三件事：顺序、状态、触发条件。</i></div>
+
+<table class="grid">
+<tr><th>相位</th><th>写单（场景 A→B）</th><th>读单（node4 DOWN 后）</th></tr>
+<tr><td>0° 接单</td><td>mutate:978 接 Mutation，performWrite 算名单配处理器</td><td>read:2176 → fetchRows:2652，一条命令配一个执行器</td></tr>
+<tr><td>90°</td><td>分发：预序列化后发全部 3 份（等 2 ≠ 只发 2）</td><td>getReadExecutor:196：默认 99p → Speculating</td></tr>
+<tr><td>180°</td><td>node2 本地落地：CommitLog→Memtable（ts=1005）</td><td>算名单：活候选 {node2,node5}=2=blockFor 刚好够</td></tr>
+<tr><td class="hot">270°</td><td>node2+node4 ack → 2/2 归零返回成功</td><td>分发：data→node2、digest→node5（1+1）</td></tr>
+<tr><td>360°</td><td class="act">node4 DOWN 分支：expired + shouldHint → 欠条垫付</td><td>对账：摘要一致 → data 那份直接返回</td></tr>
+<tr><td>450°</td><td class="act">node5 ack 迟到——白赚的第 3 份，没人等它</td><td class="act">不一致分支：补 data、按 ts 拼版、BLOCKING 修完才回</td></tr>
+<tr><td class="hot">540°</td><td>超时分支：10s 没凑满 → WriteTimeout，可重试（同 ts 无害）</td><td class="hot">卡慢分支：node2 卡 → 无候选可推测 → ReadTimeout 5s</td></tr>
+<tr><td>630°</td><td>复盘：写 = 发、落、等、垫</td><td>复盘：读 = 选、凑、对、修</td></tr>
+</table>
+<p>盯两张高亮行：写侧的超时可以重试，因为重放的是同一件 Mutation 原件（同 ts=1005，LWW 归并无害）；读侧的卡慢救不回来，因为候选池已空——「多余副本」既是写的冗余，也是读的救命稻草。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件 × 阶段</h2></div>
+<p class="sec-sub">同一批部件在两条流水线里扮演不同角色——本地站完全同构，多出的都在协调层。</p>
+<div class="quote"><i>把部件放回阶段里，才能看清谁在什么时候接力。</i></div>
+
+<table class="grid">
+<tr><th>阶段</th><th>协调层干什么</th><th>本地站干什么</th><th>RocksDB 对应（第 1 章）</th></tr>
+<tr><td>接单</td><td>算名单、配处理器/执行器</td><td>——</td><td>① WriteBatch 组包 / ⑦ Get 入口</td></tr>
+<tr><td>分发</td><td>写发 3 份+欠条；读 1 data+1 digest</td><td>——</td><td class="hot">没有这一层</td></tr>
+<tr><td>落地</td><td>——</td><td>写 CommitLog→Memtable；读 Memtable→SSTable</td><td>②③④ 组提交+WAL+Memtable / ⑧⑨ SuperVersion+Memtable</td></tr>
+<tr><td>收尾</td><td>写等 2 个 ack；读对账/修复</td><td>回 ack / 回数据或摘要</td><td>返回 / ⑩ Version::Get 第一个命中</td></tr>
+</table>
+<p>表里那格红色就是全部差别：<b>本地站几乎同构（第 2 章的对应），多出的一层是「发、等、拼」</b>——网络分发、确认计数、副本拼接。协调者是临时角色，DBImpl 是常驻单例：一个把智力花在物流，一个把智力全花在本地排序归并。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：它依赖什么才能成立</h2></div>
+<p class="sec-sub">拆掉任意一个外部依赖，两条流水线的行为都会变。</p>
+<div class="quote"><i>任何机制都有环境前提；拆掉外部依赖，它就不再成立。</i></div>
+<div class="envcards">
+<div class="env"><b>gossip 活/死判定</b><span>phi=8.0 决定 node4 多快出局——判得慢，写就多几笔在死机路上白发。</span></div>
+<div class="env"><b>hint 窗口 3h</b><span>超过 3h 的宕机不写欠条，缺口交给第 13 章 repair 全量对账。</span></div>
+<div class="env"><b>写超时双口径</b><span>yaml:1396 出厂 10s / Config.java:159-160 代码默认 2s——引用时两个都标。</span></div>
+<div class="env"><b>读超时 5s</b><span>yaml:1388；speculative_retry 默认 99p，但候选空了就没得补。</span></div>
+<div class="env"><b>时钟（ts 来源）</b><span>写时间戳取协调者微秒时钟（Attributes.java:85）——同 ts 重放无害的前提。</span></div>
+<div class="env"><b>线程池分层</b><span>Native-Transport-Requests 收货、MutationStage/ReadStage 干活——tpstats 分层排障。</span></div>
+</div>
+<p class="figcap">边界：本页画的是单 DC、无 transient 副本、无 LWT 的普通读写；cheap quorum 补发、跨 DC 中转、Paxos 路径在正文有文字交代。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">六个问题，检查你是否能在分支上做判断。</p>
+<div class="quote"><i>自测不是复述结论，而是检查你能否在边界上做判断。</i></div>
+<div id="quiz"></div>
+</section>
+
+
+<div class="summary">
+<h2>一页带走</h2>
+
+<p class="chant">写发三等二、死副本欠条垫；读凑两对账、不一致修完回。</p>
+<p>· 写五站：接单分装（:978/:1732）→ 分发欠条（:1827）→ 本地先 CommitLog 后 Memtable（Keyspace:437）→ 等 blockFor（:1006）→ 善后；本地站就是第 2 章。</p>
+<p>· 读五站：接单 → 选执行器（默认 99p）→ contacts=前 blockFor 个活候选（:891）→ 1 data + 其余 digest（:181-191）→ 对账，不一致 BLOCKING 修完才返回。</p>
+<p>· 异常三态：Unavailable 事前拒、WriteTimeout 事中等（yaml 10s/代码 2s）、ReadTimeout 5s；写重试安全靠同 ts 重放无害。RocksDB 没有这层物流——DBImpl 单例前既不用发也不用等。</p>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+</div>
+
+<script>
+(function(){
+var PERIOD=6400,PHASE_MAX=720;
+var STW=[{"d":0,"t":"接单","x":"mutate:978 接到 Mutation{id=47, ts=1005}，performWrite:1732 三件事：算名单（:1744，writeNormal 联络全部副本）、配 WriteResponseHandler（:1752，从 blockFor=2 倒数）、交发送站。"},{"d":90,"t":"分发×3","x":"sendToHintedReplicas:1827 遍历名单全量：活副本直发（:1927）、自己命中则 performLocally；发送前先预序列化（:1853）——一件行李发三份只编码一次。「等 2 ≠ 只发 2」。"},{"d":180,"t":"本地落地","x":"node2 收件（MutationVerbHandler:52）→ Keyspace.apply:437——先 CommitLog 追加（:549，崩溃保命）再 Memtable 插入（:579，name='阿福2'@1005）。这一站就是第 2 章的本地写路径。"},{"d":270,"t":"2/2 归零","x":"node2、node4 先后回 ack，处理器倒数到 0 → get() 放行（:1006-1007），返回客户端成功。node5 的 ack 还在路上——没人等它，三份最终都写上。"},{"d":360,"t":"DOWN 分支","x":"14:00 node4 卡死、phi=8.0 确认（第 5 章）。同一单：expired（:1904）先记「不等它」，shouldHint ✓（40min<3h）→ 写 hint 欠条垫付（:1915-1916）；node2+node5 照常 2/2。写成功率纹丝不动的全部秘密。"},{"d":450,"t":"迟到票","x":"node5 的 ack 迟到落地——这是「白赚」的第 3 份：写在它身上的副本早已收件，只是不等它回话。反向视角：下一次 QUORUM 读若凑 {node2,node5}，交集 {node2} 保证读到新值。"},{"d":540,"t":"超时分支","x":"假想 node2 也卡死：10s（yaml:1396；代码默认 2s，Config.java:159-160）没凑满 2 个 ack → WriteTimeout(received=1, blockFor=2)。可以重试：系统内部重放的是同一件 Mutation 原件（同 ts=1005），LWW 归并下重放无害。"},{"d":630,"t":"复盘","x":"写五站口诀：接单分装、分发欠条、本地落地、等确认、善后。对照 RocksDB：本地站同构，多出的一层全是「发、等、拼」——协调者临时客串，DBImpl 常驻单例。"}];
+var STR=[{"d":0,"t":"接单","x":"read:2176 → fetchRows:2652：每条 ReadCommand 配一个读执行器（getReadExecutor:196）。构造时三件帮手已装配（:90-92）：ReadRepair、DigestResolver、ReadCallback——修的、对的、等的。"},{"d":90,"t":"选执行器","x":"三档：Never（:276）/ Speculating（:305）/ Always（:378）。由表属性 speculative_retry 决定（:204），默认 99p 百分位（TableParams.java:452）→ Speculating：平时只发 blockFor 个，迟迟不回补发一台。"},{"d":180,"t":"算名单","x":"forRead（ReplicaPlans.java:891）：候选=活副本按 snitch 评分排序（:930-932），contacts=前 blockFor 个。node4 已 DOWN → 候选 {node2,node5} 共 2 个 = blockFor 2，刚好够；ALWAYS 档才会多带一个。"},{"d":270,"t":"data+digest","x":"executeAsync（:181-191）：contacts 第一名发 data（完整数据），其余发 digest（16 字节 MD5 摘要）。本单：data→node2、digest→node5；node3 本地命中时本地读延后发（:164-169）避免堵住远程。"},{"d":360,"t":"对账一致","x":"DigestResolver.responsesMatch（:105-127）：data 行的摘要 == node5 的 digest → 一致，data 那份直接返回，完事。多数读单到此为止——读修复只在摘要打架时出场。"},{"d":450,"t":"修复分支","x":"若摘要不一致：DataResolver（:63）补发 data，按时间戳拼版（1005 胜 1001）；BlockingReadRepair（:75-79，注释自称 Classic read repair）把落后副本补写齐——默认 BLOCKING（TableParams.java:460），修完才返回。"},{"d":540,"t":"卡慢分支","x":"若 node2 卡住：99p 推测想补发一台——候选池只剩 {node2,node5} 且都已联络，getReadExecutor:216-222 早已退化成 NeverSpeculating（还记一笔「想推测没得推测」）。等满 read_request_timeout 5s（yaml:1388）→ ReadTimeout。"},{"d":630,"t":"复盘","x":"读五站口诀：接单、选执行器、算名单、分发对账、一致或修复。写读不对称记住一句：写按名单发、按档位等；读按档位选人、按对账收。"}];
+var STW_LABEL=[["W1 接单分装","mutate:978"],["W2 分发欠条","sendToHintedReplicas:1827"],["W3 本地落地","先 CommitLog 后 Memtable"],["W4 等确认","blockFor=2 倒数"],["W5 善后","ANY 兜底 / 异常记账"]];
+var STR_LABEL=[["R1 接单","read:2176→fetchRows:2652"],["R2 选执行器","99p 默认（:196）"],["R3 算名单","contacts=前 blockFor 个（:891）"],["R4 分发对账","1 data + 1 digest（:181）"],["R5 一致或修复","不一致 BLOCKING 修完才回"]];
+var PARTS={"coord":["coordBox"],"lanes":["laneN2","laneN4","laneN5"],"stations":["stStrip"],"local":["localStrip"],"hint":["hintCard","n4note","n4note2"],"branches":["wtCard","unavCard","fixCard"]};
+var CHIPS=[{"k":"scen","l":"单据"},{"k":"bf","l":"blockFor"},{"k":"ack","l":"ack/回话"},{"k":"n4","l":"node4"},{"k":"hint","l":"hint/对账"}];
+var QUIZ=[{"q":"为什么 node4 DOWN 后 QUORUM 写照样成功、ALL 却直接失败？","opts":["ALL 是错误配置","QUORUM 需 2：node2+node5 顶上，node4 份额写 hint；ALL 需 3，活副本 2<3 被事前体检拦下（Unavailable）","驱动会自动降级"],"a":1,"exp":"Unavailable 在发请求前抛出（ReplicaPlans.java:143）：ALL 承诺 3 份都写成，2 份不配叫成功；QUORUM 的缺口由 hint 欠条追平（3h 窗口内）。"},{"q":"写超时（WriteTimeout）后客户端重试，会不会把数据写坏？","opts":["会重复插入两行","系统内部重放的是同一件 Mutation 原件（同 ts），LWW 归并下重放无害；客户端重试的新请求各取新 ts，同内容谁胜都一样","Cassandra 禁止重试"],"a":1,"exp":"时间戳大者胜、同 ts 同内容重放不改变结果——普通写是幂等的（计数器写例外）。重试的安全性就建在 LWW 这块地基上。"},{"q":"node4 DOWN 后的 QUORUM 读，「1 data + 1 digest」怎么分？","opts":["两台都发 data","data 给 snitch 评分第一的 node2，digest 给 node5；活候选 2 个=blockFor 2 刚好够，连推测补发的余量都没有","随机分配"],"a":1,"exp":"executeAsync（:181-191）取 contacts 前一名做 data、其余做 digest；候选数=联络数时 getReadExecutor:216-222 退化 NeverSpeculating——此时一台卡住就只能等 ReadTimeout 5s。"},{"q":"读流水线的「读修复」什么时候出场？","opts":["每次读都修","摘要对账不一致时：DataResolver 补 data 按 ts 拼版，BlockingReadRepair 补写落后副本，默认修完才返回","只在 repair 作业里"],"a":1,"exp":"多数读单摘要一致直接返回；BLOCKING（TableParams.java:460 默认）是「宁可这单慢，不让账烂着」。全量兜底才是第 13 章的 repair。"},{"q":"写和读的联络人规则分别是？","opts":["都发全部副本","写发名单全量（writeNormal :647-681）、按档位等；读按档位选人（contacts=前 blockFor 个，:891）、按对账收","都只发 blockFor 个"],"a":1,"exp":"写多发是白赚的冗余（第 3 份大概率已应用），读少发省的是带宽与摘要份子——方向相反，各有算计。"},{"q":"「协调者是临时角色」与「DBImpl 是常驻单例」的差别，下面哪个说法对？","opts":["Cassandra 每笔请求由接到它的节点临时客串调度；RocksDB 的调度永远在同一个进程内单例里","两者其实一样","DBImpl 也是每请求新建"],"a":0,"exp":"StorageProxy 每节点一份、人人可当协调者——没有单点；DBImpl 是进程内唯一主实现（db_impl.h:221）。这决定了分布式引擎多出的整层「发、等、拼」。"}];
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var scenBtn=document.getElementById('scenBtn');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,STEP_DUR=650;
+var stepIdx=-1;
+var SCEN='W',STEPS=STW;
+var el={};
+document.querySelectorAll('#eng [id],#eng2 [id]').forEach(function(n){el[n.id]=n;});
+function setOp(id,v){var n=typeof id==='string'?el[id]:id;if(n)n.setAttribute('opacity',v.toFixed(2));}
+function setText(id,s){var n=el[id]||document.getElementById(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setAttr(id,k,v){var n=el[id];if(n)n.setAttribute(k,v);}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){return t*t*(3-2*t);}
+function lerp2(a,b,t){return a+(b-a)*t;}
+function band(id,a,b,lo,hi){setOp(id,(pr>=a&&pr<b)?(hi===undefined?1:hi):(lo===undefined?0.14:lo));}
+var pr=0;
+function applyScen(){
+ var L=SCEN==='W'?STW_LABEL:STR_LABEL;
+ for(var i=0;i<5;i++){setText('stL'+i,L[i][0]);setText('stS'+i,L[i][1]);setText('sg'+(i+1),L[i][0].split(' ')[0]);}
+ setText('sg5',SCEN==='W'?'DOWN分支':'修复分支');
+ setText('sg6',SCEN==='W'?'迟到票':'卡慢分支');
+ setText('sg7',SCEN==='W'?'超时分支':'卡慢分支');
+ setText('engTitle',SCEN==='W'?'写流水线：发 3 等 2，死副本欠条垫付':'读流水线：1 data + 1 digest，QUORUM=2 刚好够');
+ setText('coordIn',SCEN==='W'?'写：mutate :978':'读：read :2176');
+ setText('coordMid',SCEN==='W'?'名单=定位链（第 6 章）':'执行器三档（:196）');
+ setText('coordMid2',SCEN==='W'?'处理器从 2 倒数（第 7 章）':'contacts=前 blockFor 个（:891）');
+ setText('localTtl',SCEN==='W'?'本地站（副本收件后，第 2 章那套）':'本地站（副本收件后，第 2~4 章那套）');
+ setText('lc1t',SCEN==='W'?'CommitLog 追加':'Memtable 先问');
+ setText('lc1s',SCEN==='W'?'Keyspace.apply:549':'最新的账，ts=1005 若在则直接命中');
+ setText('lc2t',SCEN==='W'?'Memtable 插入':'SSTable 逐本从新到旧');
+ setText('lc2s',SCEN==='W'?'name=阿福2@1005':'第 4 章索引定位 + 布隆裁剪');
+ setText('lc3t',SCEN==='W'?'崩溃保命 → 内存账本':'按 ts 归并，1005 胜 1001');
+ setText('lc3s',SCEN==='W'?'重启回放补回（第 2 章）':'queryMemtableAndDisk:727');
+ scenBtn.textContent=SCEN==='W'?'切到读单':'切到写单';
+ setText('roScen',SCEN==='W'?'写单':'读单');
+ setChip('scen',SCEN==='W'?'写单':'读单',SCEN==='W');
+}
+function wState(){
+ if(pr<90)return{ack:0,res:'算名单、配处理器…',hint:false};
+ if(pr<180)return{ack:0,res:'发 3 份（等 2≠只发 2）',hint:false};
+ if(pr<270)return{ack:0,res:'node2 落地：CommitLog→Memtable',hint:false};
+ if(pr<360){var t=clamp((pr-300)/40,0,1);var a=Math.round(t*2);return{ack:a,res:a>=2?'2/2 归零 → 成功':'等 ack… '+a+'/2',hint:false};}
+ if(pr<450)return{ack:2,res:'node4 DOWN：expired+hint 垫付，仍 2/2',hint:true};
+ if(pr<540)return{ack:2,res:'node5 迟到 ack——白赚的第 3 份',hint:true};
+ if(pr<630)return{ack:1,res:'WriteTimeout(received=1/2)，可重试',hint:true};
+ return{ack:2,res:'口诀：写发三等二，死副本欠条垫',hint:true};
+}
+function rState(){
+ if(pr<90)return{ack:0,res:'read 接单，配执行器',fix:false};
+ if(pr<180)return{ack:0,res:'默认 99p → Speculating',fix:false};
+ if(pr<270)return{ack:0,res:'活候选 {node2,node5}=2=blockFor',fix:false};
+ if(pr<360)return{ack:0,res:'data→node2｜digest→node5',fix:false};
+ if(pr<450)return{ack:2,res:'摘要一致 → 直接返回',fix:false};
+ if(pr<540)return{ack:2,res:'不一致：拼 ts + BLOCKING 修完才回',fix:true};
+ if(pr<630)return{ack:1,res:'node2 卡 → 无候选可补 → ReadTimeout 5s',fix:false};
+ return{ack:2,res:'口诀：读凑两对账，不一致修完回',fix:false};
+}
+function renderScene(){
+ var st=SCEN==='W'?wState():rState();
+ band('st0',0,90);band('st1',90,180);band('st2',180,270);band('st3',270,360);band('st4',360,720);
+ if(SCEN==='W'){
+  band('hintCard',360,720);band('wtCard',540,630);setOp('unavCard',0.14);setOp('fixCard',0.14);
+ }else{
+  setOp('hintCard',0.14);setOp('wtCard',0.14);setOp('unavCard',0.14);band('fixCard',450,540);
+ }
+ var n4down=SCEN==='W'?pr>=360:true;
+ setOp('downBadge',n4down?1:0);setOp('downTxt',n4down?1:0);
+ setAttr('n4rect','fill',n4down?'#FCEBEB':'#ffffff');
+ setAttr('n4rect','stroke',n4down?'#E24B4A':'#639922');
+ setText('n4note',SCEN==='W'?(pr>=360?'写：expired 不等（:1904）':'写：第二个 ack 的常客'):'读：候选池出局');
+ setText('n4note2',SCEN==='W'?(pr>=360?'→ shouldHint ✓（≤3h）':'健康时第二票'):'写侧由 hint 垫付');
+ setText('n4note3',SCEN==='W'?'→ hint 欠条垫付（不计 ack）':'无候选可推测（:216-222）');
+ var a2=false,a5=false,d2=false,g5=false;
+ if(SCEN==='W'){
+  a2=pr>=310&&pr<540;a5=pr>=450&&pr<540;
+ }else{
+  d2=pr>=270;g5=pr>=270&&pr<630;
+ }
+ setOp('ackN2',SCEN==='W'?(a2?1:0):0);
+ setOp('ackN5',SCEN==='W'?(a5?1:0):0);
+ setOp('dtaN2',SCEN==='W'?0:(d2?1:0));
+ setOp('dgN5',SCEN==='W'?0:(g5?1:0));
+ setText('n2note',SCEN==='W'?'写：CommitLog→Memtable':'读：data 请求给最快的它');
+ setText('n2note2',SCEN==='W'?'ts=1005 落账':'回完整行 {阿福2, 31}');
+ setText('n2note3',SCEN==='W'?'（读单时它拿 data）':'本地站见底部');
+ setText('n5note',SCEN==='W'?'写：第 3 份白赚':'读：digest（16B MD5）');
+ setText('n5note2',SCEN==='W'?'ack 迟到不等它':'node4 挂后顶第二票');
+ setText('n5note3',SCEN==='W'?'（读单时它回摘要）':'摘要一致才放行');
+ setText('coordOut',st.res.length>18?st.res.slice(0,18):st.res);
+ setText('roAck',SCEN==='W'?(st.ack+'/2'):(st.ack?st.ack+' 份回话':'--'));
+ setText('roRes',st.res.length>16?st.res.slice(0,16)+'…':st.res);
+ setChip('bf','2',true);
+ setChip('ack',SCEN==='W'?(st.ack+'/2 ack'):(st.ack?st.ack+' 份':'--'),st.ack>=2);
+ setChip('n4',n4down?'DOWN':'UP',!n4down);
+ setChip('hint',SCEN==='W'?(st.hint?'欠条垫付（不计 ack）':'未写'):(st.fix?'读修复中':'对账'),SCEN==='W'?st.hint:st.fix);
+}
+function setChip(k,v,on){var n=document.querySelector('#stateChips .chip[data-k="'+k+'"]');if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',!!on);n.classList.toggle('off',!on);}
+function tokPath(){
+ if(SCEN==='W'){
+  if(pr<90)return null;
+  if(pr<180)return [lerp2(178,334,(pr-90)/90),291];
+  if(pr<270)return null;
+  if(pr<360)return [lerp2(334,178,(pr-300)/60),291];
+  if(pr<450)return [lerp2(178,574,(pr-360)/90),291];
+  if(pr<540)return [lerp2(843,178,(pr-450)/90),291];
+  return null;
+ }else{
+  if(pr<270)return null;
+  if(pr<360)return [lerp2(178,334,(pr-270)/90),291];
+  if(pr<450)return [lerp2(334,178,(pr-360)/90),291];
+  if(pr<540)return [lerp2(178,843,(pr-450)/90),291];
+  return null;
+ }
+}
+function renderSub(th){
+ var p=norm(th); var si=0;
+ for(var i=0;i<STEPS.length;i++){if(p>=STEPS[i].d)si=i;}
+ for(var i=0;i<9;i++){var on=(i===si)||(i===8&&si>=STEPS.length-1);setOp('seg'+i,on?1:0.35);}
+ var x=40+(p/PHASE_MAX)*920;
+ setAttr('subNow','x1',x.toFixed(1)); setAttr('subNow','x2',x.toFixed(1));
+}
+function render(th){
+ pr=norm(th);
+ setText('roPhase',Math.round(pr)+'°');
+ var si=0;for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)si=i;}
+ if(mode==='step'&&stepIdx>=0)si=stepIdx;
+ setText('roStep',STEPS[si]?STEPS[si].t:'—');
+ var tp=tokPath();
+ if(tp){setAttr('tok','cx',tp[0].toFixed(1));setAttr('tok','cy',tp[1].toFixed(1));setOp('tok',1);}
+ else{setOp('tok',0);}
+ renderScene();
+ if(typeof renderSub==='function')renderSub(th,pr,si);
+}
+function buildStepbar(){
+ stepBar.innerHTML='';
+ for(var s=0;s<STEPS.length;s++){(function(n){
+  var b=document.createElement('button');b.className='stepnode';
+  b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+  b.onclick=function(){goStep(n);};stepBar.appendChild(b);
+ })(s);}
+}
+function tick(now){
+ var dt=Math.min(50,now-last);last=now;
+ if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+ if(mode==='step'&&stepTo!==null){
+  stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);
+  var p=stepElapsed/STEP_DUR;var e=smooth(p);
+  phase=stepFrom+(stepTo-stepFrom)*e;
+  if(p>=1){phase=((stepTo%PERIOD)+PERIOD)%PERIOD;stepTo=null;}
+ }
+ render(phase/PERIOD*PHASE_MAX);
+ requestAnimationFrame(tick);
+}
+function setAuto(on){
+ mode='auto';run=on;stepTo=null;btn.textContent=on?'暂停':'播放';
+ if(on){stepIdx=-1;document.querySelectorAll('.stepnode').forEach(function(d){d.classList.remove('on');});
+ stepT.textContent='自动运转模式';stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格；橙色按钮切换写单/读单。';}
+}
+window.goStep=function(i){
+ stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+ var target=STEPS[stepIdx].d/PHASE_MAX*PERIOD;var delta=target-phase;
+ if(reduced||Math.abs(delta)>PERIOD/3){phase=target;stepTo=null;render(target/PERIOD*PHASE_MAX+0.01);}
+ else{stepFrom=phase;stepTo=phase+delta;stepElapsed=0;render(phase/PERIOD*PHASE_MAX+0.01);}
+ btn.textContent='继续自动运转';
+ document.querySelectorAll('.stepnode').forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+ stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+ stepX.textContent=STEPS[stepIdx].x;
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+btn.textContent=run?'暂停':'播放';
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+scenBtn.onclick=function(){SCEN=SCEN==='W'?'R':'W';STEPS=SCEN==='W'?STW:STR;phase=0;stepIdx=-1;applyScen();buildStepbar();setAuto(true);render(0.01);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+buildStepbar();
+applyScen();
+CHIPS.forEach(function(c){var sp=document.createElement('span');sp.className='chip';sp.setAttribute('data-k',c.k);sp.innerHTML=c.l+' <b>--</b>';document.getElementById('stateChips').appendChild(sp);});
+document.querySelectorAll('.part').forEach(function(b){
+  b.onclick=function(){
+    var ids=PARTS[b.getAttribute('data-part')]||[];
+    ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+    document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+    setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+  };
+});
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+  var d=document.createElement('div');d.className='q';
+  var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+  it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+  h+='<div class="exp">'+it.exp+'</div>';d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+  var b=e.target.closest('.opt');if(!b)return;var box2=b.parentElement;if(box2.classList.contains('done'))return;
+  box2.classList.add('done');
+  var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+  box2.querySelectorAll('.opt').forEach(function(x,n){x.classList.add(n===QUIZ[qi].a?'right':'wrong');});
+});
+var BASE=(location.pathname.split('/cassandra-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/cassandra/lab';
+document.getElementById('lnkArt').href=BASE+'/cassandra/query/03-read-write-paths';
+
+requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

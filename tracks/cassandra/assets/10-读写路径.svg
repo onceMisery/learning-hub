@@ -1,0 +1,142 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 710" width="1000" height="710" font-family="Microsoft YaHei, sans-serif">
+<defs>
+<marker id="qA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="qB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="qG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="qR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<rect x="0" y="0" width="1000" height="710" fill="#ffffff"/>
+<text x="500" y="34" font-size="20" fill="#1F1E1A" text-anchor="middle" font-weight="600">读写路径：Coordinator 的两条流水线</text>
+<text x="500" y="56" font-size="12" fill="#6B695F" text-anchor="middle" font-weight="400">写单：UPDATE id=47（ts=1005，发 3 等 2）；读单：node4 DOWN 后的 SELECT id=47（1 data + 1 digest，QUORUM=2 刚好够）——keyspace demo，RF=3</text>
+<text x="976" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">橙色：写路径 / ack</text>
+<text x="976" y="42" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">蓝色：读路径 / 对账</text>
+<text x="976" y="58" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">红色：DOWN / 异常</text>
+
+<!-- ============ 写流水线五站 ============ -->
+<rect x="28" y="72" width="944" height="132" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.3"/>
+<text x="44" y="94" font-size="13" fill="#C46A0A" text-anchor="start" font-weight="600">写流水线五站（StorageProxy.mutate :978 起）——协调者临时客串，调度台每节点一份</text>
+<rect x="44" y="106" width="158" height="66" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="58" y="128" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">W1 接单分装</text>
+<text x="58" y="146" font-size="10" fill="#6B695F" text-anchor="start">mutate:978 → performWrite:1732</text>
+<text x="58" y="162" font-size="10" fill="#3B3A34" text-anchor="start">算名单（:1744）+ 配处理器（:1752）</text>
+<path d="M202 139 L218 139" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#qA)"/>
+<rect x="222" y="106" width="168" height="66" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="236" y="128" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">W2 分发 + 欠条</text>
+<text x="236" y="146" font-size="10" fill="#6B695F" text-anchor="start">sendToHintedReplicas:1827</text>
+<text x="236" y="162" font-size="10" fill="#3B3A34" text-anchor="start">发全部 3 份；预序列化 :1853</text>
+<path d="M390 139 L406 139" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#qA)"/>
+<rect x="410" y="106" width="182" height="66" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="424" y="128" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">W3 副本本地落地</text>
+<text x="424" y="146" font-size="10" fill="#6B695F" text-anchor="start">Keyspace.apply:437（第 2 章）</text>
+<text x="424" y="162" font-size="10" fill="#639922" text-anchor="start" font-weight="600">先 CommitLog(:549) 后 Memtable(:579)</text>
+<path d="M592 139 L608 139" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#qA)"/>
+<rect x="612" y="106" width="158" height="66" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="626" y="128" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">W4 等确认</text>
+<text x="626" y="146" font-size="10" fill="#6B695F" text-anchor="start">responseHandler.get():1006</text>
+<text x="626" y="162" font-size="10" fill="#3B3A34" text-anchor="start">blockFor=2 倒数，归零放行</text>
+<path d="M770 139 L786 139" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#qA)"/>
+<rect x="790" y="106" width="164" height="66" rx="8" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.2"/>
+<text x="804" y="128" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">W5 失败善后</text>
+<text x="804" y="146" font-size="10" fill="#6B695F" text-anchor="start">mutate:1009-1042</text>
+<text x="804" y="162" font-size="10" fill="#3B3A34" text-anchor="start">CL=ANY 超时兜底写 hint</text>
+<text x="44" y="192" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">「等 2 ≠ 只发 2」：无 transient 副本时写联系名单全量（ReplicaPlans.writeNormal :647-681）——第 3 份白赚，ack 迟到不等。</text>
+
+<!-- ============ 集群泳道：两单叠加 ============ -->
+<rect x="28" y="214" width="944" height="252" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.3"/>
+<text x="44" y="236" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">同一行 id=47 的两条配送链（名单 {node2, node4, node5}；node4 于 14:00:00 卡死，第 5 章）</text>
+<g>
+<rect x="44" y="250" width="150" height="196" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="119" y="274" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">node3（协调者）</text>
+<text x="119" y="294" font-size="10" fill="#6B695F" text-anchor="middle">接 QUERY 帧（第 9 章）</text>
+<text x="119" y="310" font-size="10" fill="#6B695F" text-anchor="middle">装箱（第 8 章）</text>
+<text x="119" y="330" font-size="10.5" fill="#C46A0A" text-anchor="middle" font-weight="600">写：mutate :978</text>
+<text x="119" y="348" font-size="10.5" fill="#2F6FA8" text-anchor="middle" font-weight="600">读：read :2176</text>
+<text x="119" y="370" font-size="10" fill="#6B695F" text-anchor="middle">本地命中时</text>
+<text x="119" y="386" font-size="10" fill="#6B695F" text-anchor="middle">performLocally:1996</text>
+<text x="119" y="412" font-size="10" fill="#6B695F" text-anchor="middle">临时角色：</text>
+<text x="119" y="428" font-size="10" fill="#6B695F" text-anchor="middle">对照 DBImpl 常驻单例</text>
+</g>
+<g>
+<rect x="234" y="250" width="200" height="196" rx="10" fill="#ffffff" stroke="#639922" stroke-width="1.4"/>
+<text x="334" y="274" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">node2（活）</text>
+<text x="334" y="292" font-size="10" fill="#6B695F" text-anchor="middle">token +3.7×10^18｜snitch 评分第一</text>
+<text x="334" y="318" font-size="10.5" fill="#C46A0A" text-anchor="middle" font-weight="600">写 ✓ 第 1 个 ack（CommitLog→Memtable）</text>
+<text x="334" y="340" font-size="10.5" fill="#2F6FA8" text-anchor="middle" font-weight="600">读：data 请求 → 回完整行</text>
+<text x="334" y="360" font-size="10" fill="#6B695F" text-anchor="middle">本地站 queryMemtableAndDisk:727</text>
+<text x="334" y="376" font-size="10" fill="#6B695F" text-anchor="middle">（Memtable → SSTable 按 ts 归并）</text>
+<text x="334" y="402" font-size="10.5" fill="#639922" text-anchor="middle" font-weight="600">W∩R：写确认 {node2,node4}</text>
+<text x="334" y="420" font-size="10.5" fill="#639922" text-anchor="middle" font-weight="600">∩ 读 {node2,node5} = {node2} ≥ 1</text>
+</g>
+<g>
+<rect x="474" y="250" width="200" height="196" rx="10" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.4"/>
+<rect x="524" y="260" width="100" height="20" rx="5" fill="#E24B4A" opacity="0.9"/>
+<text x="574" y="274" font-size="10.5" fill="#ffffff" text-anchor="middle" font-weight="600">14:00 DOWN</text>
+<text x="574" y="298" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">node4（卡死 40min）</text>
+<text x="574" y="318" font-size="10.5" fill="#E24B4A" text-anchor="middle" font-weight="600">phi=8.0 @14:00:18~20 确认（第 5 章）</text>
+<text x="574" y="344" font-size="10.5" fill="#C46A0A" text-anchor="middle" font-weight="600">写：expired(:1904) 不等它</text>
+<text x="574" y="364" font-size="10.5" fill="#C46A0A" text-anchor="middle" font-weight="600">→ shouldHint ✓（40min &lt; 3h）</text>
+<text x="574" y="384" font-size="10.5" fill="#C46A0A" text-anchor="middle" font-weight="600">→ hint 欠条垫付（不计 ack）</text>
+<text x="574" y="406" font-size="10" fill="#6B695F" text-anchor="middle">回魂后 10s 一轮派发兑现（第 7 章）</text>
+<text x="574" y="428" font-size="10.5" fill="#2F6FA8" text-anchor="middle" font-weight="600">读：候选池出局</text>
+</g>
+<g>
+<rect x="714" y="250" width="240" height="196" rx="10" fill="#ffffff" stroke="#639922" stroke-width="1.4"/>
+<text x="834" y="274" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">node5（活）</text>
+<text x="834" y="292" font-size="10" fill="#6B695F" text-anchor="middle">token -22.1×10^18｜跨零点入选（第 6 章）</text>
+<text x="834" y="318" font-size="10.5" fill="#C46A0A" text-anchor="middle" font-weight="600">写 ✓（第 3 份白赚，ack 迟到不等）</text>
+<text x="834" y="344" font-size="10.5" fill="#2F6FA8" text-anchor="middle" font-weight="600">读：digest 请求 → 回 16B MD5 摘要</text>
+<text x="834" y="366" font-size="10" fill="#6B695F" text-anchor="middle">node4 DOWN 后顶上第二票：</text>
+<text x="834" y="382" font-size="10" fill="#6B695F" text-anchor="middle">活候选 2 个 = blockFor 2，刚好够</text>
+<text x="834" y="406" font-size="10.5" fill="#639922" text-anchor="middle" font-weight="600">99p 推测想补发也无副本可补</text>
+<text x="834" y="424" font-size="10" fill="#6B695F" text-anchor="middle">（getReadExecutor :216-222 退化 Never）</text>
+</g>
+<path d="M194 300 L230 300" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#qA)"/>
+<text x="212" y="292" font-size="9.5" fill="#854F0B" text-anchor="middle" font-weight="600">写×3</text>
+<path d="M230 352 L198 352" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#qG)"/>
+<text x="214" y="344" font-size="9.5" fill="#639922" text-anchor="middle" font-weight="600">ack</text>
+<path d="M194 330 L470 330" fill="none" stroke="#C46A0A" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#qA)"/>
+<path d="M470 396 L198 396" fill="none" stroke="#C46A0A" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#qA)"/>
+<path d="M194 322 L710 322" fill="none" stroke="#C46A0A" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#qA)"/>
+<path d="M194 372 L230 372" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#qB)"/>
+<text x="212" y="364" font-size="9.5" fill="#2F6FA8" text-anchor="middle" font-weight="600">data</text>
+<path d="M194 388 L710 388" fill="none" stroke="#2F6FA8" stroke-width="1.6" stroke-dasharray="6 3" marker-end="url(#qB)"/>
+<text x="452" y="380" font-size="9.5" fill="#2F6FA8" text-anchor="middle" font-weight="600">digest</text>
+
+<!-- ============ 读流水线五站 ============ -->
+<rect x="28" y="476" width="944" height="132" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.3"/>
+<text x="44" y="498" font-size="13" fill="#2F6FA8" text-anchor="start" font-weight="600">读流水线（StorageProxy.read :2176 起）——只联系 blockFor 个活副本，1 data + 其余 digest</text>
+<rect x="44" y="510" width="158" height="66" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="58" y="532" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">R1 接单</text>
+<text x="58" y="550" font-size="10" fill="#6B695F" text-anchor="start">read:2176 → fetchRows:2652</text>
+<text x="58" y="566" font-size="10" fill="#3B3A34" text-anchor="start">每条 ReadCommand 一执行器</text>
+<path d="M202 543 L218 543" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#qB)"/>
+<rect x="222" y="510" width="168" height="66" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="236" y="532" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">R2 选执行器</text>
+<text x="236" y="550" font-size="10" fill="#6B695F" text-anchor="start">getReadExecutor:196</text>
+<text x="236" y="566" font-size="10" fill="#3B3A34" text-anchor="start">speculative_retry 默认 99p</text>
+<path d="M390 543 L406 543" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#qB)"/>
+<rect x="410" y="510" width="170" height="66" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="424" y="532" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">R3 算名单</text>
+<text x="424" y="550" font-size="10" fill="#6B695F" text-anchor="start">ReplicaPlans.forRead:891</text>
+<text x="424" y="566" font-size="10" fill="#3B3A34" text-anchor="start">contacts = 前 blockFor 个活候选</text>
+<path d="M580 543 L596 543" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#qB)"/>
+<rect x="600" y="510" width="170" height="66" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="614" y="532" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">R4 分发对账</text>
+<text x="614" y="550" font-size="10" fill="#6B695F" text-anchor="start">executeAsync:181-191</text>
+<text x="614" y="566" font-size="10" fill="#3B3A34" text-anchor="start">1 data + 其余 digest（R−1 份）</text>
+<path d="M770 543 L786 543" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#qB)"/>
+<rect x="790" y="510" width="164" height="66" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="804" y="532" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">R5 一致或修复</text>
+<text x="804" y="550" font-size="10" fill="#6B695F" text-anchor="start">DigestResolver:105 对账</text>
+<text x="804" y="566" font-size="10" fill="#639922" text-anchor="start" font-weight="600">不一致 → BLOCKING 修完才返回</text>
+<text x="44" y="596" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">读修复：DataResolver:63 按 ts 拼版（1005 胜 1001）→ BlockingReadRepair:75-79 补写落后副本（默认 BLOCKING，TableParams:460）；等待闹钟 ReadCallback:218-219。</text>
+
+<!-- ============ 超时与异常分支 ============ -->
+<rect x="28" y="618" width="944" height="34" rx="8" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.2"/>
+<text x="44" y="640" font-size="10.5" fill="#3B3A34" text-anchor="start" font-weight="600">异常三态：Unavailable 事前拒（活副本&lt;blockFor，ReplicaPlans:143）｜WriteTimeout 事中等（yaml 10s / 代码默认 2s）｜ReadTimeout（5s）——写可安全重试：同 ts 重放无害（LWW）。</text>
+
+<!-- ============ 底部总结 ============ -->
+<rect x="28" y="660" width="944" height="36" rx="8" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="44" y="676" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">一张图的一句话：本地站就是第 2~4 章那套引擎，外面包一层「发、等、拼」——写发 3 等 2、死副本欠条垫付；读凑 2 份对账、不一致修完才回。RocksDB 的 DBImpl 单例前没有这层物流。</text>
+<text x="44" y="692" font-size="11" fill="#6B695F" text-anchor="start">数据来源：service/StorageProxy.java:978、1827、2176（两条流水线入口与分发）· db/Keyspace.java:437（先 CommitLog 后 Memtable）· locator/ReplicaPlans.java:891（contacts=blockFor）· conf/cassandra.yaml:1396（写超时 10s）</text>
+</svg>

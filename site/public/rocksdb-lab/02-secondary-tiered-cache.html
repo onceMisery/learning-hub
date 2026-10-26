@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>二级缓存与分层缓存：内存装不下的去哪 · RocksDB 互动原理实验室 第 11 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#fff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:960px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#fff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:38px 0 22px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:710px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#fff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:500;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:11.5px;fill:#3B3A34}
+.tn{font-size:12.5px;font-weight:500;fill:#1F1E1A}
+.tag{font-size:10px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:68px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+section{padding:34px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .arr{color:#C46A0A;font-weight:600}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.figcap b{color:#3B3A34;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:13.5px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 9px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#scene [opacity],#scene2 [opacity]{transition:opacity .22s ease}
+#eng .hl,#eng2 .hl{stroke:#D96C06 !important;stroke-width:2.2 !important}
+.subview{margin:8px 0 4px;background:#fff;border:1px dashed #D3D1C7;border-radius:10px;padding:8px 10px}
+.subview .viewtitle{font-size:12px;font-weight:600;color:#854F0B;margin-bottom:4px}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+@media (prefers-reduced-motion: reduce){#scene [opacity],#scene2 [opacity]{transition:none}}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：二级缓存与分层缓存：内存装不下的去哪</a>
+  <span class="idx">第 11 / 12 章</span>
+</div>
+<div class="page">
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · 二级与分层缓存</div>
+<h1>装不下去二级：驱逐降级、命中升舱</h1>
+<p>128GB 节点、40GB 块缓存、60GB 热数据——命中率停在 85%，剩下的读每次都砸向 NVMe，可那些 key 一分钟前才读过。差别不在盘慢，而在挤出去的块被一刀切扔了。这页看块 X（8KB）的完整往返：驱逐时降级进压缩层（第一次只占位、第二次才真收），miss 时解压升舱回主缓存；再切到三层模式看行为反转。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span><span class="mnode">② 静态分解</span><span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span><span class="mnode">⑤ 环境场景</span><span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 614" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>块的降级与升舱往返</title>
+<defs>
+<marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="g" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="r" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<text class="th" x="500" y="22" text-anchor="middle">块 X（8KB）的往返：主缓存驱逐 → 占位 → 真收压缩 → miss 升舱；三层模式行为反转</text>
+<text class="ts" x="500" y="40" text-anchor="middle">主图 = 主缓存 / 压缩层 / NVMe / 升舱路径 / 两层与三层对照 五块；副图 = 往返时间线与预热（同一相位）</text>
+<text class="tag" x="958" y="22" text-anchor="end">琥珀点 = 块 X 的当前位置</text>
+<text class="tag" x="958" y="38" text-anchor="end">绿 = 升舱 / 收留 · 红 = 丢弃</text>
+<g id="scene">
+<g class="stage" id="st0"><circle cx="58" cy="66" r="13"/><text x="58" y="70" text-anchor="middle">1</text><text x="58" y="94" text-anchor="middle">热块在主</text></g>
+<line x1="74" y1="66" x2="166" y2="66" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st1"><circle cx="182" cy="66" r="13"/><text x="182" y="70" text-anchor="middle">2</text><text x="182" y="94" text-anchor="middle">驱逐#1 占位</text></g>
+<line x1="198" y1="66" x2="290" y2="66" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st2"><circle cx="306" cy="66" r="13"/><text x="306" y="70" text-anchor="middle">3</text><text x="306" y="94" text-anchor="middle">驱逐#2 真收</text></g>
+<line x1="322" y1="66" x2="414" y2="66" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st3"><circle cx="430" cy="66" r="13"/><text x="430" y="70" text-anchor="middle">4</text><text x="430" y="94" text-anchor="middle">读 miss</text></g>
+<line x1="446" y1="66" x2="538" y2="66" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st4"><circle cx="554" cy="66" r="13"/><text x="554" y="70" text-anchor="middle">5</text><text x="554" y="94" text-anchor="middle">异步查二级</text></g>
+<line x1="570" y1="66" x2="662" y2="66" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st5"><circle cx="678" cy="66" r="13"/><text x="678" y="70" text-anchor="middle">6</text><text x="678" y="94" text-anchor="middle">解压升舱</text></g>
+<line x1="694" y1="66" x2="786" y2="66" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st6"><circle cx="802" cy="66" r="13"/><text x="802" y="70" text-anchor="middle">7</text><text x="802" y="94" text-anchor="middle">切三层</text></g>
+<line x1="818" y1="66" x2="910" y2="66" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st7"><circle cx="926" cy="66" r="13"/><text x="926" y="70" text-anchor="middle">8</text><text x="926" y="94" text-anchor="middle">读盘预热</text></g>
+
+<rect x="40" y="112" width="290" height="182" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/>
+<text class="tn" x="52" y="132">主缓存 64MB：桌面只放正在用的</text>
+<rect id="mainCache" x="52" y="142" width="266" height="52" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/>
+<text class="tb" x="185" y="162" text-anchor="middle">LRU 链：●—●—[X 8KB]—●—●</text>
+<text class="tag" x="185" y="182" text-anchor="middle">X 是读热块：HasHit=true，住高优先池</text>
+<line x1="185" y1="196" x2="185" y2="210" stroke="#E24B4A" stroke-width="1.4" marker-end="url(#r)"/>
+<text class="tag" x="196" y="208" fill="#A33A39">容量满：两层降级 / 三层丢弃</text>
+<rect id="evict2" x="52" y="214" width="266" height="30" rx="6" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.1"/>
+<text class="tb" x="185" y="233" text-anchor="middle">三层模式：主缓存驱逐直接丢弃（adapter:139-140）</text>
+<text class="tag" x="52" y="262">EvictionHandler 把块和 helper 交给二级 Insert</text>
+<text class="tag" x="52" y="278">注意 Insert 是「建议」：实现可以拒绝——占位准入就发生在这一步</text>
+
+<rect x="350" y="112" width="290" height="182" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/>
+<text class="tn" x="362" y="132">CompressedSecondaryCache 32MB：压扁了存</text>
+<rect id="dummyBox" x="362" y="142" width="128" height="54" rx="7" fill="#F5F4EF" stroke="#B4B2A9" stroke-width="1.1" stroke-dasharray="3 2"/>
+<text class="tb" x="426" y="162" text-anchor="middle">驱逐#1：0 字节占位</text>
+<text class="tag" x="426" y="180" text-anchor="middle">MaybeInsertDummy</text>
+<rect id="realBox" x="498" y="142" width="128" height="54" rx="7" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text class="tb" x="562" y="162" text-anchor="middle">驱逐#2：真收</text>
+<text class="tag" x="562" y="180" text-anchor="middle">LZ4 8KB → 3KB</text>
+<line x1="490" y1="169" x2="496" y2="169" stroke="#639922" stroke-width="1.4" marker-end="url(#g)"/>
+<text class="tag" x="362" y="212">准入 = 第二次才收：只收反复被驱逐的温块，路过的冷块不收</text>
+<rect id="tagBox" x="362" y="222" width="266" height="26" rx="6" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/>
+<text class="tb" x="495" y="239" text-anchor="middle">存储格式：2B tag（解压方式+压缩类型）+ 压缩字节</text>
+<text class="tag" x="362" y="264">filter 默认不压（do_not_compress_roles）：压了白烧 CPU</text>
+<text class="tag" x="362" y="280">压缩不比原文小就放弃存原样；解压失败就地销毁该条目</text>
+
+<rect x="660" y="112" width="300" height="182" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/>
+<text class="tn" x="672" y="132">NVMe 层：三层模式才有（NewTieredCache）</text>
+<rect id="nvmBox" x="672" y="142" width="276" height="54" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/>
+<text class="tb" x="810" y="162" text-anchor="middle">读盘顺路：InsertSaved（SST 原生压缩块）</text>
+<text class="tag" x="810" y="180" text-anchor="middle">零再压缩——SST 里的块本来就是压好的</text>
+<text class="tag" x="672" y="212">查序自底向上：先问压缩层、再问 NVMe（tiered:48-100）</text>
+<text class="tag" x="672" y="230">压缩层的粮食 = NVMe 命中时顺手带上（MaybeInsertAndCreate）</text>
+<text class="tag" x="672" y="248">准入自动切 ThreeQueue：压缩层 Insert 变 no-op（不允许降级）</text>
+<text class="tag" x="672" y="266">总预算 total_capacity 切分：compressed_secondary_ratio 默认 0.2</text>
+<text class="tag" x="672" y="284">例：24GB → 压缩层 4.8GB + 主缓存 19.2GB（charge 口径）</text>
+
+<rect x="40" y="314" width="450" height="200" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/>
+<text class="tn" x="52" y="332">升舱路径：miss 之后反向走一遍</text>
+<rect id="upMiss" x="52" y="344" width="120" height="48" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/>
+<text class="tb" x="112" y="364" text-anchor="middle">④ 读 miss</text>
+<text class="tag" x="112" y="382" text-anchor="middle">主缓存查无</text>
+<line x1="174" y1="368" x2="186" y2="368" stroke="#C46A0A" stroke-width="1.3" marker-end="url(#a)"/>
+<rect id="upAsync" x="188" y="344" width="140" height="48" rx="7" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/>
+<text class="tb" x="258" y="364" text-anchor="middle">⑤ 异步查二级</text>
+<text class="tag" x="258" y="382" text-anchor="middle">wait=false → pending</text>
+<line x1="330" y1="368" x2="342" y2="368" stroke="#C46A0A" stroke-width="1.3" marker-end="url(#a)"/>
+<rect id="upPromote" x="344" y="344" width="134" height="48" rx="7" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text class="tb" x="411" y="364" text-anchor="middle">⑥ Promote 升舱</text>
+<text class="tag" x="411" y="382" text-anchor="middle">解压重建 → 回主缓存</text>
+<rect id="upDetail" x="52" y="406" width="426" height="92" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/>
+<text class="tag" x="64" y="426">DUMMY_HIT：查到的是 0 字节占位（value==nullptr）→ 仍读盘，但记一次「二级见过它」</text>
+<text class="tag" x="64" y="444">ProcessDummyResult：主缓存里躺着的占位先清掉，再升舱——不留「刚被挤出」的旧标记</text>
+<text class="tag" x="64" y="462">without_secondary_compat：升舱换不支持二级的 helper——刚上来的块不会被立刻又塞回去</text>
+<text class="tag" x="64" y="480">MultiGet：wait=false 发一批 → WaitAll 统一收割，把二级查询开销摊平；句柄非线程安全</text>
+<text class="tag" x="64" y="498">命中按角色统计：SECONDARY_CACHE_DATA_HITS / INDEX_HITS / FILTER_HITS</text>
+
+<rect x="510" y="314" width="450" height="200" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/>
+<text class="tn" x="522" y="332">两层 vs 三层：喂饱路径完全不同（可用上方按钮切换）</text>
+<rect id="twoBox" x="522" y="344" width="206" height="152" rx="8" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/>
+<text class="tb" x="625" y="364" text-anchor="middle">两层（主 + 压缩层）</text>
+<text class="tag" x="534" y="386">主缓存驱逐 → 降级进压缩层（占位准入）</text>
+<text class="tag" x="534" y="404">压缩层粮食：主缓存反复挤出的块</text>
+<text class="tag" x="534" y="422">满了：LRU 淘汰，不回主缓存</text>
+<text class="tag" x="534" y="440">甜点区：热数据 ≈ 1~3× 缓存容量</text>
+<text class="tag" x="534" y="458">8KB→3KB：64MB 压缩层 ≈ 21000 块</text>
+<text class="tag" x="534" y="476">= 按原块算 168MB ≈ 2.6× 主缓存</text>
+<rect id="threeBox" x="740" y="344" width="208" height="152" rx="8" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.3"/>
+<text class="tb" x="844" y="364" text-anchor="middle">三层（+ NVMe，ThreeQueue）</text>
+<text class="tag" x="752" y="386" fill="#A33A39">主缓存驱逐 → 直接丢弃，不进压缩层</text>
+<text class="tag" x="752" y="404">压缩层 Insert = no-op（不允许降级）</text>
+<text class="tag" x="752" y="422">压缩层粮食：NVMe 命中时顺手带上</text>
+<text class="tag" x="752" y="440">NVMe 粮食：读盘顺路 InsertSaved</text>
+<text class="tag" x="752" y="458">各层独立淘汰，没有自上而下降级</text>
+<text class="tag" x="752" y="476">UpdateTieredCache 可动态调，压缩占比</text>
+<text class="tag" x="752" y="492">调 0 后不可再开（单向门）</text>
+</g>
+<circle id="tok" cx="185" cy="162" r="7" fill="#EF9F27" stroke="#D97E06" stroke-width="1.4"/>
+</svg>
+
+<div class="subview">
+<div class="viewtitle">第二视图 · 块 X 的完整往返时间线 + 预热两把火（与主图同一相位）</div>
+<svg id="eng2" viewBox="0 0 1000 232" role="img" xmlns="http://www.w3.org/2000/svg">
+<g id="scene2">
+<text class="tn" x="40" y="22">往返时间线：盘只在 ② 碰过一次</text>
+<rect id="r1" x="40" y="36" width="200" height="58" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/>
+<text class="tb" x="140" y="56" text-anchor="middle">① 第一次被挤出</text>
+<text class="tag" x="140" y="74" text-anchor="middle">二级只插 0B 占位，X 直接没了</text>
+<line x1="242" y1="65" x2="260" y2="65" stroke="#C46A0A" stroke-width="1.3" marker-end="url(#a)"/>
+<rect id="r2" x="262" y="36" width="200" height="58" rx="7" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/>
+<text class="tb" x="362" y="56" text-anchor="middle">② X 被读：DUMMY_HIT</text>
+<text class="tag" x="362" y="74" text-anchor="middle">仍读盘（唯一一次盘 I/O），X 回主缓存</text>
+<line x1="464" y1="65" x2="482" y2="65" stroke="#C46A0A" stroke-width="1.3" marker-end="url(#a)"/>
+<rect id="r3" x="484" y="36" width="200" height="58" rx="7" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/>
+<text class="tb" x="584" y="56" text-anchor="middle">③ 第二次被挤出</text>
+<text class="tag" x="584" y="74" text-anchor="middle">占位已在 → LZ4 3KB 真收入库</text>
+<line x1="686" y1="65" x2="704" y2="65" stroke="#C46A0A" stroke-width="1.3" marker-end="url(#a)"/>
+<rect id="r4" x="706" y="36" width="254" height="58" rx="7" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text class="tb" x="833" y="56" text-anchor="middle">④ 第三次被读：升舱</text>
+<text class="tag" x="833" y="74" text-anchor="middle">二级真命中 → 解压重建 → Promote 回主缓存</text>
+<text class="tn" x="40" y="122">预热两把火：头几轮冷读躲不掉，能少则少</text>
+<rect x="40" y="134" width="440" height="62" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/>
+<text class="tag" x="52" y="154">写路径：prepopulate_block_cache（默认 kDisable）。kFlushOnly 只预热 flush 输出（LOW）；</text>
+<text class="tag" x="52" y="170">kFlushAndCompaction 连压实输出也灌，但给 BOTTOM 优先级——没人读过的冷块最先被挤，</text>
+<text class="tag" x="52" y="186">不配霸占缓存。Direct IO 场景省一次回读。</text>
+<rect x="496" y="134" width="464" height="62" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/>
+<text class="tag" x="508" y="154">读路径：连续读 2 块且顺序 → 自动预读启动，8KB 起步每次翻倍封顶 256KB，双缓冲把</text>
+<text class="tag" x="508" y="170">读延迟藏进流水线。预取的 FilePrefetchBuffer 省的是 I/O 往返，缓存省的是第二次 I/O。</text>
+<text class="tag" x="508" y="186">压实的读全部 fill_cache=false：搬数据的后台任务不配占用前台热点。</text>
+<text class="tag" x="40" y="216">读法：主图第 ②③ 步对应时间线 ①③，第 ⑥ 步对应 ④；源码口径见下方图注。</text>
+</g>
+<circle id="tok2" cx="140" cy="65" r="6" fill="#639922" stroke="#4C7A1A" stroke-width="1.4"/>
+</svg>
+</div>
+
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<button class="btn warn" id="tierBtn">模式：两层</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.5" max="2" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm">默认 ≈ 6 秒 / 轮</span>
+</div>
+<div class="readout">
+<span class="ro">进度 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">读数 <b id="roKey">--</b></span>
+<span class="ro">模式 <b id="roMode">两层</b></span>
+<span class="ro">块 X <b id="roX">--</b></span>
+<span class="ro">盘读 <b id="roIO">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav"><button class="btn" onclick="prevStep()">‹ 上一步</button><button class="btn warn" onclick="nextStep()">下一步 ›</button></span>
+</div>
+<p class="figcap">进度 0° = X 在主缓存，720° = 三层预热落定。演示时刻：主缓存 64MB + 压缩层 32MB（LZ4）、X 8KB 压到 3KB、三层例 total_capacity=24GB/ratio=0.2，均为文章演示值；橙点 = 块 X。<br>口径：RocksDB 11.13.0；SecondaryCache 接口 secondary_cache.h:66-154、降级升舱 secondary_cache_adapter.cc、占位准入 compressed_secondary_cache.cc:160-174/285-299、三层 NewTieredCache secondary_cache_adapter.cc:651-726、预热 table.h:992-1003。</p>
+</div>
+</div>
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：被挤出去的字节全被扔了</h2></div>
+<p class="sec-sub">先不拆机制，只看「热数据 &gt; 缓存」时对外表现什么。</p>
+<div class="quote">「观察一个系统，先分清它的静态结构、动态过程和外部依赖。」</div>
+<p>命中率停在 85%、剩下的读全砸 NVMe——而且那些 key 一分钟前才读过。它们不是不热，是被挤出后又<b>随手扔了</b>。把二级缓存想成办公桌边的文件柜：桌面（主缓存）只放正在用的；放不下的塞进柜子（压缩层）——压扁了存，占地小；柜子也满了才进走廊货架（NVMe）。</p>
+<div class="flow">
+<span class="node">主缓存驱逐</span><span class="arr">→</span><span class="node box">二级缓存</span><span class="arr">→</span><span class="node">miss 时反向问</span><span class="arr">→</span><span class="node">命中升舱回主缓存</span>
+</div>
+<p>一句话本质：<b>给被挤出的块找个每字节更便宜的容身之处</b>。算三个数就知道配不配：热数据不到缓存一半——纯加 CPU 税；1~3 倍——压缩层甜点区；10 倍以上但访问局部——三层上 NVMe。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：契约、压缩层、NVMe</h2></div>
+<p class="sec-sub">点部件卡片，动画里对应的结构会亮起。</p>
+<div class="quote">「分解要 MECE：同一层粒度一致，不重不漏。」</div>
+<div class="partgroup"><div class="gname">契约层</div><div class="parts">
+<button class="part" data-part="iface"><b>SecondaryCache 五方法</b><span>Insert（建议性）/ InsertSaved / Lookup（wait=false 可异步）/ WaitAll / Deflate-Inflate，一张契约管所有实现。</span></button>
+<button class="part" data-part="adapter"><b>CacheWithSecondaryAdapter</b><span>主缓存的包装层：驱逐降级、两级查找、异步收割的钩子都织在这里。</span></button>
+<button class="part" data-part="helper"><b>CacheItemHelper</b><span>对象 ↔ 扁平字节的三个回调（size/saveto/create）；没有它的条目不参与二级缓存。</span></button>
+</div></div>
+<div class="partgroup"><div class="gname">两个官方层</div><div class="parts">
+<button class="part" data-part="dummy"><b>占位准入</b><span>第一次驱逐只插 0 字节占位，第二次才压缩真收——只收反复被驱逐的温块。</span></button>
+<button class="part" data-part="comp"><b>CompressedSecondaryCache</b><span>DRAM 里的压缩层：内部就是个 LRUCache，2B tag + 压缩字节；filter 不压、压不小放弃、解压失败销毁。</span></button>
+<button class="part" data-part="nvm"><b>NVMe 层</b><span>三层模式挂上来；粮食是读盘顺路 InsertSaved 的 SST 原生压缩块，零再压缩。</span></button>
+<button class="part" data-part="tier"><b>NewTieredCache</b><span>三层组合入口：total_capacity 按 ratio 切给主缓存与压缩层；有 NVMe 自动切 ThreeQueue 准入。</span></button>
+</div></div>
+<p class="hint">旧的 utilities/persistent_cache 仍在源码里，但没有压缩准入、没有异步 Lookup、不能动态调参——新架构直接配 secondary_cache，别把旧货当推荐。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：块 X 的 8 个相位</h2></div>
+<p class="sec-sub">第一遍看橙点走完往返；第二遍盯读数条「盘读」——整趟只在第 ④ 步碰过一次盘。</p>
+<div class="quote">「动态分析看的是时间轴上的顺序、状态变化和因果链。」</div>
+<table class="grid">
+<tr><th>相位</th><th>阶段</th><th>关键动作</th><th>读数</th></tr>
+<tr><td>0–90°</td><td>热块在主缓存</td><td>X 8KB 读热，住高优先池</td><td>8KB / 高池</td></tr>
+<tr><td>90–180°</td><td>驱逐 #1</td><td class="hot">只插 0 字节占位，X 本体直接没了</td><td class="hot">占位 0B</td></tr>
+<tr><td>180–270°</td><td>驱逐 #2</td><td class="hot">占位已在 → LZ4 8KB→3KB 真收入库</td><td class="hot">真收 3KB</td></tr>
+<tr><td>270–360°</td><td>读 miss</td><td>主缓存查无（对照时间线 ② DUMMY_HIT 那次才读盘）</td><td>miss</td></tr>
+<tr><td>360–450°</td><td>异步查二级</td><td>wait=false → pending 句柄，WaitAll 批量收割</td><td>pending→hit</td></tr>
+<tr><td>450–540°</td><td>解压升舱</td><td class="hot">create_cb 重建 → Promote 回主缓存，清掉占位</td><td class="hot">回主缓存</td></tr>
+<tr><td>540–630°</td><td>切三层</td><td>ThreeQueue：主缓存驱逐直接丢弃、压缩层 no-op</td><td>模式三层</td></tr>
+<tr><td>630–720°</td><td>读盘预热 NVMe</td><td>读盘顺路 InsertSaved，压缩层吃 NVMe 命中</td><td>NVMe +1 块</td></tr>
+</table>
+<p>相位零点：0° = X 在主缓存；720° = 三层预热落定。值得分步细看的两处：第 ③ 步「第二次才收」的准入（时间线 ①③ 对照）；第 ⑦ 步的模式反转——同一个驱逐动作，两层是降级、三层是丢弃。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件 × 阶段</h2></div>
+<p class="sec-sub">竖看是 X 的一趟往返，横看是一个部件的完整职责。</p>
+<div class="quote">「把部件放回阶段里，才能看清谁在什么时候接力。」</div>
+<table class="grid">
+<tr><th>部件</th><th>驱逐#1</th><th>驱逐#2</th><th>读 miss</th><th>异步查</th><th>升舱</th><th>三层</th></tr>
+<tr><td>主缓存 EvictionHandler</td><td class="hot">交块给二级</td><td class="act">再交一次</td><td>—</td><td>—</td><td>—</td><td class="hot">直接丢弃</td></tr>
+<tr><td>占位条目</td><td class="hot">插 0B 标记</td><td class="act">发现已在</td><td class="act">DUMMY_HIT 判定</td><td>—</td><td class="act">被清掉</td><td>—</td></tr>
+<tr><td>CompressedSecondaryCache</td><td>—</td><td class="hot">LZ4 真收 3KB</td><td>—</td><td class="act">wait=false 查询</td><td class="hot">解压重建</td><td class="act">Insert no-op</td></tr>
+<tr><td>NVMe 层</td><td>—</td><td>—</td><td>—</td><td class="act">查序更后</td><td class="act">命中带升压缩层</td><td class="hot">读盘顺路 InsertSaved</td></tr>
+<tr><td>Promote / adapter</td><td>—</td><td>—</td><td class="act">先查主缓存</td><td class="act">WaitAll 收割</td><td class="hot">插回主缓存</td><td>—</td></tr>
+</table>
+<p><b>涌现属性：</b>「盘只碰一次」不属于任何单个部件——占位准入筛掉冷块、压缩层留住温块、异步查询把延迟藏进流水线，三者合起来才成立。三层模式下粮食改道（NVMe 喂压缩层），同一个接口跑出另一套生态位。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：二级之外还有什么</h2></div>
+<p class="sec-sub">拆掉任何一个外部依赖或默认值，前面看到的行为都会变。</p>
+<div class="quote">「环境属性 = 外在关系 + 依赖 + 失效后果。」</div>
+<div class="envcards">
+<div class="env"><b>压缩率因数据而异</b><span>8KB 文本块压到 3KB 很赚；filter / 已压缩的 blob 压不动——白付解压 CPU，这就是 do_not_compress_roles。</span></div>
+<div class="env"><b>NVMe 命中率</b><span>三层模式压缩层唯一的粮食是 NVMe 命中：NVMe 本身命中率低，压缩层就会饿着——先调 NVMe 容量。</span></div>
+<div class="env"><b>单向门</b><span>UpdateTieredCache 动态调参：compressed_secondary_ratio 调成 0 之后不能再开回来。</span></div>
+<div class="env"><b>句柄线程安全</b><span>AsyncLookupHandle 不是线程安全的：一个句柄一条线程，键的缓冲要活到 WaitAll。</span></div>
+<div class="env"><b>容量口径</b><span>三层容量都是 charge 口径——WBM 的记账（下一篇）按同一预算分摊，别当免费午餐。</span></div>
+<div class="env"><b>预热档位</b><span>kFlushAndCompaction 会把冷的压实输出按 BOTTOM 灌进去：500GB 全量压实一轮 = 灌一轮冷块。</span></div>
+</div>
+<p class="figcap">边界：本页主线是内存压缩层与 NVMe 层；「谁授权这些内存、超支找谁算账」是下一篇 CacheReservationManager 的事。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">能说清「第二次才收」和「三层反转」，才算真的懂二级缓存。</p>
+<div class="quote">「用自己的话能讲清楚，才算真的懂。」</div>
+<div id="quiz"></div>
+</section>
+
+<div class="summary">
+<h2>一页带走</h2>
+<p class="chant">驱逐降级、命中升舱；第二次才收，三层反转。</p>
+<p>· 主缓存驱逐不必然扔：SecondaryCache 让挤出的块有便宜容身处，miss 时反向升舱——Insert 是建议，Lookup 可异步。</p>
+<p>· 占位准入：第一次驱逐只插 0B 占位，第二次才 LZ4 真收（8KB→3KB）；只收反复被驱逐的温块，冷块路过不收。</p>
+<p>· CompressedSecondaryCache = DRAM 压缩层：2B tag + 压缩字节，内部就是 LRUCache；filter 不压、压不小放弃、解压失败销毁。</p>
+<p>· 三层 NewTieredCache：total_capacity 按 ratio=0.2 切分；ThreeQueue 下主缓存驱逐直接丢弃、压缩层 no-op，NVMe 靠读盘顺路 InsertSaved 预热。</p>
+<p>· 预热两把火：prepopulate 写路径灌缓存（压实块 BOTTOM）、预取读路径 8KB→256KB 翻倍双缓冲；压实的读 fill_cache=false 不洗缓存。</p>
+</div>
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+<script>
+var STEPS=[
+{d:0,t:"① 热块在主缓存",x:"块 X（8KB data block）读热，HasHit=true 住高优先池。此刻它在主缓存 64MB 里活得很好——直到容量压力把它推上驱逐名单。",k:"8KB / 高池"},
+{d:90,t:"② 驱逐#1：插占位",x:"主缓存淘汰 X 时回调 EvictionHandler，把块对象连同 helper 交给压缩层的 Insert——但这是「建议」：CompressedSecondaryCache 第一次只插一个 0 字节占位条目（MaybeInsertDummy），X 本体直接没了。占位是一张「这块刚被挤出」的登记卡。",k:"占位 0B"},
+{d:180,t:"③ 驱逐#2：真收",x:"X 被读过一次、回过主缓存，再次被挤出——这次占位已在：LZ4 把 8KB 压成 3KB（压不比原文小就放弃存原样），真收入库。「第二次才收」就是准入：只收反复被驱逐的温块，路过的冷块一概不收。",k:"真收 3KB"},
+{d:270,t:"④ 读 miss",x:"有人再来读 X：主缓存查无。对照时间线 ②：如果这时二级里只有占位，Lookup 查到 value==nullptr 的 0 字节条目，记一次 DUMMY_HIT——仍要读盘（这是整趟唯一一次盘 I/O），X 回主缓存。本演示走到真收之后，所以下一步有真命中。",k:"miss"},
+{d:360,t:"⑤ 异步查二级",x:"MultiGet 批量读不会站在原地等：StartAsyncLookup 先查主缓存，miss 且 helper 支持时向二级发起 wait=false 的查询，立刻带着 pending 句柄返回；调用方攒一批后 WaitAll 统一收割。句柄不是线程安全的——一个句柄一条线程，键的缓冲要活到 WaitAll。",k:"pending→hit"},
+{d:450,t:"⑥ 解压升舱",x:"二级真命中：create_cb 从 3KB 压缩字节重建 8KB 块对象，Promote 插回主缓存。两处细节：主缓存里躺着的占位先被 ProcessDummyResult 清掉；升舱换 without_secondary_compat 的 helper——刚上来的块不会被立刻又塞回二级。",k:"回主缓存"},
+{d:540,t:"⑦ 切三层：行为反转",x:"挂上 NVMe 层（NewTieredCache，total_capacity=24GB、ratio=0.2 → 压缩层 4.8GB）后准入自动切 ThreeQueue：主缓存驱逐直接丢弃（EvictionHandler 跳过）、压缩层 Insert 变 no-op。同一个驱逐动作，两层是降级、三层是丢弃——排障先分清自己处在哪种形态。",k:"驱逐→丢弃"},
+{d:630,t:"⑧ 读盘预热 NVMe",x:"三层的粮食全改道：NVMe 层吃「读盘顺路」——从 SST 读出的压缩块原样 InsertSaved，零再压缩；压缩层吃「NVMe 命中顺手带上」；主缓存吃 miss 插入与升舱。各层独立淘汰，没有自上而下的降级。",k:"NVMe +1 块"}];
+var CHIPS=[{k:"main",l:"主缓存"},{k:"comp",l:"压缩层"},{k:"nvm",l:"NVMe"},{k:"promote",l:"升舱"},{k:"warm",l:"预热"}];
+var PARTS={"iface":["upAsync"],"adapter":["upPromote","upDetail"],"helper":["tagBox"],"dummy":["dummyBox"],"comp":["realBox","tagBox"],"nvm":["nvmBox"],"tier":["threeBox","twoBox"],"main":["mainCache"],"evict":["evict2"],"tl":["r1","r2","r3","r4"]};
+var QUIZ=[
+{q:"为什么第一次被挤出时只插 0 字节占位、第二次才真收？",opts:["第一次来不及压缩","准入策略：只收反复被驱逐的温块——每 key 只读一次的冷块收进来是白占地方","防止主缓存立刻反悔"],a:1,exp:"占位条目是「这块刚被挤出」的登记卡；只有块再次被挤出（证明它温热）才值得花 CPU 压缩收留。对一次性的扫描负载，这个准入等于零收留。"},
+{q:"8KB 块 LZ4 压到 3KB，压缩层 64MB 能装多少个？相当于多大的主缓存？",opts:["约 8000 个，相当于 64MB","约 21000 个，按原块算 ≈168MB，约 2.6 倍主缓存","压不了这么多"],a:1,exp:"65536KB/3KB ≈ 21000 个块；按 8KB 原块折算 ≈168MB。多出来的容量全部来自 CPU——每次命中多付一次微秒级解压。filter 压不动，白付。"},
+{q:"三层模式（ThreeQueue）下，主缓存驱逐的块去哪？",opts:["降级进压缩层","直接丢弃——压缩层 Insert 是 no-op，压缩层的粮食只剩 NVMe 命中","排队等 NVMe 有空位"],a:1,exp:"这是两层和三层最大的行为反转（adapter.cc:139-140）：三层的 NVMe 靠读盘顺路 InsertSaved 喂饱，压缩层靠 NVMe 命中顺带——没有自上而下的降级链。"},
+{q:"NVMe 层存的字节和 SST 里的一样，为什么不重复压缩？",opts:["忘了实现","读盘顺路 InsertSaved 存的就是 SST 原生压缩块，本来就压好了，再压白烧 CPU","NVMe 不支持压缩"],a:1,exp:"这是三层设计最省的一笔：SST 里的块本来就是压缩的，落 NVMe 几乎只有一次写的代价。压缩层的 LZ4 是另一层职责——它压的是主缓存里的解压后对象。"},
+{q:"kFlushAndCompaction 预热档为什么把压实输出标成 BOTTOM 优先级？",opts:["压实块更重要要保护起来","压实的输出没人读过，是冷块——给最低优先级让它最先被挤，不配霸占缓存","BOTTOM 是高速池"],a:1,exp:"全量压实一轮会把大量冷块灌进缓存；BOTTOM 让它们可被挤但至少热一轮。工作集是「最近写入的数据」时用 kFlushOnly 就够（LOW）。"},
+{q:"压实的读为什么强制 fill_cache=false？",opts:["省解压 CPU","搬数据的后台任务不配占用前台热点——压实一路读会把缓存洗成冷水澡","压实用不到缓存"],a:1,exp:"读到的块既不进主缓存也不触发升舱。自己写扫描/导出工具时同样建议带上这个选项，否则一次全表扫就能把热块全部顶出去。"}];
+var WP=[[0,185,162],[76,185,162],[92,426,169],[176,426,169],[182,562,169],[262,562,169],[268,258,368],[352,258,368],[358,411,368],[442,411,368],[448,562,169],[532,562,169],[538,810,169],[638,810,169],[644,844,420],[720,844,420]];
+var WP2=[[0,140,65],[88,140,65],[92,362,65],[176,362,65],[182,584,65],[262,584,65],[268,833,65],[352,833,65],[358,833,65],[452,833,65],[458,362,65],[542,362,65],[548,140,65],[638,140,65],[644,140,65],[720,140,65]];
+var PERIOD=6000,basePeriod=PERIOD,PHASE_MAX=720,STEP_DUR=600;
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,stepIdx=-1,dots=[],ticking=false,chipEls={};
+var tierMode='two';
+function $(id){return document.getElementById(id);}
+function setText(id,s){var n=$(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setOp(id,v){var n=$(id);if(n)n.setAttribute('opacity',Math.max(0,Math.min(1,v)).toFixed(2));}
+function setAttr(id,k,v){var n=$(id);if(n)n.setAttribute(k,v);}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){t=clamp(t,0,1);return t*t*(3-2*t);}
+function ramp(th,a,b){return clamp((th-a)/((b-a)||1),0,1);}
+function win(pr,a,b){return clamp(ramp(pr,a,a+6)*(1-ramp(pr,b-6,b)),0,1);}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function lerpPts(pts,th){
+  if(th<=pts[0][0])return[pts[0][1],pts[0][2]];
+  for(var i=0;i<pts.length-1;i++){if(th<pts[i+1][0]){var t=smooth((th-pts[i][0])/(pts[i+1][0]-pts[i][0]));return[pts[i][1]+(pts[i+1][1]-pts[i][1])*t,pts[i][2]+(pts[i+1][2]-pts[i][2])*t];}}
+  return[pts[pts.length-1][1],pts[pts.length-1][2]];
+}
+function setChip(k,v){var n=chipEls[k];if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',/^(已|完成|命中|升舱|真收|回主|NVMe \+)/.test(v));n.classList.toggle('off',/^(待命|—|no-op)/.test(v));}
+function stageIdx(pr){var s=0;for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)s=i;}return s;}
+function pageRender(pr,si){
+  var three=tierMode==='three'||pr>=540;
+  setOp('mainCache',win(pr,0,90)+0.3);
+  setOp('evict2',three?1:0.35);
+  setOp('dummyBox',win(pr,90,180)+0.3);
+  setOp('realBox',win(pr,180,275)+0.3);
+  setOp('tagBox',win(pr,180,280)+0.3);
+  setOp('nvmBox',win(pr,540,720)+0.3);
+  setOp('upMiss',win(pr,270,360)+0.3);
+  setOp('upAsync',win(pr,360,455)+0.3);
+  setOp('upPromote',win(pr,450,545)+0.3);
+  setOp('upDetail',win(pr,450,545)+0.3);
+  setOp('twoBox',three?0.35:(win(pr,0,90)+0.3));
+  setOp('threeBox',three?1:0.35);
+  setOp('r1',win(pr,90,180)+0.3);
+  setOp('r2',win(pr,270,360)+0.3);
+  setOp('r3',win(pr,180,275)+0.3);
+  setOp('r4',win(pr,450,545)+0.3);
+  setText('roMode',three?'三层':'两层');
+  setText('roX',pr<90?'8KB 高池':(pr<180?'挤出 #1':(pr<270?'3KB 入库':(pr<360?'不在主缓存':(pr<450?'pending':(pr<540?'8KB 回主缓存':'读盘顺路'))))));
+  setText('roIO',pr<270?'0 次':(pr<360?'1 次（DUMMY_HIT 时）':'1 次（累计）'));
+  setChip('main',pr<90?'已住高池':(pr<270?'挤出':(pr<540?'miss':'常态服务')));
+  setChip('comp',pr<180?'待命':(pr<270?'真收 3KB':(three?'no-op':'守住 3KB')));
+  setChip('nvm',three?'读盘顺路 +1':'待命');
+  setChip('promote',pr<450?'待命':(pr<540?'升舱中':'完成'));
+  setChip('warm',pr<630?'待命':'NVMe 预热');
+}
+function render(th){
+  var pr=norm(th);
+  setText('roPhase',Math.round(pr)+'°');
+  var si=stageIdx(pr);if(mode==='step'&&stepIdx>=0)si=stepIdx;
+  setText('roStep',STEPS[si]?STEPS[si].t:'—');
+  setText('roKey',STEPS[si]?STEPS[si].k:'—');
+  pageRender(pr,si);
+  var p=lerpPts(WP,pr);setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));
+  var q=lerpPts(WP2,pr);setAttr('tok2','cx',q[0].toFixed(1));setAttr('tok2','cy',q[1].toFixed(1));
+}
+function tick(now){
+  ticking=false;
+  var dt=Math.min(50,now-last);last=now;
+  if(run&&mode==='auto')phase=(phase+dt/PERIOD*PHASE_MAX)%PHASE_MAX;
+  if(mode==='step'&&stepTo!==null){
+    stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);var p=stepElapsed/STEP_DUR,e=smooth(p);
+    phase=stepFrom+(stepTo-stepFrom)*e;if(p>=1){phase=stepTo;stepTo=null;}
+  }
+  render(phase);
+  if(run||stepTo!==null){ticking=true;requestAnimationFrame(tick);}
+}
+function wake(){if(ticking)return;ticking=true;last=performance.now();requestAnimationFrame(tick);}
+function setAuto(on){
+  mode='auto';run=on;stepTo=null;var b=$('engBtn');if(b)b.textContent=on?'暂停':'播放';
+  if(on){stepIdx=-1;dots.forEach(function(d){d.classList.remove('on');});
+  setText('stepT','自动运转模式');setText('stepX','点下方步骤点可切换到分步演示，随你点击定格。');wake();}
+}
+window.goStep=function(i){
+  stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+  var target=STEPS[stepIdx].d;
+  if(reduced||Math.abs(target-norm(phase))>180){phase=target;stepTo=null;}
+  else{stepFrom=phase;stepTo=target;stepElapsed=0;}
+  render(phase);wake();
+  var b=$('engBtn');if(b)b.textContent='继续自动运转';
+  dots.forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+  setText('stepT','第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t);
+  setText('stepX',STEPS[stepIdx].x);
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+var tierBtn=$('tierBtn');
+tierBtn.onclick=function(){tierMode=tierMode==='two'?'three':'two';tierBtn.textContent='模式：'+(tierMode==='two'?'两层':'三层');render(phase);};
+CHIPS.forEach(function(c){var box=$('stateChips');var s=document.createElement('span');s.className='chip';s.innerHTML=c.l+' <b>--</b>';box.appendChild(s);chipEls[c.k]=s;});
+var stepBar=$('stepBar');
+STEPS.forEach(function(s,n){var b=document.createElement('button');b.className='stepnode';b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+s.t+'</span>';b.onclick=function(){goStep(n);};stepBar.appendChild(b);dots.push(b);});
+var engBtn=$('engBtn');engBtn.textContent=run?'暂停':'播放';
+engBtn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+var spd=$('engSpd');
+if(spd){spd.oninput=function(){speed=parseFloat(spd.value);$('engSpdV').textContent=speed+'×';PERIOD=basePeriod/speed;};}
+document.querySelectorAll('.part').forEach(function(btn){btn.onclick=function(){var ids=(PARTS[btn.dataset.part]||[]);document.querySelectorAll('#eng .hl,#eng2 .hl').forEach(function(n){n.classList.remove('hl');});ids.forEach(function(id){var n=$(id);if(n)n.classList.add('hl');});};});
+var quizBox=$('quiz');QUIZ.forEach(function(q,n){var d=document.createElement('div');d.className='q';var html='<div class="qt">'+(n+1)+'. '+q.q+'</div>';q.opts.forEach(function(o,j){html+='<button class="opt" data-q="'+n+'" data-o="'+j+'">'+o+'</button>';});html+='<div class="exp"><b>答案：</b>'+q.opts[q.a]+'<br>'+q.exp+'</div>';d.innerHTML=html;quizBox.appendChild(d);});
+quizBox.querySelectorAll('.opt').forEach(function(b){b.onclick=function(){var q=QUIZ[+b.dataset.q];var box=b.closest('.q');if(box.classList.contains('done'))return;box.classList.add('done');b.classList.add(+b.dataset.o===q.a?'right':'wrong');box.querySelectorAll('.opt').forEach(function(o){if(+o.dataset.o===q.a)o.classList.add('right');});};});
+if(reduced){run=false;phase=0;render(0);engBtn.textContent='播放';}else{wake();}
+</script>
+</body>
+</html>

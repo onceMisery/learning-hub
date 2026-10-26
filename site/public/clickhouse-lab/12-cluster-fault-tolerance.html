@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>集群拓扑、复制与容错：坏一台之后发生什么 · ClickHouse 互动原理实验室</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#fff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:1000px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#fff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px;flex-wrap:wrap}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:38px 0 22px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:750px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#fff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:500;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:11.5px;fill:#3B3A34}
+.tn{font-size:12.5px;font-weight:500;fill:#1F1E1A}
+.tag{font-size:10px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:nowrap;overflow-x:auto;max-width:100%;padding-bottom:4px}
+.stepnode{flex:1;min-width:62px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px;flex-wrap:wrap}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+section{padding:34px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .arr{color:#C46A0A;font-weight:600}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.figcap b{color:#3B3A34;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:13.5px;table-layout:fixed}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 9px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+.env span,.env b,.part span,.figcap,.summary p,table.grid td{overflow-wrap:anywhere;word-break:break-word}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#scene [opacity],#scene2 [opacity],#scene3 [opacity]{transition:opacity .22s ease}
+#eng .hl,#eng2 .hl,#eng3 .hl{stroke:#D96C06 !important;stroke-width:2.2 !important}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+.stage circle{fill:#fff;stroke:#B4B2A9;stroke-width:1.4;transition:fill .18s,stroke .18s}
+.stage.on rect:first-of-type{fill:#FFF6E8;stroke:#C46A0A;stroke-width:2}
+.stage.done rect:first-of-type{fill:#EAF3DE;stroke:#639922}
+.stage.done circle{fill:#EAF3DE;stroke:#639922}
+.stage.on circle{fill:#EF9F27;stroke:#C46A0A;stroke-width:2}
+.stage text{font-size:10px;fill:#6B695F}
+.stage.on text{fill:#854F0B;font-weight:600}
+.subview{margin:8px 0 4px;background:#fff;border:1px dashed #D3D1C7;border-radius:10px;padding:8px 10px}
+.subview .viewtitle{font-size:12px;font-weight:600;color:#854F0B;margin-bottom:4px}
+@media (max-width:560px){.page{padding:0 12px 60px}.labbar{padding:8px 12px}.labbar .idx{width:100%;margin-left:0;text-align:right}.hero h1{font-size:24px}.sec-head h2{font-size:18px}.stepnode{min-width:54px}.stepnode .lab2{font-size:9px}}
+@media (prefers-reduced-motion: reduce){#scene [opacity],#scene2 [opacity],#scene3 [opacity]{transition:none}}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：集群拓扑、复制与容错：坏一台之后发生什么</a>
+  <span class="idx">第 13 / 13 章</span>
+</div>
+<div class="page">
+<header class="hero">
+<div class="kicker">DISTRIBUTED · 集群与容错</div>
+<h1>集群拓扑、复制与容错：坏一台之后发生什么</h1>
+<p>三片两副本 + 三节点 Keeper：关一个副本、关一个分片、关 Keeper 多数派、断网，分别会发生什么？这一章把分片、副本、Keeper、一致性放进同一张故障矩阵。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span><span class="mnode">② 静态分解</span><span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span><span class="mnode">⑤ 环境场景</span><span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 440" role="img" xmlns="http://www.w3.org/2000/svg"><defs>
+<marker id="aW" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aM" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#6B695F" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs><text x="500" y="28" font-size="18" fill="#1F1E1A" text-anchor="middle" font-weight="600">三片两副本 + Keeper：四种故障与恢复</text><text x="500" y="48" font-size="11.5" fill="#6B695F" text-anchor="middle">副本挂切副本；分片挂默认失败；Keeper 少数派停写；网络分区不脑裂</text><text x="976" y="24" font-size="10.5" fill="#C46A0A" text-anchor="end">橙色：运维/验证</text><text x="976" y="39" font-size="10.5" fill="#2F6FA8" text-anchor="end">蓝色：一致性</text><text x="976" y="54" font-size="10.5" fill="#E24B4A" text-anchor="end">红色：故障</text><g class="stage" id="s1"><rect x="20.0" y="76" width="111.25" height="142" rx="9" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/><text x="28.0" y="98" class="tn" text-anchor="start" font-size="12">拓扑</text><text x="28.0" y="118" class="tb" text-anchor="start" font-size="10.2">3 分片</text><text x="28.0" y="132" class="tb" text-anchor="start" font-size="10.2">每片 2 副本</text><text x="28.0" y="146" class="tb" text-anchor="start" font-size="10.2">Keeper×3</text><text x="28.0" y="160" class="tb" text-anchor="start" font-size="10.2">宏/路径</text><text x="28.0" y="209" class="tag" text-anchor="start" fill="#C46A0A">起点</text></g><path d="M131.25 147.0 L139.25 147.0" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><g class="stage" id="s2"><rect x="141.25" y="76" width="111.25" height="142" rx="9" fill="#fff" stroke="#D3D1C7" stroke-width="1.2"/><text x="149.25" y="98" class="tn" text-anchor="start" font-size="12">副本挂</text><text x="149.25" y="118" class="tb" text-anchor="start" font-size="10.2">查询切副本</text><text x="149.25" y="132" class="tb" text-anchor="start" font-size="10.2">写入切副本</text><text x="149.25" y="146" class="tb" text-anchor="start" font-size="10.2">副本追日志</text><text x="149.25" y="160" class="tb" text-anchor="start" font-size="10.2">quorum 可能不足</text><text x="149.25" y="209" class="tag" text-anchor="start" fill="#C46A0A">故障 1</text></g><path d="M252.5 147.0 L260.5 147.0" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><g class="stage" id="s3"><rect x="262.5" y="76" width="111.25" height="142" rx="9" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.2"/><text x="270.5" y="98" class="tn" text-anchor="start" font-size="12">分片挂</text><text x="270.5" y="118" class="tb" text-anchor="start" font-size="10.2">默认查询失败</text><text x="270.5" y="132" class="tb" text-anchor="start" font-size="10.2">skip=1 部分结果</text><text x="270.5" y="146" class="tb" text-anchor="start" font-size="10.2">写入积压</text><text x="270.5" y="160" class="tb" text-anchor="start" font-size="10.2">队列恢复</text><text x="270.5" y="209" class="tag" text-anchor="start" fill="#C46A0A">故障 2</text></g><path d="M373.75 147.0 L381.75 147.0" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><g class="stage" id="s4"><rect x="383.75" y="76" width="111.25" height="142" rx="9" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.2"/><text x="391.75" y="98" class="tn" text-anchor="start" font-size="12">Keeper 少数派</text><text x="391.75" y="118" class="tb" text-anchor="start" font-size="10.2">写停摆</text><text x="391.75" y="132" class="tb" text-anchor="start" font-size="10.2">已有数据可读</text><text x="391.75" y="146" class="tb" text-anchor="start" font-size="10.2">副本只读</text><text x="391.75" y="160" class="tb" text-anchor="start" font-size="10.2">恢复继续</text><text x="391.75" y="209" class="tag" text-anchor="start" fill="#C46A0A">故障 3</text></g><path d="M495.0 147.0 L503.0 147.0" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><g class="stage" id="s5"><rect x="505.0" y="76" width="111.25" height="142" rx="9" fill="#fff" stroke="#D3D1C7" stroke-width="1.2"/><text x="513.0" y="98" class="tn" text-anchor="start" font-size="12">网络分区</text><text x="513.0" y="118" class="tb" text-anchor="start" font-size="10.2">不脑裂</text><text x="513.0" y="132" class="tb" text-anchor="start" font-size="10.2">多数派可写</text><text x="513.0" y="146" class="tb" text-anchor="start" font-size="10.2">少数派只读</text><text x="513.0" y="160" class="tb" text-anchor="start" font-size="10.2">恢复追日志</text><text x="513.0" y="209" class="tag" text-anchor="start" fill="#C46A0A">故障 4</text></g><path d="M616.25 147.0 L624.25 147.0" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><g class="stage" id="s6"><rect x="626.25" y="76" width="111.25" height="142" rx="9" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/><text x="634.25" y="98" class="tn" text-anchor="start" font-size="12">一致性</text><text x="634.25" y="118" class="tb" text-anchor="start" font-size="10.2">异步</text><text x="634.25" y="132" class="tb" text-anchor="start" font-size="10.2">quorum</text><text x="634.25" y="146" class="tb" text-anchor="start" font-size="10.2">顺序一致</text><text x="634.25" y="160" class="tb" text-anchor="start" font-size="10.2">按业务选</text><text x="634.25" y="209" class="tag" text-anchor="start" fill="#C46A0A">取舍</text></g><path d="M737.5 147.0 L745.5 147.0" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><g class="stage" id="s7"><rect x="747.5" y="76" width="111.25" height="142" rx="9" fill="#fff" stroke="#D3D1C7" stroke-width="1.2"/><text x="755.5" y="98" class="tn" text-anchor="start" font-size="12">DDL</text><text x="755.5" y="118" class="tb" text-anchor="start" font-size="10.2">ON CLUSTER</text><text x="755.5" y="132" class="tb" text-anchor="start" font-size="10.2">Replicated 库</text><text x="755.5" y="146" class="tb" text-anchor="start" font-size="10.2">DDL 队列</text><text x="755.5" y="160" class="tb" text-anchor="start" font-size="10.2">超时/失败</text><text x="755.5" y="209" class="tag" text-anchor="start" fill="#C46A0A">运维</text></g><path d="M858.75 147.0 L866.75 147.0" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><g class="stage" id="s8"><rect x="868.75" y="76" width="111.25" height="142" rx="9" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/><text x="876.75" y="98" class="tn" text-anchor="start" font-size="12">演练</text><text x="876.75" y="118" class="tb" text-anchor="start" font-size="10.2">关副本</text><text x="876.75" y="132" class="tb" text-anchor="start" font-size="10.2">关分片</text><text x="876.75" y="146" class="tb" text-anchor="start" font-size="10.2">关 Keeper</text><text x="876.75" y="160" class="tb" text-anchor="start" font-size="10.2">看监控/恢复</text><text x="876.75" y="209" class="tag" text-anchor="start" fill="#C46A0A">验证</text></g><text x="20" y="244" font-size="12" fill="#C46A0A" font-weight="600">故障矩阵：四种故障，四种结果</text>
+<rect x="20" y="256" width="300" height="66" rx="8" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1"/>
+<text x="34" y="278" font-size="11.5" fill="#1F1E1A" font-weight="600">副本挂</text>
+<text x="34" y="296" font-size="10.5" fill="#6B695F">查询/写入切健康副本</text>
+<text x="34" y="312" font-size="10.5" fill="#C46A0A">恢复后追日志</text>
+<rect x="340" y="256" width="300" height="66" rx="8" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.1"/>
+<text x="354" y="278" font-size="11.5" fill="#1F1E1A" font-weight="600">分片挂</text>
+<text x="354" y="296" font-size="10.5" fill="#6B695F">默认查询失败</text>
+<text x="354" y="312" font-size="10.5" fill="#E24B4A">skip=1 返回部分结果</text>
+<rect x="660" y="256" width="320" height="66" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.1"/>
+<text x="674" y="278" font-size="11.5" fill="#1F1E1A" font-weight="600">Keeper 多数派丢</text>
+<text x="674" y="296" font-size="10.5" fill="#6B695F">写停摆；已有数据可读</text>
+<text x="674" y="312" font-size="10.5" fill="#2F6FA8">恢复多数派后继续</text>
+<rect x="20" y="334" width="960" height="56" rx="8" fill="#fff" stroke="#ECEAE2" stroke-width="1"/>
+<text x="34" y="356" font-size="11" fill="#3B3A34">读法：先判断故障在哪一层（副本/分片/Keeper），再决定是重试、跳过还是停写。</text>
+<text x="34" y="376" font-size="10.5" fill="#6B695F">口径：Settings.cpp:1649/2766/2803/2822/3243；Cluster.h:70；system.replicas / distribution_queue / distributed_ddl_queue。</text><circle id="tok" cx="75.6" cy="147.0" r="7" fill="#EF9F27" stroke="#D97E06" stroke-width="1.4"/></svg>
+<div class="subview">
+<div class="viewtitle">第二视图 · 一致性三档：异步、quorum、顺序一致</div>
+<svg id="eng2" viewBox="0 0 1000 210" role="img" xmlns="http://www.w3.org/2000/svg"><defs>
+<marker id="aW" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aM" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#6B695F" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs><rect x="18" y="14" width="964" height="182" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/><text x="34" y="38" font-size="13" fill="#1F1E1A" font-weight="600">一致性三档：异步、quorum、顺序一致</text><rect x="34" y="54" width="180" height="78" rx="6" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.1"/><text x="124.0" y="76" class="tn" text-anchor="middle" font-size="11.5">异步</text><text x="124.0" y="94" class="tag" text-anchor="middle">insert_quorum=0</text><text x="124.0" y="106" class="tag" text-anchor="middle">最快</text><text x="124.0" y="118" class="tag" text-anchor="middle">可能丢未复制</text><rect x="234" y="54" width="180" height="78" rx="6" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1"/><text x="324.0" y="76" class="tn" text-anchor="middle" font-size="11.5">quorum</text><text x="324.0" y="94" class="tag" text-anchor="middle">=2</text><text x="324.0" y="106" class="tag" text-anchor="middle">至少 2 副本</text><text x="324.0" y="118" class="tag" text-anchor="middle">副本不足失败</text><rect x="434" y="54" width="180" height="78" rx="6" fill="#EAF3DE" stroke="#639922" stroke-width="1.1"/><text x="524.0" y="76" class="tn" text-anchor="middle" font-size="11.5">顺序一致</text><text x="524.0" y="94" class="tag" text-anchor="middle">quorum=2</text><text x="524.0" y="106" class="tag" text-anchor="middle">parallel=0</text><text x="524.0" y="118" class="tag" text-anchor="middle">select_seq=1</text><rect x="634" y="54" width="180" height="78" rx="6" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.1"/><text x="724.0" y="76" class="tn" text-anchor="middle" font-size="11.5">代价</text><text x="724.0" y="94" class="tag" text-anchor="middle">写入串行化</text><text x="724.0" y="106" class="tag" text-anchor="middle">吞吐下降</text><text x="724.0" y="118" class="tag" text-anchor="middle">换写后读</text><rect x="834" y="54" width="134" height="78" rx="6" fill="#fff" stroke="#D3D1C7" stroke-width="1.1"/><text x="901.0" y="76" class="tn" text-anchor="middle" font-size="11.5">选择</text><text x="901.0" y="94" class="tag" text-anchor="middle">按业务</text><path d="M214 86 L232 86" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><path d="M414 86 L432 86" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><path d="M614 86 L632 86" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><path d="M814 86 L832 86" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><text x="34" y="154" class="tb" text-anchor="start" fill="#3B3A34" font-size="10.8">读法：默认异步；不能丢已确认数据用 quorum；写完立刻读用顺序一致。</text><text x="34" y="172" class="tb" text-anchor="start" fill="#3B3A34" font-size="10.8">insert_quorum_parallel 默认 true，与 select_sequential_consistency 不兼容。</text><circle id="tok2" cx="109" cy="142" r="6" fill="#639922" stroke="#4C7A1A" stroke-width="1.4"/></svg>
+</div>
+</div>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.5" max="2" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm">默认 ≈ 5.6 秒 / 轮</span>
+</div>
+<div class="readout">
+<span class="ro">进度 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">读数 <b id="roKey">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav"><button class="btn" onclick="prevStep()">‹ 上一步</button><button class="btn warn" onclick="nextStep()">下一步 ›</button></span>
+</div>
+<p class="figcap">相位 0° = 拓扑，630° = 故障演练；橙色令牌沿故障/恢复路径移动。<br>口径：ClickHouse 26.11.1.1-testing；默认值见 Settings.cpp:1649/2766-2838；系统表见 system.replicas/distribution_queue/distributed_ddl_queue。</p>
+</div>
+
+<section><div class="sec-head"><span class="sec-num">1</span><h2>表象观察：四个实验，四个结果</h2></div>
+<p class="sec-sub">先别重启；先判断故障在哪一层。</p>
+<div class="quote">「副本挂切副本；分片挂默认失败；Keeper 少数派停写；分区不脑裂。」</div>
+<div class="flow"><span class="node">客户端</span><span class="arr">→</span><span class="node box">Distributed</span><span class="arr">→</span><span class="node box">shard/replica</span><span class="arr">→</span><span class="node">Keeper</span></div>
+<p>四层各管各的：Distributed 路由，ReplicatedMergeTree 副本，Keeper 日志，Replicated 库 DDL。</p>
+</section>
+<section><div class="sec-head"><span class="sec-num">2</span><h2>静态分解：分片、副本、Keeper 数</h2></div>
+<table class="grid"><tr><th>对象</th><th>解决什么</th><th>数量建议</th><th>默认/注意</th></tr>
+<tr><td>分片</td><td>容量/写入</td><td>按单机容量估</td><td>分片键避免倾斜</td></tr>
+<tr><td>副本</td><td>可用性/读扩展</td><td>2–3</td><td>每个副本一份数据</td></tr>
+<tr><td>Keeper</td><td>协调/日志</td><td>3 或 5</td><td>奇数、独立磁盘</td></tr>
+<tr><td>internal_replication</td><td>写入副本策略</td><td>底层复制表设 true</td><td>默认 false</td></tr></table>
+<p class="hint">Keeper 数和副本数独立；3 副本不等于 3 Keeper。</p>
+</section>
+<section><div class="sec-head"><span class="sec-num">3</span><h2>动态分析：故障矩阵</h2></div>
+<table class="grid"><tr><th>故障</th><th>查询</th><th>写入</th><th>恢复</th></tr>
+<tr><td>一个副本</td><td>切健康副本</td><td>切健康副本/quorum 可能不足</td><td>追日志</td></tr>
+<tr><td>整个分片</td><td>默认失败/可跳过</td><td>积压/失败</td><td>队列+副本追赶</td></tr>
+<tr><td>Keeper 少数派</td><td>已有数据可读</td><td>停摆</td><td>多数派恢复</td></tr>
+<tr><td>网络分区</td><td>多数派可读</td><td>只有多数派能写</td><td>少数派追日志</td></tr></table>
+<p>故障时先看 system.replicas / distribution_queue / distributed_ddl_queue。</p>
+</section>
+<section><div class="sec-head"><span class="sec-num">4</span><h2>动静融合：一致性三档</h2></div>
+<table class="grid"><tr><th>档位</th><th>设置</th><th>保证</th><th>代价</th></tr>
+<tr><td>异步</td><td>insert_quorum=0</td><td>最终一致</td><td>可能丢未复制</td></tr>
+<tr><td>quorum</td><td>=2</td><td>至少 2 副本确认</td><td>慢/副本不足失败</td></tr>
+<tr><td>顺序一致</td><td>quorum=2 + parallel=0 + select_seq=1</td><td>写后读</td><td>写入串行化</td></tr></table>
+<p class="hint">insert_quorum_parallel 默认 true；与 select_sequential_consistency 不兼容。</p>
+</section>
+<section><div class="sec-head"><span class="sec-num">5</span><h2>环境场景：DDL、监控与演练</h2></div>
+<div class="envcards">
+<div class="env"><b>ON CLUSTER</b><span>写 Keeper DDL 日志；distributed_ddl_task_timeout=180s。</span></div>
+<div class="env"><b>Replicated 数据库</b><span>DDL 自动复制；适合库级统一管理。</span></div>
+<div class="env"><b>system.clusters</b><span>看拓扑/副本/权重。</span></div>
+<div class="env"><b>system.replicas</b><span>is_readonly/absolute_delay/queue_size。</span></div>
+<div class="env"><b>system.distribution_queue</b><span>写入积压/错误/阻塞。</span></div>
+<div class="env"><b>演练</b><span>关副本/分片/Keeper，验证监控和恢复。</span></div>
+</div>
+</section>
+<section><div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div><div id="quiz"></div></section>
+
+<div class="summary">
+<h2>一页带走</h2>
+<p class="chant">四层：Distributed 路由，ReplicatedMergeTree 副本，Keeper 日志，Replicated 库 DDL。</p>
+<p>· 四层：Distributed 路由，ReplicatedMergeTree 副本，Keeper 日志，Replicated 库 DDL。</p>
+<p>· 副本挂切副本；分片挂默认失败/可跳过；Keeper 少数派停写；分区不脑裂。</p>
+<p>· 一致性三档：异步/quorum/顺序一致，按业务选。</p>
+<p>· 拓扑：分片解决容量，副本解决可用性，Keeper 用奇数独立部署。</p>
+<p>· 容错靠演练，不靠配置。</p>
+</div>
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+<script>
+var STEPS=[{"d": 0, "t": "拓扑", "x": "3 分片 × 2 副本 + 3 Keeper；宏/路径必须每节点正确。", "k": "3×2"}, {"d": 90, "t": "副本挂", "x": "查询/写入切同分片健康副本；恢复后追日志。", "k": "1 副本"}, {"d": 180, "t": "分片挂", "x": "默认查询失败；skip_unavailable_shards=1 返回部分结果。", "k": "2/3"}, {"d": 270, "t": "Keeper 少数派", "x": "没有多数派，写停摆；已有数据可读。", "k": "只读"}, {"d": 360, "t": "网络分区", "x": "多数派可写，少数派只读；不会两个分区各自写。", "k": "CP"}, {"d": 450, "t": "一致性", "x": "异步/quorum/顺序一致，按业务选，不要默认最强。", "k": "取舍"}, {"d": 540, "t": "DDL", "x": "ON CLUSTER / Replicated 库；看 distributed_ddl_queue。", "k": "队列"}, {"d": 630, "t": "演练", "x": "关副本/分片/Keeper，看监控和恢复；容错是演练出来的。", "k": "验证"}];
+var CHIPS=[{"k": "replicas", "l": "副本"}, {"k": "shards", "l": "分片"}, {"k": "keeper", "l": "Keeper"}, {"k": "quorum", "l": "quorum"}, {"k": "lag", "l": "延迟"}];
+var PARTS={"topo": ["s1"], "failure": ["s2", "s3", "s4", "s5"], "consistency": ["s6"], "ops": ["s7", "s8"]};
+var QUIZ=[{"q": "三片两副本，关掉一个副本，查询会怎样？", "opts": ["一定失败", "切到同分片另一个副本", "返回空结果"], "a": 1, "exp": "连接池/load_balancing 会选健康副本；internal_replication=true 时写入也切。"}, {"q": "关掉整个分片，默认查询会怎样？", "opts": ["自动跳过", "失败（skip_unavailable_shards=false）", "只返回该分片"], "a": 1, "exp": "默认正确优先；开 skip=1 才会跳过并返回部分结果。"}, {"q": "Keeper 失去多数派，ClickHouse 还能写吗？", "opts": ["能，写本地", "不能，写停摆", "能，写 Keeper 少数派"], "a": 1, "exp": "没有多数派无法 commit；已有数据可读，副本只读。"}, {"q": "网络分区会不会脑裂？", "opts": ["会，两边都写成功", "不会，只有多数派能写", "取决于磁盘"], "a": 1, "exp": "Keeper 多数派决定谁能 commit；少数派写失败/只读。"}, {"q": "insert_quorum=2 能保证三副本都不丢吗？", "opts": ["能", "不能，只保证至少 2 个确认", "只在顺序一致时能"], "a": 1, "exp": "quorum 只保证 N 个副本确认；第三个副本仍可能落后。"}];
+var TOK=[[75.625, 236], [196.875, 147.0], [318.125, 147.0], [439.375, 147.0], [560.625, 147.0], [681.875, 147.0], [803.125, 147.0], [924.375, 147.0]];
+var TOK2=[[109, 130], [279, 130], [479, 130], [679, 130], [879, 130], [879, 130], [679, 130], [479, 130]];
+
+var PERIOD=5600, PHASE_MAX=720, STEP_DUR=600;
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto', run=!reduced, speed=1, phase=0, last=performance.now();
+var stepFrom=0, stepTo=null, stepElapsed=0, stepIdx=-1, dots=[], ticking=false;
+function $(id){return document.getElementById(id);}
+function setText(id,s){var n=$(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setOp(id,v){var n=$(id);if(n)n.setAttribute('opacity',Math.max(0,Math.min(1,v)).toFixed(2));}
+function setW(id,v){var n=$(id);if(n)n.setAttribute('width',Math.max(0,v).toFixed(1));}
+function setAttr(id,k,v){var n=$(id);if(n)n.setAttribute(k,v);}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){t=clamp(t,0,1);return t*t*(3-2*t);}
+function ramp(x,a,b){return clamp((x-a)/(b-a),0,1);}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function setChip(k,v){var n=chipEls[k];if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',/^(开|是|已|命中|完成|一致|通过|留下|已读|已加密|已解密|写入|可读|生效|追平|选中|返回)/.test(v));n.classList.toggle('off',/^(关|否|待命|—|不|跳过|未|失败|阻塞|只读)/.test(v));}
+function stageAt(th){return clamp(Math.floor(th/(PHASE_MAX/STEPS.length)),0,STEPS.length-1);}
+function lerpPts(pts,th){var i=stageAt(th),a=pts[Math.min(i,pts.length-1)],b=pts[Math.min(i+1,pts.length-1)];var t=smooth((th%(PHASE_MAX/STEPS.length))/(PHASE_MAX/STEPS.length));return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t];}
+function render(th){
+  var pr=norm(th);
+  setText('roPhase',Math.round(pr)+'°');
+  var si=stageAt(pr);
+  if(mode==='step'&&stepIdx>=0)si=stepIdx;
+  setText('roStep',STEPS[si]?STEPS[si].t:'—');
+  setText('roKey',STEPS[si]?STEPS[si].k:'—');
+  document.querySelectorAll('#eng .stage,#eng2 .stage,#eng3 .stage').forEach(function(n,i){});
+  document.querySelectorAll('#eng .stage').forEach(function(n,i){n.classList.toggle('on',i===si);n.classList.toggle('done',i<si);});
+  if(typeof TOK!=='undefined'&&TOK.length){var p=lerpPts(TOK,pr);setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));}
+  if(typeof TOK2!=='undefined'&&TOK2.length){var q=lerpPts(TOK2,pr);setAttr('tok2','cx',q[0].toFixed(1));setAttr('tok2','cy',q[1].toFixed(1));}
+  pageRender(pr,si);
+}
+function tick(now){
+  ticking=false;
+  var dt=Math.min(50,now-last);last=now;
+  if(run&&mode==='auto')phase=(phase+dt/PERIOD*PHASE_MAX)%PHASE_MAX;
+  if(mode==='step'&&stepTo!==null){
+    stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);var p=stepElapsed/STEP_DUR,e=smooth(p);
+    phase=stepFrom+(stepTo-stepFrom)*e;if(p>=1){phase=stepTo;stepTo=null;}
+  }
+  render(phase);
+  if(run||stepTo!==null){ticking=true;requestAnimationFrame(tick);}
+}
+function wake(){if(ticking)return;ticking=true;last=performance.now();requestAnimationFrame(tick);}
+function setAuto(on){
+  mode='auto';run=on;stepTo=null;var b=$('engBtn');if(b)b.textContent=on?'暂停':'播放';
+  if(on){stepIdx=-1;dots.forEach(function(d){d.classList.remove('on');});
+  setText('stepT','自动运转模式');setText('stepX','点下方步骤点可切换到分步演示，随你点击定格。');wake();}
+}
+window.goStep=function(i){
+  stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+  var target=STEPS[stepIdx].d;
+  if(reduced||Math.abs(target-norm(phase))>PHASE_MAX/2){phase=target;stepTo=null;}
+  else{stepFrom=phase;stepTo=target;stepElapsed=0;}
+  render(phase);wake();
+  var b=$('engBtn');if(b)b.textContent='继续自动运转';
+  dots.forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+  setText('stepT','第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t);
+  setText('stepX',STEPS[stepIdx].x);
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+var chipEls={};CHIPS.forEach(function(c){var box=$('stateChips');var s=document.createElement('span');s.className='chip';s.innerHTML=c.l+' <b>--</b>';box.appendChild(s);chipEls[c.k]=s;});
+var stepBar=$('stepBar');
+STEPS.forEach(function(s,n){var b=document.createElement('button');b.className='stepnode';b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+s.t+'</span>';b.onclick=function(){goStep(n);};stepBar.appendChild(b);dots.push(b);});
+var engBtn=$('engBtn');engBtn.textContent=run?'暂停':'播放';
+engBtn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+var spd=$('engSpd');
+if(spd){spd.oninput=function(){speed=parseFloat(spd.value);$('engSpdV').textContent=speed+'×';PERIOD=5600/speed;};}
+document.querySelectorAll('.part').forEach(function(btn){btn.onclick=function(){var ids=(PARTS[btn.dataset.part]||[]);document.querySelectorAll('#eng .hl,#eng2 .hl,#eng3 .hl').forEach(function(n){n.classList.remove('hl');});ids.forEach(function(id){var n=$(id);if(n)n.classList.add('hl');});};});
+var quizBox=$('quiz');QUIZ.forEach(function(q,n){var d=document.createElement('div');d.className='q';var html='<div class="qt">'+(n+1)+'. '+q.q+'</div>';q.opts.forEach(function(o,j){html+='<button class="opt" data-q="'+n+'" data-o="'+j+'">'+o+'</button>';});html+='<div class="exp"><b>答案：</b>'+q.opts[q.a]+'<br>'+q.exp+'</div>';d.innerHTML=html;quizBox.appendChild(d);});
+quizBox.querySelectorAll('.opt').forEach(function(b){b.onclick=function(){var q=QUIZ[+b.dataset.q];var box=b.closest('.q');if(box.classList.contains('done'))return;box.classList.add('done');b.classList.add(+b.dataset.o===q.a?'right':'wrong');box.querySelectorAll('.opt').forEach(function(o){if(+o.dataset.o===q.a)o.classList.add('right');});};});
+if(reduced){run=false;phase=0;render(0);engBtn.textContent='播放';}else{wake();}
+
+
+function pageRender(pr,si){
+  var replica=pr>=90, shard=pr>=180, keeper=pr>=270, part=pr>=360, cons=pr>=450;
+  setChip('replicas',replica?'1 挂':'2/2');
+  setChip('shards',shard?'2/3':'3/3');
+  setChip('keeper',keeper?'少数派':'3/3');
+  setChip('quorum',cons?'可选':'—');
+  setChip('lag',pr>=630?'已恢复':'—');
+  setOp('tok2',ramp(pr,430,460)*(1-ramp(pr,690,715)));
+}
+
+</script>
+</body>
+</html>

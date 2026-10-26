@@ -31,6 +31,8 @@
 | [数据湖](tracks/parquet/) | 已发布 | 8 篇 Parquet 格式剖析 + 8 章互动实验室 + 8 张静态图 + 8 张动图 | Apache Parquet Format 2.15 · Thrift · Dremel · Variant |
 | [分布式事务](tracks/seata/) | 已发布 | 16 篇 Seata 源码剖析 + 13 章互动实验室 + 15 张原理图 | Apache Seata 2.8.0 · AT/TCC/Saga/XA · Raft |
 | [Agent 开发](tracks/agent/) | 已发布 | 11 篇工程实践教程 + 10 章互动实验室 + 31 张原理图 | MCP · 上下文工程 · RAG · Coding Agent · 事件驱动 · 评估与治理 · 后训练边界 · 高频 23 问 |
+| [分析引擎](tracks/clickhouse/) | 已发布 | 13 篇 ClickHouse 源码剖析 + 13 章互动实验室 + 13 张原理图 | ClickHouse 26.11 · MergeTree · 向量化执行 · 复制与 Keeper |
+| [存储引擎](tracks/rocksdb/) | 已发布 | 12 篇 RocksDB 源码剖析 + 12 章互动实验室 + 12 张原理图 | RocksDB 11.13.0 · LSM-Tree · WAL · SST · 压实 · Blob · 缓存 |
 | [Go](tracks/golang/) | 规划中 | — | — |
 | [Python](tracks/python/) | 规划中 | — | — |
 

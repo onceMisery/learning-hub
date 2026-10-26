@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>分区器与令牌环 · Cassandra 互动原理实验室 第 6 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:960px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:720px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:600;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:12px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:600;fill:#1F1E1A}
+.tag{font-size:10.5px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:66px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .outbranch{display:inline-flex;flex-direction:column;align-items:flex-start;gap:6px}
+.flow .outline{display:inline-flex;align-items:center;gap:8px}
+.flow .flownote{font-size:12px;color:#6B695F;font-weight:600;margin-right:4px}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 10px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+#eng [opacity]{transition:opacity .28s ease}
+#eng2 [opacity]{transition:opacity .28s ease}
+@media (prefers-reduced-motion: reduce){#eng [opacity],#eng2 [opacity]{transition:none}}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:8px 4px 0;font-size:12px;color:#6B695F}
+.legend i{display:inline-block;width:18px;height:0;border-top:2px solid #C46A0A;vertical-align:middle;margin-right:5px}
+.legend i.g{border-color:#639922}
+.legend i.r{border-color:#E24B4A}
+.legend i.b{border-color:#2F6FA8}
+.legend i.dash{border-top-style:dashed}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：分区器与令牌环</a>
+  <span class="idx">第 6 / 15 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · PARTITIONER &amp; TOKEN RING</div>
+<h1>一行数据摊给谁</h1>
+<p>分区键 "47" 经 murmur3 变成 64 位 token，落到哈希环上一个点；指针从它顺时针扫过 node2、node4、node5——这趟扫描的收获，就是这行数据的全部副本名单。再看看 id=48 和 vnode 视图，理解「分区内有序、分区间无序」的代价与回报。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span>
+<span class="mnode">② 静态分解</span>
+<span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span>
+<span class="mnode">⑤ 环境场景</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 560" role="img" xmlns="http://www.w3.org/2000/svg"><title>一行数据摊给谁</title><defs><marker id="rA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="rG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker></defs><text class="th" x="500" y="24" text-anchor="middle">从分区键到副本名单：哈希落环，顺时针数 RF=3 个</text><text class="ts" x="500" y="44" text-anchor="middle">左：四步流水线；中：令牌环与扫描指针；右：id=48 对照——哈希打散到什么程度，一比就明白</text><text x="976" y="24" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">橙色：分区键 / 哈希</text><text x="976" y="40" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色：token / 副本落位</text><text x="976" y="56" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">灰虚线：跨零点回环</text><g id="pipeBox"><rect x="28" y="76" width="270" height="360" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/><text x="42" y="96" font-size="11.5" fill="#6B695F" text-anchor="start" font-weight="400">四步流水线（Murmur3Partitioner）</text></g><g id="pKey"><rect x="44" y="110" width="238" height="56" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="163" y="132" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">① 分区键字节串</text><text x="163" y="152" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">"47" = 0x34 0x37</text></g><path id="pa1" d="M163 166 L163 186" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#rA)"/><g id="pHash"><rect x="44" y="192" width="238" height="64" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="163" y="214" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">② MurmurHash3 x64 128</text><text x="163" y="234" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">种子 0 · :404-414</text><text id="hashOut" x="163" y="250" font-size="10.5" fill="#3B3A34" text-anchor="middle" font-weight="400">hash[0] = --</text></g><path id="pa2" d="M163 256 L163 276" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#rA)"/><g id="pTok"><rect x="44" y="282" width="238" height="60" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="163" y="304" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">③ token = hash[0]</text><text id="tokOut" x="163" y="324" font-size="10.5" fill="#3B3A34" text-anchor="middle" font-weight="400">LongToken（64 位有符号）</text></g><path id="pa3" d="M163 342 L163 362" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#rG)"/><g id="pDk"><rect x="44" y="368" width="238" height="56" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="163" y="390" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">④ DecoratedKey</text><text x="163" y="410" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">原始键 + token 打包（:102-105）</text></g><g id="ringBox"><rect x="318" y="76" width="400" height="360" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/><text x="518" y="96" font-size="11.5" fill="#6B695F" text-anchor="middle" font-weight="400">令牌环（-2^63 顶点起顺时针 → +2^63 回顶）</text><circle cx="518" cy="266" r="126" fill="none" stroke="#3B3A34" stroke-width="1.6"/><circle id="rN5" cx="508.5" cy="141.2" r="26" fill="#ffffff" stroke="#639922" stroke-width="1.4"/><text x="508.5" y="137" font-size="11" fill="#1F1E1A" text-anchor="middle" font-weight="600">node5</text><text x="508.5" y="151" font-size="9" fill="#6B695F" text-anchor="middle">-22.1</text><circle id="rN2" cx="457.2" cy="371.4" r="26" fill="#ffffff" stroke="#639922" stroke-width="1.4"/><text x="457.2" y="367" font-size="11" fill="#1F1E1A" text-anchor="middle" font-weight="600">node2</text><text x="457.2" y="381" font-size="9" fill="#6B695F" text-anchor="middle">+3.7</text><circle id="rN4" cx="396.4" cy="251.3" r="26" fill="#ffffff" stroke="#639922" stroke-width="1.4"/><text x="396.4" y="247" font-size="11" fill="#1F1E1A" text-anchor="middle" font-weight="600">node4</text><text x="396.4" y="261" font-size="9" fill="#6B695F" text-anchor="middle">+11.2</text><circle id="rN1" cx="474.6" cy="147" r="26" fill="#ffffff" stroke="#B4B2A9" stroke-width="1.4"/><text x="474.6" y="143" font-size="11" fill="#6B695F" text-anchor="middle" font-weight="600">node1</text><text x="474.6" y="157" font-size="9" fill="#6B695F" text-anchor="middle">+18.9</text><circle id="t47" cx="639.6" cy="290.6" r="7" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/><text id="t47L" x="656" y="288" font-size="10.5" fill="#C46A0A" text-anchor="start" font-weight="600">token(47)=-9.0</text><line id="t47R" x1="518" y1="266" x2="632.9" y2="288.6" stroke="#C46A0A" stroke-width="1" stroke-dasharray="4 3"/><g id="b1"><circle cx="471" cy="392" r="10" fill="#639922"/><text x="471" y="396" font-size="10" fill="#ffffff" text-anchor="middle" font-weight="600">1</text></g><g id="b2"><circle cx="404" cy="282" r="10" fill="#639922"/><text x="404" y="286" font-size="10" fill="#ffffff" text-anchor="middle" font-weight="600">2</text></g><g id="b3"><circle cx="493" cy="128" r="10" fill="#639922"/><text x="493" y="132" font-size="10" fill="#ffffff" text-anchor="middle" font-weight="600">3</text></g><line id="ptr" x1="518" y1="266" x2="639" y2="291" stroke="#639922" stroke-width="2.4"/><circle id="ptrHub" cx="518" cy="266" r="5" fill="#639922"/><text id="ringNote" x="518" y="424" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">等待 token 落环…</text></g><g id="cmpBox"><rect x="738" y="76" width="238" height="360" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/><text x="857" y="96" font-size="11.5" fill="#6B695F" text-anchor="middle" font-weight="400">对照组：换个分区键</text><text id="k48" x="857" y="130" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">id=48 → token=+7.2</text><text x="857" y="152" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">落在 node2(+3.7) 与 node4(+11.2) 之间</text><g id="list48"><rect x="762" y="172" width="190" height="120" rx="8" fill="#ffffff" stroke="#ECEAE2" stroke-width="1.2"/><text x="857" y="194" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">顺时针数 3 个：</text><text x="857" y="218" font-size="11.5" fill="#3B3A34" text-anchor="middle" font-weight="400">① node4（+11.2）</text><text x="857" y="240" font-size="11.5" fill="#3B3A34" text-anchor="middle" font-weight="400">② node1（+18.9）</text><text x="857" y="262" font-size="11.5" fill="#3B3A34" text-anchor="middle" font-weight="400">③ node5（跨零点）</text><text x="857" y="284" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">与 id=47 的名单差了两台</text></g><text x="857" y="320" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">雪崩性：47 与 48 只差一个字</text><text x="857" y="338" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">摊位却毫无关联——均匀不靠键，靠哈希</text><text x="857" y="376" font-size="11" fill="#1F1E1A" text-anchor="middle" font-weight="600">SimpleStrategy：全环顺时针</text><text x="857" y="396" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">SimpleStrategy.java:82-89</text><text x="857" y="418" font-size="11" fill="#1F1E1A" text-anchor="middle" font-weight="600">NTS：每 DC 独立 + rack 均摊</text><text x="857" y="436" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">NetworkTopologyStrategy.java:217-221</text></g><g id="vnBox"><rect x="28" y="448" width="948" height="66" rx="8" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.2"/><text x="44" y="468" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">vnode 视图：每节点 16 段 × 5 = 80 段（yaml:42）——node4 挂掉，16 段由不同顺时针邻居接手</text><g id="vnBar"></g><text id="vnNote" x="44" y="506" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">每格一个 token 段；同色 = 同节点。智能分配：allocate_tokens_for_local_replication_factor=3（yaml:59）→ BootStrapper.allocateTokens 挑负载最均衡的 16 个位。</text></g><text x="28" y="532" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">读法：指针从 token 顺时针扫，扫过的前 3 个绿圈就是副本名单；对照区证明「相邻的键摊位毫不相干」。</text><text x="28" y="548" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">口径：apache/cassandra master（7.0-SNAPSHOT）；环上数值为示意（单位 10^18），机制与源码一致；7.0 的环账本在 ClusterMetadata.tokenMap。</text><circle id="tokFly" cx="-20" cy="-20" r="7" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/></svg>
+<svg id="eng2" viewBox="0 0 1000 180" role="img" xmlns="http://www.w3.org/2000/svg"><text x="40" y="26" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">相位总线：自动与分步共用同一进度</text><text x="960" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">0° → 720°</text><rect id="seg0" x="40" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="89.1" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">取键</text><text x="89.1" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">0°</text><rect id="seg1" x="142.2" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="191.3" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">哈希</text><text x="191.3" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">80°</text><rect id="seg2" x="244.4" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="293.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">token</text><text x="293.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">200°</text><rect id="seg3" x="346.7" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="395.8" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">落环</text><text x="395.8" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">280°</text><rect id="seg4" x="448.9" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="498" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">扫①</text><text x="498" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">340°</text><rect id="seg5" x="551.1" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="600.2" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">扫②③</text><text x="600.2" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">400°</text><rect id="seg6" x="653.3" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="702.4" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">名单</text><text x="702.4" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">460°</text><rect id="seg7" x="755.6" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="804.7" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">对照</text><text x="804.7" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">540°</text><rect id="seg8" x="857.8" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="906.9" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">vnodes</text><text x="906.9" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">620°</text><line id="subNow" x1="40" y1="44" x2="40" y2="126" stroke="#C46A0A" stroke-width="2"/><text x="500" y="152" font-size="11" fill="#6B695F" text-anchor="middle" font-weight="400">每格是一个可定格的关键时刻；分步时所有视图冻结到同一相位。</text></svg>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 轮 / 5.6 秒</span>
+</div>
+
+<div class="readout">
+<span class="ro">相位 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">当前键 <b id="roKey">id=47</b></span>
+<span class="ro">token <b id="roTok">--</b></span>
+<span class="ro">已选副本 <b id="roRep">0 / 3</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav">
+<button class="btn" onclick="prevStep()">‹ 上一步</button>
+<button class="btn warn" onclick="nextStep()">下一步 ›</button>
+</span>
+</div>
+<div class="legend"><span><i></i>分区键 / 哈希</span><span><i class="g"></i>token / 副本 / 指针</span><span><i class="b"></i>对照与策略</span><span><i class="dash"></i>跨零点回环</span></div>
+<p class="figcap">进度 0° = 取出分区键，720° = vnode 均匀性复盘；环上 token 数值为示意（单位 10^18），计算规则与源码一致。<br>口径：apache/cassandra master（7.0-SNAPSHOT）；演示集群 5 节点、RF=3、SimpleStrategy；id=47 副本 {node2, node4, node5} 与全轨道一致。</p>
+</div>
+</div>
+
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：先把它当黑盒</h2></div>
+<p class="sec-sub">不急着拆哈希，只看数据摊位表现出的规律。</p>
+<div class="quote"><i>先把系统当黑盒：只看输入、输出和边界，不急着解释内部。</i></div>
+
+<p>站在业务的角度，Cassandra 的摊位规则表现出三个事实：<b>按分区键查，毫秒出</b>；<b>按普通列查，被拒或全表扫</b>；<b>换一行数据，副本名单完全换一批机器</b>。</p>
+<div class="flow">
+<span class="node">分区键 id=47（输入）</span><span class="arr">→</span>
+<span class="node box">分区器 + 令牌环（黑盒）</span>
+<span class="outbranch">
+<span class="outline"><span class="arr">→</span><span class="node">副本名单 {node2, node4, node5}</span></span>
+<span class="outline"><span class="arr">→</span><span class="node">id=48 → {node4, node1, node5}（毫不相干）</span></span>
+</span>
+</div>
+<p>黑盒对外承诺：任何分区键都能就地算出摊位，不问任何人；哈希把任何键分布打均匀，任何节点只承担约 1/N。它不承诺跨分区的范围有序——分区内有序、分区间无序，是这套均匀性的代价。</p>
+<p>反直觉的点先记一个：<b>「数据放在哪」跟「哪台机器空」毫无关系</b>——座次由哈希决定，负载均衡靠的是哈希的均匀性，不是调度。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：部件各管什么</h2></div>
+<p class="sec-sub">先把结构钉住，再让时间进来。点下面的部件卡，动画里对应部分会亮起。</p>
+<div class="quote"><i>结构分解要 MECE：同一层只放同一粒度的部件。</i></div>
+<div class="figure"><svg viewBox="0 0 920 250" role="img" xmlns="http://www.w3.org/2000/svg"><text x="460" y="22" font-size="15" fill="#1F1E1A" text-anchor="middle" font-weight="600">主键三层与环上的五个角色</text><text x="460" y="42" font-size="11.5" fill="#6B695F" text-anchor="middle" font-weight="400">分区键定位、聚簇列排序、普通列裸奔；环由 token 全序撑起，策略决定顺时针怎么数</text><rect x="20" y="64" width="280" height="120" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="34" y="88" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">主键三层（users / events）</text><text x="34" y="110" font-size="10.5" fill="#3B3A34" text-anchor="start" font-weight="400">分区键：参与哈希，定位到节点</text><text x="34" y="128" font-size="10.5" fill="#3B3A34" text-anchor="start" font-weight="400">聚簇列：分区内排序，范围查靠它</text><text x="34" y="146" font-size="10.5" fill="#3B3A34" text-anchor="start" font-weight="400">普通列：ALLOW FILTERING 的常客</text><text x="34" y="168" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">token() 可自查（TokenFct.java:33）</text><rect x="330" y="64" width="270" height="120" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="344" y="88" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">分区器与环</text><text x="344" y="110" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">Murmur3Partitioner.java:62（默认，yaml:420）</text><text x="344" y="128" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">token=hash[0]（:315-317）· DecoratedKey（:102-105）</text><text x="344" y="146" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">Token 全序撑环（dht/Token.java:43）</text><text x="344" y="168" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">7.0 环账本：ClusterMetadata.tokenMap（tcm）</text><rect x="630" y="64" width="270" height="120" rx="10" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/><text x="644" y="88" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">复制策略与 vnode</text><text x="644" y="110" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">SimpleStrategy：全环顺时针（:82-89）</text><text x="644" y="128" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">NTS：每 DC 独立 + rack 均摊（:217-221）</text><text x="644" y="146" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">num_tokens=16（yaml:42）· 智能分配 RF=3（:59）</text><text x="644" y="168" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">BootStrapper.allocateTokens（:270-291）</text><path d="M300 124 L326 124" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#rA)"/><path d="M610 124 L626 124" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#rA)"/><rect x="20" y="200" width="880" height="40" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.2"/><text x="460" y="218" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">定位链：分区键 → murmur3 → token → 环上落点 → 顺时针 RF 个 = 自然副本</text><text x="460" y="234" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">协调者每次读写都现算这条链（第 10 章读写路径），不算「谁空发给谁」。</text></svg></div>
+<div class="partgroup"><div class="gname">定位链</div><div class="parts"><button class="part" data-part="pipeline"><b>1. 四步流水线</b><span>取键 → murmur3 → 取 hash[0] → DecoratedKey；任何字节串都能就地变环上一点。</span></button><button class="part" data-part="ring"><b>2. 令牌环</b><span>token 全序首尾相接；从落点顺时针数 RF 个就是名单——数学上只是一次有序遍历。</span></button></div></div><div class="partgroup"><div class="gname">策略与粒度</div><div class="parts"><button class="part" data-part="strategy"><b>3. 复制策略</b><span>SimpleStrategy 全环数；NTS 按 DC 独立数并避开同 rack——生产一律用后者。</span></button><button class="part" data-part="compare"><b>4. id=48 对照</b><span>差一个字的键，摊位毫不相干——均匀性来自雪崩哈希，不来自键的分布。</span></button><button class="part" data-part="vnode"><b>5. vnode 条</b><span>每节点 16 段：失败负载摊 16 份；智能分配挑「少而准」的位置补均匀。</span></button></div></div>
+<p class="hint">静态图与动画共用同一套编号和口径；把动画暂停，它就是一张可打印的结构图。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：一步一停看顺序</h2></div>
+<p class="sec-sub">重点不是记住箭头，而是记住每一步「谁在等谁」。</p>
+<div class="quote"><i>动态分析看三件事：顺序、状态、触发条件。</i></div>
+
+<table class="grid">
+<tr><th>相位</th><th>发生了什么</th><th>边界 / 反例</th></tr>
+<tr><td>取键</td><td>只取分区键参与哈希（"47" 两个字节）</td><td>聚簇列与普通列一概不参与</td></tr>
+<tr><td>哈希</td><td>MurmurHash3 x64 128，种子 0</td><td>非加密哈希：要快和雪崩，不防碰撞</td></tr>
+<tr><td>token</td><td>取 hash[0] 当 64 位有符号数</td><td>空分区键 → MINIMUM（:318-319）</td></tr>
+<tr><td>落环</td><td>token 是环上唯一定点</td><td>环的秩序由 Token 全序保证</td></tr>
+<tr><td class="hot">扫①②③</td><td>指针顺时针扫，数满 RF=3</td><td>跨零点继续数（node5 就在零点后）</td></tr>
+<tr><td>名单</td><td>{node2, node4, node5} 即自然副本</td><td>node1 排第 4，与本行无关</td></tr>
+<tr><td>对照</td><td>id=48 → {node4, node1, node5}</td><td>雪崩：相邻键摊位毫不相干</td></tr>
+<tr><td>vnodes</td><td>80 段交错，失败摊 16 份</td><td>段多则 repair/流式按段计费变贵</td></tr>
+</table>
+<p>盯高亮那行：顺时针扫描是「数数」，不是「调度」——没有任何节点负载信息参与，这正是它快的原因，也是热分区无法靠调度救的原因。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：角色 × 场景</h2></div>
+<p class="sec-sub">同一机制在「写入、读取、扩容、节点失败」四个场景里扮演不同角色。</p>
+<div class="quote"><i>把部件放回阶段里，才能看清谁在什么时候接力。</i></div>
+
+<table class="grid">
+<tr><th>场景</th><th>定位链干什么</th><th>谁受影响</th></tr>
+<tr><td>写入 id=47</td><td>协调者现算 token，名单发 Mutation</td><td>只有 3 台收到流量，node1 无感</td></tr>
+<tr><td>读取 id=47</td><td>同一条链，同一份名单</td><td>读写的名单永远一致（无副本漂移）</td></tr>
+<tr><td>新节点入环</td><td>智能分配挑 16 个新 token 位</td><td>每段数据的顺时针序列被「插队」改写</td></tr>
+<tr><td>node4 失败</td><td>它的 16 段各自由顺时针下家接手</td><td>负载摊 16 份，而不是压垮一台</td></tr>
+<tr><td class="hot">热分区</td><td>同一分区键无法拆散</td><td>单节点过热——只能改分区键设计</td></tr>
+</table>
+<p>最后一行是这套机制的硬边界：一个分区 = 一个不可拆的槽。大分区（同一个键下百万行）会让单节点读慢、修复贵——建模时把大实体拆成多个分区键，是 Cassandra 的必修课。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：它依赖什么才能成立</h2></div>
+<p class="sec-sub">拆掉任意一个外部依赖，前面看到的行为都会变。</p>
+<div class="quote"><i>任何机制都有环境前提；拆掉外部依赖，它就不再成立。</i></div>
+<div class="envcards">
+<div class="env"><b>partitioner 定死</b><span>yaml:420 默认 Murmur3；换分区器 = 所有摊位重算 = 等于换集群，运行中禁止。</span></div>
+<div class="env"><b>num_tokens = 16</b><span>yaml:42；段多更均匀但 repair/流式按段计费——4.0 起用 16 + 智能分配。</span></div>
+<div class="env"><b>智能分配 RF=3</b><span>yaml:59 默认启用；要求同时刻只有一个节点在加入。</span></div>
+<div class="env"><b>复制策略选型</b><span>SimpleStrategy 只适合演示；跨机房必须 NTS（每 DC 独立 + rack 均摊）。</span></div>
+<div class="env"><b>键分布无要求</b><span>murmur3 雪崩把任何分布打均匀；但自增主键 + 加密哈希才是防热键组合。</span></div>
+</div>
+<p class="figcap">边界：本页画的是单 DC、SimpleStrategy、无 vnode 简化环的定位机制；NTS 的 per-DC 计算细节、数据center 名称解析、CMS 分配的并发约束不在图中。环上数值为示意。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">六个问题，检查你是否能在边界上做判断。</p>
+<div class="quote"><i>自测不是复述结论，而是检查你能否在边界上做判断。</i></div>
+<div id="quiz"></div>
+</section>
+
+
+<div class="summary">
+<h2>一页带走</h2>
+
+<p class="chant">哈希定摊位，顺时针数副本；分区内有序，分区间无序。</p>
+<p>· 定位链：分区键 → murmur3 → 64 位 token → 环上落点 → 顺时针 RF 个 = 自然副本。</p>
+<p>· 均匀不靠调度靠雪崩：id=47 与 id=48 摊位毫不相干，任何键分布都被打匀。</p>
+<p>· vnode 16 段 + 智能分配：失败负载摊 16 份；热分区是硬边界，只能靠建模拆。</p>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+</div>
+
+<script>
+(function(){
+var PERIOD=5600,PHASE_MAX=720;
+var STEPS=[{"d":0,"t":"取键","x":"只取分区键：id=47 的字节串 \"47\"（0x34 0x37）。聚簇列和普通列一概不参与——它们决定分区内怎么排，不决定数据放哪。"},{"d":80,"t":"哈希","x":"MurmurHash3 x64 128、种子 0（Murmur3Partitioner.java:404-414）：得到 hash[0]、hash[1] 两个 64 位。非加密哈希——要快、要雪崩，不防碰撞。"},{"d":200,"t":"token","x":"取 hash[0] 包成 LongToken（:315-317）≈ -9.0×10^18（示意），再和原始键打包成 DecoratedKey——引擎内部从此只认 token 排座次。"},{"d":280,"t":"落环","x":"token 是环上唯一定点：-2^63 在顶、+2^63 回到顶。id=47 的落点在 node5 与 node2 之间——接下来只看顺时针方向。"},{"d":340,"t":"扫①","x":"指针顺时针扫过 104.7°，遇到 node2(+3.7)：副本 1/3。这是数数不是调度——没有任何负载信息参与。"},{"d":400,"t":"扫②③","x":"继续顺时针：node4(+11.2) 副本 2/3；跨过零点回到顶部方向遇到 node5(-22.1) 副本 3/3——名单 {node2, node4, node5}，node1 排第 4 无关。"},{"d":460,"t":"名单","x":"写入读取都用这份名单（第 10 章）；第 5 章 node4 挂掉后剩下的正是 node2+node5——QUORUM(2) 仍凑得齐，不是巧合，是 RF 与 CL 的配合。"},{"d":540,"t":"对照","x":"换 id=48：token=+7.2 落在 node2 与 node4 之间 → 顺时针 {node4, node1, node5}。和 id=47 差两个字符，名单差两台——雪崩哈希的均匀性。"},{"d":620,"t":"vnodes","x":"现实里每节点 16 段（yaml:42），环上 80 段交错：node4 挂掉时它的 16 段由不同顺时针邻居接手；智能分配（yaml:59）让新节点挑负载最均衡的 16 个位。"}];
+var PARTS={"pipeline":["pipeBox","pKey","pHash","pTok","pDk","pa1","pa2","pa3"],"ring":["ringBox","t47","t47L","t47R","ptr","ptrHub","b1","b2","b3"],"strategy":["cmpBox","list48"],"compare":["k48","list48"],"vnode":["vnBox","vnBar"]};
+var CHIPS=[{"k":"key","l":"当前键"},{"k":"tok","l":"token"},{"k":"rep","l":"已选副本"},{"k":"segs","l":"环上段数"}];
+var QUIZ=[{"q":"WHERE name='阿福2' 为什么被要求 ALLOW FILTERING？","opts":["name 太长","name 不是分区键，引擎无法用它定位，只能逐行筛","CQL 不支持文本列查询"],"a":1,"exp":"定位链只认分区键：id=47 能算出摊位直接上门；name 是普通列，引擎不知道「叫这个名字的行」在哪，只能全分区筛——ALLOW FILTERING 是引擎在提醒你这一点。"},{"q":"token 是怎么算出来的？","opts":["对整行数据做 MD5","对分区键字节做 murmur3，取 hash[0] 当 64 位有符号数","协调者按负载现分配"],"a":1,"exp":"Murmur3Partitioner（yaml:420 默认）：getHash 调 MurmurHash3 x64 128（种子 0），getToken 取 hash[0] 包成 LongToken（:315-317）。"},{"q":"id=47 与 id=48 的副本名单差了两台，说明什么？","opts":["哈希出了 bug","雪崩性：相邻键摊位毫不相干，均匀性来自哈希不来自键","48 的数据丢了"],"a":1,"exp":"murmur3 的雪崩性质把任何键分布打均匀——代价是没有「键相邻 → 数据相邻」的局部性，跨分区范围查等于散射。"},{"q":"顺时针数副本时，如果数到环顶还没数满 RF=3 怎么办？","opts":["报错回滚","跨过零点继续数（node5 就是这样入选的）","只复制两个"],"a":1,"exp":"环是首尾相接的：从 -9.0 顺时针数到顶（+2^63 = -2^63）继续数，第三个正好是零点后的 node5。"},{"q":"num_tokens 为什么从 3.x 的 256 降到 16？","opts":["16 更均匀","按段计费的操作（repair/流式/索引）在 256 段时太贵；16 段 + 智能分配用「少而准」换回均匀","内存不够"],"a":1,"exp":"段越多越均匀，但每段都是独立开销。4.0 起默认 16，均匀性缺口由 allocate_tokens_for_local_replication_factor=3 的智能分配补齐（BootStrapper.java:270-291）。"},{"q":"一个分区键下塞了千万行，会发生什么？","opts":["自动拆到多台机器","分区是不可拆的槽：单节点过热、修复变贵——只能改分区键设计","Cassandra 自动建索引"],"a":1,"exp":"分区是数据移动与存储的最小单位，同一分区永远在同一节点。大分区是建模问题不是引擎问题：把大实体拆成多个分区键是必修课。"}];
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,STEP_DUR=650;
+var stepIdx=-1;
+var el={};
+document.querySelectorAll('#eng [id],#eng2 [id]').forEach(function(n){el[n.id]=n;});
+function setOp(id,v){var n=typeof id==='string'?el[id]:id;if(n)n.setAttribute('opacity',v.toFixed(2));}
+function setText(id,s){var n=el[id]||document.getElementById(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setAttr(id,k,v){var n=el[id];if(n)n.setAttribute(k,v);}
+function setFill(id,v){var n=el[id];if(n)n.setAttribute('fill',v);}
+function setStroke(id,v){var n=el[id];if(n)n.setAttribute('stroke',v);}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){return t*t*(3-2*t);}
+function lerp(a,b,t){return a+(b-a)*t;}
+var CX=518,CY=266,R=126;
+function ringPos(deg){var rad=deg*Math.PI/180;return [CX+R*Math.sin(rad),CY-R*Math.cos(rad)];}
+function ptrAngle(p){
+  if(p<280)return 104.7;
+  if(p<340)return lerp(104.7,211,(p-280)/60);
+  if(p<370)return 211;
+  if(p<400)return lerp(211,274,(p-370)/30);
+  if(p<430)return 274;
+  if(p<460)return lerp(274,355,(p-430)/30);
+  return 355;
+}
+function band(id,a,b,lo,hi){setOp(id,(pr>=a&&pr<b)?(hi===undefined?1:hi):(lo===undefined?0.18:lo));}
+var pr=0;
+
+var VNCOLORS=['#639922','#2F6FA8','#E24B4A','#C46A0A'];
+(function buildVn(){
+  var g=el['vnBar'];if(!g)return;
+  var order=[0,1,2,3,0,1,3,2,0,2,1,3,1,0,3,2,0,1,2,3,3,0,1,2,0,3,1,2,1,0,2,3,0,2,3,1,2,0,1,3,3,1,0,2,0,1,3,2,1,2,0,3,2,3,0,1,3,2,1,0,2,1,3,0,2,0,3,1,3,0,2,1,1,3,2,0,2,0,1,3,3,1,0,2];
+  var s='';
+  for(var i=0;i<80;i++){
+    var x=44+i*11.2;
+    s+='<rect id="vn'+i+'" x="'+x.toFixed(1)+'" y="478" width="9.6" height="16" rx="1.5" fill="'+VNCOLORS[order[i]]+'" opacity="0.25"/>';
+  }
+  g.innerHTML=s;
+  document.querySelectorAll('#vnBar rect').forEach(function(n){el[n.id]=n;});
+})();
+function renderScene(){
+  band('pKey',0,90);band('pa1',80,110);band('pHash',80,210);band('pa2',200,230);band('pTok',200,290);band('pa3',280,310);band('pDk',280,400);
+  band('t47',270,720,0.25,1);band('t47L',270,720,0.25,1);band('t47R',270,720,0.2,1);
+  var a=ptrAngle(pr);
+  var tip=ringPos(a),hub=ringPos(0);
+  var hx=CX+(R-56)*Math.sin(a*Math.PI/180),hy=CY-(R-56)*Math.cos(a*Math.PI/180);
+  setAttr('ptr','x1',hx.toFixed(1));setAttr('ptr','y1',hy.toFixed(1));
+  setAttr('ptr','x2',tip[0].toFixed(1));setAttr('ptr','y2',tip[1].toFixed(1));
+  setOp('ptr',pr>=280&&pr<620?1:0.15);setOp('ptrHub',pr>=280&&pr<620?1:0.15);
+  var rep=0;if(pr>=340)rep=1;if(pr>=400)rep=2;if(pr>=460)rep=3;
+  setOp('b1',pr>=340?1:0);setOp('b2',pr>=400?1:0);setOp('b3',pr>=460?1:0);
+  setStroke('rN2',pr>=340&&pr<620?'#639922':(pr>=620?'#639922':'#B4B2A9'));
+  setStroke('rN4',pr>=400&&pr<620?'#639922':(pr>=620?'#639922':'#B4B2A9'));
+  setStroke('rN5',pr>=460?'#639922':'#B4B2A9');
+  setStroke('rN1',pr>=540&&pr<620?'#C46A0A':'#B4B2A9');
+  setFill('rN2',rep>=1&&pr<620?'#EAF3DE':'#ffffff');
+  setFill('rN4',rep>=2&&pr<620?'#EAF3DE':'#ffffff');
+  setFill('rN5',rep>=3?'#EAF3DE':'#ffffff');
+  band('cmpBox',540,720,0.35,1);band('list48',540,720,0.3,1);
+  band('vnBox',620,720,0.3,1);
+  var lit=pr>=620?Math.min(16,Math.floor((pr-620)/6)+1):0;
+  var n4segs=[3,6,14,19,21,28,33,35,43,48,52,59,61,70,76,79];
+  for(var i=0;i<16;i++){if(el['vn'+n4segs[i]])setOp('vn'+n4segs[i],i<lit?1:0.25);}
+  for(var j=0;j<80;j++){if(n4segs.indexOf(j)<0)setOp('vn'+j,pr>=620?0.3:0.25);}
+  var hashDone=pr>=200;
+  setText('hashOut',pr>=80?(pr<200?'哈希计算中…':'hash[0] = -9.0×10^18'):'hash[0] = --');
+  setText('tokOut',pr>=200?'LongToken ≈ -9.0×10^18（示意）':'LongToken（64 位有符号）');
+  setText('ringNote',pr<280?'等待 token 落环…':pr<340?'落环完成，指针待发':rep<3?'顺时针扫描中… 已选 '+rep+'/3':'名单确定：{node2, node4, node5}');
+  setText('roKey',pr>=540&&pr<620?'id=48':'id=47');
+  setText('roTok',pr>=540&&pr<620?'+7.2×10^18':(pr>=200?'-9.0×10^18':'--'));
+  setText('roRep',rep+' / 3');
+  setChip('key',pr>=540&&pr<620?'id=48':'id=47',true);
+  setChip('tok',pr>=540&&pr<620?'+7.2':(pr>=200?'-9.0':'--'),pr>=200);
+  setChip('rep',rep+'/3',rep===3);
+  setChip('segs',pr>=620?('80 段·node4 占 16'):'80 段',pr>=620);
+}
+function setChip(k,v,on){var n=document.querySelector('#stateChips .chip[data-k="'+k+'"]');if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',!!on);n.classList.toggle('off',!on);}
+
+function renderSub(th){
+  var p=norm(th); var si=0;
+  for(var i=0;i<STEPS.length;i++){if(p>=STEPS[i].d)si=i;}
+  for(var i=0;i<STEPS.length;i++){setOp('seg'+i,i===si?1:0.35);}
+  var x=40+(p/PHASE_MAX)*920;
+  setAttr('subNow','x1',x.toFixed(1)); setAttr('subNow','x2',x.toFixed(1));
+}
+
+function render(th){
+  pr=norm(th);
+  setText('roPhase',Math.round(pr)+'°');
+  var si=0;for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)si=i;}
+  if(mode==='step'&&stepIdx>=0)si=stepIdx;
+  setText('roStep',STEPS[si]?STEPS[si].t:'—');
+  var fly=pr>=200&&pr<280;
+  if(fly){var t=(pr-200)/80;var fx=lerp(163,639.6,t),fy=lerp(312,290.6,t);setAttr('tokFly','cx',fx.toFixed(1));setAttr('tokFly','cy',fy.toFixed(1));}
+  setOp('tokFly',fly?1:0);
+  renderScene();
+  if(typeof renderSub==='function')renderSub(th,pr,si);
+}
+function tick(now){
+  var dt=Math.min(50,now-last);last=now;
+  if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+  if(mode==='step'&&stepTo!==null){
+    stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);
+    var p=stepElapsed/STEP_DUR;var e=smooth(p);
+    phase=stepFrom+(stepTo-stepFrom)*e;
+    if(p>=1){phase=((stepTo%PERIOD)+PERIOD)%PERIOD;stepTo=null;}
+  }
+  render(phase/PERIOD*PHASE_MAX);
+  requestAnimationFrame(tick);
+}
+function setAuto(on){
+  mode='auto';run=on;stepTo=null;btn.textContent=on?'暂停':'播放';
+  if(on){stepIdx=-1;document.querySelectorAll('.stepnode').forEach(function(d){d.classList.remove('on');});
+  stepT.textContent='自动运转模式';stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格。';}
+}
+window.goStep=function(i){
+  stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+  var target=STEPS[stepIdx].d/PHASE_MAX*PERIOD;var delta=target-phase;
+  if(reduced||Math.abs(delta)>PERIOD/3){phase=target;stepTo=null;render(target/PERIOD*PHASE_MAX+0.01);}
+  else{stepFrom=phase;stepTo=phase+delta;stepElapsed=0;render(phase/PERIOD*PHASE_MAX+0.01);}
+  btn.textContent='继续自动运转';
+  document.querySelectorAll('.stepnode').forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+  stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+  stepX.textContent=STEPS[stepIdx].x;
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+btn.textContent=run?'暂停':'播放';
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+for(var s=0;s<STEPS.length;s++){(function(n){
+  var b=document.createElement('button');b.className='stepnode';
+  b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+  b.onclick=function(){goStep(n);};stepBar.appendChild(b);
+})(s);}
+CHIPS.forEach(function(c){var s=document.createElement('span');s.className='chip';s.setAttribute('data-k',c.k);s.innerHTML=c.l+' <b>--</b>';document.getElementById('stateChips').appendChild(s);});
+document.querySelectorAll('.part').forEach(function(b){
+  b.onclick=function(){
+    var ids=PARTS[b.getAttribute('data-part')]||[];
+    ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+    document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+    setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+  };
+});
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+  var d=document.createElement('div');d.className='q';
+  var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+  it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+  h+='<div class="exp">'+it.exp+'</div>';d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+  var b=e.target.closest('.opt');if(!b)return;var box2=b.parentElement;if(box2.classList.contains('done'))return;
+  box2.classList.add('done');
+  var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+  box2.querySelectorAll('.opt').forEach(function(x,n){x.classList.add(n===QUIZ[qi].a?'right':'wrong');});
+});
+var BASE=(location.pathname.split('/cassandra-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/cassandra/lab';
+document.getElementById('lnkArt').href=BASE+'/cassandra/distributed/02-partitioner-token-ring';
+
+requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

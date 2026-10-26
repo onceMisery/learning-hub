@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>修复与反熵 · Cassandra 互动原理实验室 第 13 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:960px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:720px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:600;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:12px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:600;fill:#1F1E1A}
+.tag{font-size:10.5px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:66px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .outbranch{display:inline-flex;flex-direction:column;align-items:flex-start;gap:6px}
+.flow .outline{display:inline-flex;align-items:center;gap:8px}
+.flow .flownote{font-size:12px;color:#6B695F;font-weight:600;margin-right:4px}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 10px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+#eng [opacity]{transition:opacity .28s ease}
+#eng2 [opacity]{transition:opacity .28s ease}
+@media (prefers-reduced-motion: reduce){#eng [opacity],#eng2 [opacity]{transition:none}}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:8px 4px 0;font-size:12px;color:#6B695F}
+.legend i{display:inline-block;width:18px;height:0;border-top:2px solid #C46A0A;vertical-align:middle;margin-right:5px}
+.legend i.g{border-color:#639922}
+.legend i.r{border-color:#E24B4A}
+.legend i.b{border-color:#2F6FA8}
+.legend i.dash{border-top-style:dashed}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：修复与反熵</a>
+  <span class="idx">第 13 / 15 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · REPAIR &amp; ANTI-ENTROPY</div>
+<h1>一棵树找出 27 行的差异</h1>
+<p>node4 卡死两小时回来，hint 补了 1,973 行、还差 27 行。切「增量 repair」看四棵 Merkle 树怎么逐层长出哈希、三个 range 根哈希对齐、R4 三步下钻锁定叶子 L8、StreamPlan(REPAIR) 把 27 行流过去；切「僵尸倒计时」看 gc_grace 十天里墓碑、压缩与 repair 的生死赛跑。读数与正文第 13 章完全同口径。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span>
+<span class="mnode">② 静态分解</span>
+<span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span>
+<span class="mnode">⑤ 环境场景</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 560" role="img" xmlns="http://www.w3.org/2000/svg"><title>增量 repair：建树、比对、下钻、流式补齐</title><defs><marker id="rA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="rB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="rG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="rR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker></defs><text class="th" x="500" y="24" text-anchor="middle" id="engTitle">增量 repair：node2 vs node4，一棵 8 叶 Merkle 树圈出 27 行</text><text class="ts" x="500" y="44" text-anchor="middle" id="engSub">node2 发起｜nodetool repair -inc demo users｜session 9f3c…（TimeUUID）｜R4 = 25 万行 / 8 叶（教学规模）</text><text x="972" y="24" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">橙色：repair 流程</text><text x="972" y="40" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">蓝色：建树 / 比对</text><text x="972" y="56" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色：一致 / 补齐</text><text x="972" y="72" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">红色：差异 / 风险</text><g id="stStrip"><rect id="st0" x="28" y="64" width="172" height="52" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/><text id="stL0" x="38" y="84" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">P1 回归对账</text><text id="stS0" x="38" y="102" font-size="9.5" fill="#6B695F" text-anchor="start">hint 补 1,973 差 27</text><rect id="st1" x="212" y="64" width="172" height="52" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/><text id="stL1" x="222" y="84" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">P2 prepare</text><text id="stS1" x="222" y="102" font-size="9.5" fill="#6B695F" text-anchor="start">prepareForRepair:700</text><rect id="st2" x="396" y="64" width="172" height="52" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/><text id="stL2" x="406" y="84" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">P3 建树</text><text id="stS2" x="406" y="102" font-size="9.5" fill="#6B695F" text-anchor="start">只读压缩喂哈希</text><rect id="st3" x="580" y="64" width="172" height="52" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/><text id="stL3" x="590" y="84" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">P4 比对下钻</text><text id="stS3" x="590" y="102" font-size="9.5" fill="#6B695F" text-anchor="start">difference:205-239</text><rect id="st4" x="764" y="64" width="208" height="52" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/><text id="stL4" x="774" y="84" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">P5 流式补齐</text><text id="stS4" x="774" y="102" font-size="9.5" fill="#6B695F" text-anchor="start">StreamPlan(REPAIR)</text></g>
+<g id="gR"><rect x="28" y="128" width="196" height="180" rx="10" fill="#ffffff" stroke="#3B3A34" stroke-width="1.2"/><text x="126" y="150" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">副本持有账（14:00~16:00 导入）</text><text x="42" y="172" font-size="10.5" fill="#3B3A34" text-anchor="start">node2：<tspan id="cnt2" font-weight="600">2,000</tspan> / 2,000 行</text><rect x="42" y="180" width="168" height="8" rx="4" fill="#ECEAE2"/><rect id="bar2" x="42" y="180" width="168" height="8" rx="4" fill="#639922"/><text x="42" y="208" font-size="10.5" fill="#E24B4A" text-anchor="start" font-weight="600">node4：<tspan id="cnt4" font-weight="600">1,973</tspan> / 2,000 行</text><rect x="42" y="216" width="168" height="8" rx="4" fill="#ECEAE2"/><rect id="bar4" x="42" y="216" width="164.6" height="8" rx="4" fill="#E24B4A"/><text x="42" y="244" font-size="10.5" fill="#3B3A34" text-anchor="start">node5：<tspan id="cnt5" font-weight="600">2,000</tspan> / 2,000 行</text><rect x="42" y="252" width="168" height="8" rx="4" fill="#639922"/><text id="diffTag" x="42" y="278" font-size="10.5" fill="#E24B4A" text-anchor="start" font-weight="600">差 27 行（hint 在 node1 丢失）</text><text id="diffTag2" x="42" y="296" font-size="9.5" fill="#6B695F" text-anchor="start">hint 3h 窗口内但欠条可丢</text>
+<rect x="28" y="318" width="196" height="120" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.2"/><text x="42" y="340" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">现场时钟</text><text id="clk1" x="42" y="362" font-size="10" fill="#3B3A34" text-anchor="start">14:00 node4 卡死（phi=8.0@18~20s）</text><text id="clk2" x="42" y="380" font-size="10" fill="#3B3A34" text-anchor="start">16:00 回归，16:03 hint 重放完</text><text id="clk3" x="42" y="398" font-size="10" fill="#C46A0A" text-anchor="start" font-weight="600">16:10:00 nodetool repair -inc</text><text id="clk4" x="42" y="416" font-size="10" fill="#639922" text-anchor="start" font-weight="600">16:12:11 repair_history=SUCCESS</text>
+<rect x="238" y="128" width="404" height="310" rx="10" fill="#ffffff" stroke="#2F6FA8" stroke-width="1.3"/><text x="440" y="150" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">R4 的 Merkle 树（叶子=行哈希 XOR 上卷，Validator.add:171）</text><g id="treeG"><line x1="440" y1="172" x2="360" y2="208" stroke="#B4B2A9" stroke-width="1.1"/><line x1="440" y1="172" x2="520" y2="208" stroke="#B4B2A9" stroke-width="1.1"/><line x1="360" y1="208" x2="320" y2="248" stroke="#B4B2A9" stroke-width="1.1"/><line x1="360" y1="208" x2="400" y2="248" stroke="#B4B2A9" stroke-width="1.1"/><line x1="520" y1="208" x2="480" y2="248" stroke="#B4B2A9" stroke-width="1.1"/><line x1="520" y1="208" x2="560" y2="248" stroke="#B4B2A9" stroke-width="1.1"/><line x1="320" y1="248" x2="300" y2="292" stroke="#B4B2A9" stroke-width="1.1"/><line x1="320" y1="248" x2="340" y2="292" stroke="#B4B2A9" stroke-width="1.1"/><line x1="400" y1="248" x2="380" y2="292" stroke="#B4B2A9" stroke-width="1.1"/><line x1="400" y1="248" x2="420" y2="292" stroke="#B4B2A9" stroke-width="1.1"/><line x1="480" y1="248" x2="460" y2="292" stroke="#B4B2A9" stroke-width="1.1"/><line x1="480" y1="248" x2="500" y2="292" stroke="#B4B2A9" stroke-width="1.1"/><line x1="560" y1="248" x2="540" y2="292" stroke="#B4B2A9" stroke-width="1.1"/><line x1="560" y1="248" x2="580" y2="292" stroke="#B4B2A9" stroke-width="1.1"/>
+<circle id="mtR" cx="440" cy="172" r="15" fill="#ffffff" stroke="#3B3A34" stroke-width="1.4"/><text id="mtRt" x="440" y="176" font-size="9.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">R</text><circle id="mtA" cx="360" cy="208" r="13" fill="#ffffff" stroke="#3B3A34" stroke-width="1.3"/><text x="360" y="212" font-size="9" fill="#1F1E1A" text-anchor="middle" font-weight="600">A</text><circle id="mtB" cx="520" cy="208" r="13" fill="#ffffff" stroke="#3B3A34" stroke-width="1.3"/><text x="520" y="212" font-size="9" fill="#1F1E1A" text-anchor="middle" font-weight="600">B</text><circle id="mtN12" cx="320" cy="248" r="12" fill="#ffffff" stroke="#3B3A34" stroke-width="1.2"/><text x="320" y="252" font-size="8" fill="#1F1E1A" text-anchor="middle" font-weight="600">N12</text><circle id="mtN34" cx="400" cy="248" r="12" fill="#ffffff" stroke="#3B3A34" stroke-width="1.2"/><text x="400" y="252" font-size="8" fill="#1F1E1A" text-anchor="middle" font-weight="600">N34</text><circle id="mtN56" cx="480" cy="248" r="12" fill="#ffffff" stroke="#3B3A34" stroke-width="1.2"/><text x="480" y="252" font-size="8" fill="#1F1E1A" text-anchor="middle" font-weight="600">N56</text><circle id="mtN78" cx="560" cy="248" r="12" fill="#ffffff" stroke="#3B3A34" stroke-width="1.2"/><text x="560" y="252" font-size="8" fill="#1F1E1A" text-anchor="middle" font-weight="600">N78</text><circle id="mtL1" cx="300" cy="292" r="10" fill="#ffffff" stroke="#3B3A34" stroke-width="1.1"/><text x="300" y="296" font-size="8" fill="#1F1E1A" text-anchor="middle" font-weight="600">L1</text><circle id="mtL2" cx="340" cy="292" r="10" fill="#ffffff" stroke="#3B3A34" stroke-width="1.1"/><text x="340" y="296" font-size="8" fill="#1F1E1A" text-anchor="middle" font-weight="600">L2</text><circle id="mtL3" cx="380" cy="292" r="10" fill="#ffffff" stroke="#3B3A34" stroke-width="1.1"/><text x="380" y="296" font-size="8" fill="#1F1E1A" text-anchor="middle" font-weight="600">L3</text><circle id="mtL4" cx="420" cy="292" r="10" fill="#ffffff" stroke="#3B3A34" stroke-width="1.1"/><text x="420" y="296" font-size="8" fill="#1F1E1A" text-anchor="middle" font-weight="600">L4</text><circle id="mtL5" cx="460" cy="292" r="10" fill="#ffffff" stroke="#3B3A34" stroke-width="1.1"/><text x="460" y="296" font-size="8" fill="#1F1E1A" text-anchor="middle" font-weight="600">L5</text><circle id="mtL6" cx="500" cy="292" r="10" fill="#ffffff" stroke="#3B3A34" stroke-width="1.1"/><text x="500" y="296" font-size="8" fill="#1F1E1A" text-anchor="middle" font-weight="600">L6</text><circle id="mtL7" cx="540" cy="292" r="10" fill="#ffffff" stroke="#3B3A34" stroke-width="1.1"/><text x="540" y="296" font-size="8" fill="#1F1E1A" text-anchor="middle" font-weight="600">L7</text><circle id="mtL8" cx="580" cy="292" r="10" fill="#ffffff" stroke="#3B3A34" stroke-width="1.1"/><text x="580" y="296" font-size="8" fill="#1F1E1A" text-anchor="middle" font-weight="600">L8</text>
+<text id="treeNote" x="254" y="322" font-size="9.5" fill="#6B695F" text-anchor="start">每叶 ≈ 3.1 万行；树本身仅数百字节，贵的是建树扫描</text><text id="treeNote2" x="254" y="340" font-size="9.5" fill="#6B695F" text-anchor="start">深度 = ceil(log2 分区数)，受 repair_session_space 封顶</text><text id="drillNote" x="254" y="364" font-size="10" fill="#2F6FA8" text-anchor="start" font-weight="600">下钻记录：—</text><text id="drillNote2" x="254" y="382" font-size="9.5" fill="#6B695F" text-anchor="start">midpoint 二分：differenceHelper（MerkleTree:250）</text><text id="drillNote3" x="254" y="402" font-size="10" fill="#E24B4A" text-anchor="start" font-weight="600" opacity="0">差异 range = L8 子段 → 27 行</text><text id="rootHash" x="254" y="426" font-size="10" fill="#3B3A34" text-anchor="start" opacity="0">node2 根 = 0x3f…a1　node4 根 = 0x92…77 → ≠</text></g>
+<rect x="656" y="128" width="316" height="180" rx="10" fill="#ffffff" stroke="#2F6FA8" stroke-width="1.3"/><text x="814" y="150" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">四个 range 的根哈希比对（两两成对）</text><rect id="rr1" x="672" y="162" width="284" height="30" rx="6" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1"/><text x="686" y="182" font-size="10.5" fill="#3B3A34" text-anchor="start" font-weight="600">R1</text><text id="rr1t" x="942" y="182" font-size="10.5" fill="#8A877C" text-anchor="end">—</text><rect id="rr2" x="672" y="198" width="284" height="30" rx="6" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1"/><text x="686" y="218" font-size="10.5" fill="#3B3A34" text-anchor="start" font-weight="600">R2</text><text id="rr2t" x="942" y="218" font-size="10.5" fill="#8A877C" text-anchor="end">—</text><rect id="rr3" x="672" y="234" width="284" height="30" rx="6" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1"/><text x="686" y="254" font-size="10.5" fill="#3B3A34" text-anchor="start" font-weight="600">R3</text><text id="rr3t" x="942" y="254" font-size="10.5" fill="#8A877C" text-anchor="end">—</text><rect id="rr4" x="672" y="270" width="284" height="30" rx="6" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1"/><text x="686" y="290" font-size="10.5" fill="#3B3A34" text-anchor="start" font-weight="600">R4（node2↔node4）</text><text id="rr4t" x="942" y="290" font-size="10.5" fill="#8A877C" text-anchor="end">—</text><text id="rrNote" x="672" y="316" font-size="9.5" fill="#6B695F" text-anchor="start">node5 三对全一致 → 只 node2↔node4 产生 SyncTask</text>
+<rect id="streamBox" x="656" y="318" width="316" height="120" rx="10" fill="#ffffff" stroke="#639922" stroke-width="1.3"/><text x="814" y="340" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">LocalSyncTask：StreamPlan(REPAIR)</text><text id="sm1" x="672" y="362" font-size="10" fill="#3B3A34" text-anchor="start">差异 range → node2 transferRanges → node4</text><text id="sm2" x="672" y="380" font-size="10" fill="#3B3A34" text-anchor="start">行数：<tspan id="smRows" font-weight="600" fill="#639922">0</tspan> / 27（ts=14:00~16:00 原样带过去）</text><rect x="672" y="390" width="284" height="8" rx="4" fill="#ECEAE2"/><rect id="smBar" x="672" y="390" width="0" height="8" rx="4" fill="#639922"/><text id="sm3" x="672" y="416" font-size="9.5" fill="#6B695F" text-anchor="start">16:11:05 开流；repair 第⑥步即第 14 章 streaming 主场</text><text id="sm4" x="672" y="432" font-size="9.5" fill="#6B695F" text-anchor="start">增量收尾：新 SSTable 标 pendingRepair，归「已修复」组</text></g>
+<g id="gZ" opacity="0"><rect x="28" y="128" width="944" height="230" rx="10" fill="#ffffff" stroke="#E24B4A" stroke-width="1.3"/><text x="500" y="150" font-size="13" fill="#E24B4A" text-anchor="middle" font-weight="600">僵尸复活的条件链（gc_grace=864000s=10 天，TableParams:446）</text><line x1="60" y1="200" x2="940" y2="200" stroke="#3B3A34" stroke-width="1.4" marker-end="url(#rR)"/><circle id="zE1" cx="120" cy="200" r="6" fill="#E24B4A" stroke="#E24B4A" stroke-width="1.6"/><text x="120" y="182" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">10-25 14:30</text><text x="120" y="218" font-size="9" fill="#6B695F" text-anchor="middle">DELETE 3 行写墓碑</text><text x="120" y="231" font-size="9" fill="#6B695F" text-anchor="middle">node2/node5 有·node4 缺</text><circle id="zE2" cx="330" cy="200" r="6" fill="#C46A0A" stroke="#C46A0A" stroke-width="1.6"/><text x="330" y="182" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">16:00 回归</text><text x="330" y="218" font-size="9" fill="#6B695F" text-anchor="middle">hint 丢了这 3 条墓碑</text><text x="330" y="231" font-size="9" fill="#6B695F" text-anchor="middle">node4 旧行健在</text><circle id="zE3" cx="560" cy="200" r="6" fill="#E24B4A" stroke="#E24B4A" stroke-width="1.6"/><text x="560" y="182" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">11-04 14:30</text><text x="560" y="218" font-size="9" fill="#6B695F" text-anchor="middle">满 10 天：node2/node5</text><text x="560" y="231" font-size="9" fill="#6B695F" text-anchor="middle">压缩可清墓（gcBefore）</text><circle id="zE4" cx="790" cy="200" r="6" fill="#E24B4A" stroke="#E24B4A" stroke-width="1.6"/><text x="790" y="182" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">僵尸窗口</text><text x="790" y="218" font-size="9" fill="#6B695F" text-anchor="middle">node4 成唯一「记得者」</text><text x="790" y="231" font-size="9" fill="#6B695F" text-anchor="middle">读到 3 行 = 复活事故</text><text id="zFix" x="940" y="258" font-size="10" fill="#639922" text-anchor="end" font-weight="600" opacity="0">解法：11-04 之前 repair 把墓碑送抵 node4（三副本齐 → 清墓安全）</text>
+<rect x="28" y="270" width="944" height="76" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.2"/><text x="44" y="292" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">两道护栏 + 一道不等式</text><text x="44" y="312" font-size="10" fill="#3B3A34" text-anchor="start">护栏一：repaired/unrepaired 不混压，混组不清墓（CompactionController:249-261 getPurgeEvaluator）</text><text x="44" y="330" font-size="10" fill="#3B3A34" text-anchor="start">护栏二：建树按 dontPurgeTombstones 口径算哈希（Validator:86）——树里能看到该有的墓碑</text><text x="44" y="348" font-size="10.5" fill="#C46A0A" text-anchor="start" font-weight="600">不等式：max_hint_window（3h）&lt; repair 间隔 &lt; gc_grace（10 天）——Auto Repair 让它自动成立</text>
+<rect x="28" y="356" width="944" height="82" rx="10" fill="#ffffff" stroke="#E24B4A" stroke-width="1.2"/><text x="44" y="378" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">三副本此刻的状态（随相位刷新）</text><text id="zN2" x="44" y="400" font-size="10.5" fill="#3B3A34" text-anchor="start">node2：—</text><text id="zN4" x="44" y="420" font-size="10.5" fill="#3B3A34" text-anchor="start">node4：—</text><text id="zN5" x="360" y="400" font-size="10.5" fill="#3B3A34" text-anchor="start">node5：—</text><text id="zCtl" x="360" y="420" font-size="10.5" fill="#639922" text-anchor="start" font-weight="600">反事实控制：—</text></g>
+<text id="engFoot" x="28" y="466" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">读法：站条随相位点亮；repair 模式看树生长→比对→下钻→流式；僵尸模式看时间轴上墓碑的生死。</text>
+<text id="engFoot2" x="28" y="484" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">口径：apache/cassandra master（7.0-SNAPSHOT）；demo keyspace、RF=3、QUORUM；2,000/1,973/27 与正文第 13 章一致。</text>
+<text id="engFoot3" x="28" y="502" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">树为教学规模（8 叶）；真实叶子数=ceil(log2 分区数)，内存预算 repair_session_space=堆 1/16 ÷ RF。</text>
+<circle id="tok" cx="-20" cy="-20" r="8" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/></svg>
+<svg id="eng2" viewBox="0 0 1000 180" role="img" xmlns="http://www.w3.org/2000/svg"><text x="40" y="26" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">相位总线：增量 repair / 僵尸倒计时 各一条 0°→720°</text><text x="960" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">切换模式时相位归零</text><rect id="seg0" x="40" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg0" x="89.1" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">回归</text><text id="sd0" x="89.1" y="96" font-size="10" fill="#6B695F" text-anchor="middle">0°</text><rect id="seg1" x="142.2" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg1" x="191.3" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd1" x="191.3" y="96" font-size="10" fill="#6B695F" text-anchor="middle">90°</text><rect id="seg2" x="244.4" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg2" x="293.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd2" x="293.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle">180°</text><rect id="seg3" x="346.7" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg3" x="395.8" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd3" x="395.8" y="96" font-size="10" fill="#6B695F" text-anchor="middle">270°</text><rect id="seg4" x="448.9" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg4" x="498" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd4" x="498" y="96" font-size="10" fill="#6B695F" text-anchor="middle">360°</text><rect id="seg5" x="551.1" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg5" x="600.2" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd5" x="600.2" y="96" font-size="10" fill="#6B695F" text-anchor="middle">450°</text><rect id="seg6" x="653.3" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg6" x="702.4" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd6" x="702.4" y="96" font-size="10" fill="#6B695F" text-anchor="middle">540°</text><rect id="seg7" x="755.6" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg7" x="804.7" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd7" x="804.7" y="96" font-size="10" fill="#6B695F" text-anchor="middle">630°</text><rect id="seg8" x="857.8" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg8" x="906.9" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">复盘</text><text id="sd8" x="906.9" y="96" font-size="10" fill="#6B695F" text-anchor="middle">680°</text><line id="subNow" x1="40" y1="44" x2="40" y2="126" stroke="#C46A0A" stroke-width="2"/><text x="500" y="152" font-size="11" fill="#6B695F" text-anchor="middle" font-weight="400">每格是一个可定格的关键时刻；分步时所有视图冻结到同一相位。</text></svg>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<button class="btn warn" id="scenBtn">切到僵尸倒计时</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 轮 / 6.4 秒</span>
+</div>
+
+<div class="readout">
+<span class="ro">相位 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">模式 <b id="roScen">增量 repair</b></span>
+<span class="ro">差异 range <b id="roRange">--</b></span>
+<span class="ro">下钻比较 <b id="roDrill">--</b></span>
+<span class="ro">已流行数 <b id="roRows">--</b></span>
+<span class="ro">两副本差 <b id="roDiff">27 行</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格；橙色按钮切换「增量 repair / 僵尸倒计时」两条线。</span>
+<span class="snav">
+<button class="btn" onclick="prevStep()">‹ 上一步</button>
+<button class="btn warn" onclick="nextStep()">下一步 ›</button>
+</span>
+</div>
+<div class="legend"><span><i></i>repair 流程</span><span><i class="b"></i>建树 / 比对</span><span><i class="g"></i>一致 / 补齐</span><span><i class="r"></i>差异 / 僵尸风险</span></div>
+<p class="figcap">增量 repair 0°=回归对账、720°=复盘；僵尸模式同相位总线另走一轮。<br>口径：apache/cassandra master（7.0-SNAPSHOT）；R1~R4 四 range、8 叶树、27 行与正文第 13 章手算完全一致。</p>
+</div>
+</div>
+
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：先把它当黑盒</h2></div>
+<p class="sec-sub">同一个集群、同一批数据，三个副本 count 出来差 27 行——没有任何报错。</p>
+<div class="quote"><i>先把系统当黑盒：只看输入、输出和边界，不急着解释内部。</i></div>
+
+<p>黑盒视角三句话：<b>hint 重放完成不代表补齐</b>（16:03 完成，抽查仍差 27 行）；<b>一条 nodetool repair -inc 跑两分钟</b>，差值归零、repair_history 里多一条 SUCCESS；<b>修复期间线上读写照常</b>——对账和流式都是后台动作。这三件「没有感知却发生了的事」，就是反熵的全部表象。</p>
+<div class="flow">
+<span class="node">nodetool repair -inc demo users（输入）</span><span class="arr">→</span>
+<span class="node box">repair（黑盒）</span>
+<span class="outbranch">
+<span class="outline"><span class="arr">→</span><span class="node">2 分 11 秒后三副本一致（27 行补齐）</span></span>
+<span class="outline"><span class="arr">→</span><span class="node">repair_history 记 SUCCESS（30 天 TTL）</span></span>
+<span class="outline"><span class="arr">→</span><span class="node">僵尸模式：若 10 天内没跑，墓碑单边过期 → 复活</span></span>
+</span>
+</div>
+<p>反直觉的点先记一个：repair 最贵的不是「传数据」而是「建树」——三个副本各自把全部数据扫一遍算哈希，差异稀疏时传输几乎为零。Merkle 树赌的就是「差异稀疏」这个现实前提。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：部件各管什么</h2></div>
+<p class="sec-sub">发起端协调、副本端建树、比对出差异、流式去补齐。点下面的部件卡，动画里对应部分会亮起。</p>
+<div class="quote"><i>结构分解要 MECE：同一层只放同一粒度的部件。</i></div>
+<div class="figure"><svg viewBox="0 0 920 250" role="img" xmlns="http://www.w3.org/2000/svg"><text x="460" y="22" font-size="15" fill="#1F1E1A" text-anchor="middle" font-weight="600">repair 的五件套（全在 repair/ 与 utils/ 包）</text><text x="460" y="42" font-size="11.5" fill="#6B695F" text-anchor="middle" font-weight="400">注意：MerkleTree 在 utils 包（7.0 无 MerkleTreePool），协调与任务在 repair 包</text><rect x="20" y="64" width="280" height="130" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="34" y="88" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">① 发起端（node2）</text><text x="34" y="110" font-size="10.5" fill="#6B695F" text-anchor="start">RepairCoordinator:98 / RepairJob:88</text><text x="34" y="128" font-size="10.5" fill="#3B3A34" text-anchor="start">IncrementalRepairTask:31 / Normal:24</text><text x="34" y="146" font-size="10.5" fill="#3B3A34" text-anchor="start">ActiveRepairService.prepareForRepair:700</text><text x="34" y="168" font-size="10.5" fill="#6B695F" text-anchor="start">全量先拍快照（RepairJob:224）</text><rect x="320" y="64" width="280" height="130" rx="10" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/><text x="334" y="88" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">② 副本端建树（三台都做）</text><text x="334" y="110" font-size="10.5" fill="#6B695F" text-anchor="start">ValidationManager:44（只读压缩 :102）</text><text x="334" y="128" font-size="10.5" fill="#3B3A34" text-anchor="start">Validator.prepare/add/complete</text><text x="334" y="146" font-size="10.5" fill="#3B3A34" text-anchor="start">utils/MerkleTree:77 + MerkleTrees:50</text><text x="334" y="168" font-size="10.5" fill="#6B695F" text-anchor="start">预算 repair_session_space=堆 1/16 ÷ RF</text><rect x="620" y="64" width="280" height="130" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="634" y="88" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">③ 比对与补齐</text><text x="634" y="110" font-size="10.5" fill="#6B695F" text-anchor="start">MerkleTree.difference:205-239（下钻 :250）</text><text x="634" y="128" font-size="10.5" fill="#3B3A34" text-anchor="start">RepairJob:397 树两两比 → 差异 range</text><text x="634" y="146" font-size="10.5" fill="#3B3A34" text-anchor="start">LocalSyncTask:82 StreamPlan(REPAIR)</text><text x="634" y="168" font-size="10.5" fill="#6B695F" text-anchor="start">repair_history 记账（SystemDistributed:118）</text><path d="M300 128 L316 128" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#rB)"/><path d="M600 128 L616 128" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#rG)"/><rect x="20" y="204" width="880" height="40" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.2"/><text x="460" y="222" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">三层防线接力：hint（分钟级垫付）→ read repair（热数据读时对账）→ repair（全量兜底，唯一能处理墓碑单边过期）</text><text x="460" y="238" font-size="10.5" fill="#6B695F" text-anchor="middle">Auto Repair（autorepair/ 包）：FULL / INCREMENTAL / PREVIEW_REPAIRED 三类调度，把「gc_grace 内跑完一遍」自动化</text></svg></div>
+<div class="partgroup"><div class="gname">对账与补齐</div><div class="parts"><button class="part" data-part="acct"><b>1. 副本持有账</b><span>node4 差 27 行的进账条；hint 补 1,973 后的余差常驻。</span></button><button class="part" data-part="tree"><b>2. Merkle 树</b><span>8 叶教学树：叶子行哈希 XOR 上卷，下钻路径红、相等兄弟绿。</span></button><button class="part" data-part="rrs"><b>3. 四 range 比对卡</b><span>R1~R3 根哈希一致零流量；R4 不等才进入下钻。</span></button><button class="part" data-part="stream"><b>4. 流式补齐卡</b><span>LocalSyncTask 的 StreamPlan(REPAIR)：27 行、ts 保留、进度条。</span></button><button class="part" data-part="zombie"><b>5. 僵尸倒计时</b><span>墓碑 10 天生死线：护栏一（混组不清墓）、护栏二（建树不清墓）、不等式。</span></button></div></div>
+<p class="hint">静态图与动画共用同一套编号和口径；把动画暂停，它就是一张可打印的结构图。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：一步一停看顺序</h2></div>
+<p class="sec-sub">两条线各八个关键时刻——repair 线盯「哈希在哪层长出来、差异在哪步圈出来」，僵尸线盯「墓碑在谁那里、还剩几天」。</p>
+<div class="quote"><i>动态分析看三件事：顺序、状态、触发条件。</i></div>
+
+<table class="grid">
+<tr><th>相位</th><th>增量 repair（R）</th><th>僵尸倒计时（Z）</th></tr>
+<tr><td>0°</td><td>回归对账：hint 补 1,973，差 27（口径账常驻）</td><td>14:30 DELETE 3 行：墓碑进 node2/node5，node4 缺席</td></tr>
+<tr><td>90°</td><td>prepare：session 9f3c… 广播，增量不拍快照</td><td>16:00 node4 回归，hint 丢了 3 条墓碑</td></tr>
+<tr><td>180°</td><td class="act">建树：三副本并行，叶子先亮、内层根后亮</td><td>node4 旧行健在——三个副本两个说「没了」</td></tr>
+<tr><td class="hot">270°</td><td class="act">交树比对：R1/R2/R3 根等；R4 根不等 0x3f≠0x92</td><td class="hot">11-04 14:30 满 10 天：node2/node5 清墓</td></tr>
+<tr><td>360°</td><td class="act">下钻：B✗→N78✗→L8✗，3 次比较（log2 8）</td><td>僵尸窗口：node4 成唯一「记得者」，读到即复活</td></tr>
+<tr><td>450°</td><td>LocalSyncTask 生成 StreamPlan(REPAIR)</td><td class="act">反事实：期内跑过 repair → 墓碑送抵，清墓也安全</td></tr>
+<tr><td class="hot">540°</td><td class="hot">流式 27 行到账，node4 1,973→2,000</td><td class="hot">护栏：混组不清墓 + 不等式 3h &lt; 间隔 &lt; 10 天</td></tr>
+<tr><td>630°</td><td>repair_history=SUCCESS，增量归「已修复」组</td><td>复盘：hint 管刚发生、repair 管全部</td></tr>
+</table>
+<p>盯两张高亮行：R 线 270° 的「根不等才下钻」解释了 repair 为什么便宜（差异稀疏时树比对几乎免费）；Z 线 270° 的「清墓」是整条僵尸链的引爆点——墓碑一旦单边消失，对账的裁判就少了一份证据。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件 × 阶段</h2></div>
+<p class="sec-sub">同一棵树在「建」与「比」两趟里接力——建的哈希就是比的证据。</p>
+<div class="quote"><i>把部件放回阶段里，才能看清谁在什么时候接力。</i></div>
+
+<table class="grid">
+<tr><th>阶段</th><th>node2（发起端）</th><th>node4（差异方）</th><th>第 7/10 章对应</th></tr>
+<tr><td>prepare</td><td>RepairCoordinator + session id</td><td>登记参与、准备建树</td><td>StorageProxy 转发的老路无关</td></tr>
+<tr><td>validation</td><td>扫自己的 4 range 建树</td><td>扫自己的 4 range 建树</td><td class="hot">只读压缩（第 3 章归并读复用）</td></tr>
+<tr><td>difference</td><td>树两两比：R4 差异 → L8</td><td>被动等待差异清单</td><td class="hot">digest 比对（读修复）的加肥版</td></tr>
+<tr><td>sync</td><td>StreamPlan(REPAIR) 推 27 行</td><td>收流、落盘、标 pendingRepair</td><td>hint 重放的换装（批量、带范围）</td></tr>
+</table>
+<p>表里两格绿色是本章最重要的同构：<b>read repair 是「读时顺带对账」，repair 是「主动全量对账」，两者的证据都是哈希比对</b>——前者每次读比 1 个 digest，后者一次比整棵树。RocksDB 对照（第 1 章）：单机没有副本可对账，它的哈希用来验「文件还是不是我写的」——那是下一节的对照主题。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：它依赖什么才能成立</h2></div>
+<p class="sec-sub">拆掉任意一个外部依赖，repair 的行为都会变。</p>
+<div class="quote"><i>任何机制都有环境前提；拆掉外部依赖，它就不再成立。</i></div>
+<div class="envcards">
+<div class="env"><b>差异稀疏假设</b><span>两边各随机丢 50% 的行 → 所有叶子不等 → 退化为全量重传；repair 不是万能药。</span></div>
+<div class="env"><b>树内存预算</b><span>repair_session_space=堆 1/16 ÷ RF、深度封顶 20（DatabaseDescriptor:754-765）——树太大先被预算裁小。</span></div>
+<div class="env"><b>建树调度限流</b><span>同时在内存的树数受调度器限制（RepairJob:257）——并行度越高扫描越猛。</span></div>
+<div class="env"><b>gc_grace 倒计时</b><span>间隔必须小于 10 天；跨过线的墓碑被清，僵尸复活概率永久存在。</span></div>
+<div class="env"><b>邻居活性</b><span>prepare 预检（ActiveRepairService:727-740）：邻居死了按配置失败或跳过——缺席者留给下一次。</span></div>
+<div class="env"><b>Auto Repair 调度</b><span>bootstrap 完即触发增量修复（与第 14 章联动）；类型 FULL/INCREMENTAL/PREVIEW_REPAIRED 独立开关。</span></div>
+</div>
+<p class="figcap">边界：本页 4 range×8 叶为教学压缩；真实集群一次 repair 覆盖 vnode 的多段 range，-preview 只走到差异清单不动手。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">六个问题，检查你是否能在边界上做判断。</p>
+<div class="quote"><i>自测不是复述结论，而是检查你能否在边界上做判断。</i></div>
+<div id="quiz"></div>
+</section>
+
+
+<div class="summary">
+<h2>一页带走</h2>
+
+<p class="chant">hint 管刚发生、读修复救热数据、repair 兜全部；根不等才下钻，三天不改十天内修。</p>
+<p>· repair 线：prepare（session 9f3c…）→ 三副本建树（只读压缩，叶子哈希 XOR 上卷）→ 四 range 两两 difference：R1~R3 根等零流量，R4 三步下钻（B✗→N78✗→L8✗，log2 8=3 次比较）→ LocalSyncTask StreamPlan(REPAIR) 流 27 行 → repair_history=SUCCESS，新 SSTable 归「已修复」组。</p>
+<p>· 僵尸线：14:30 墓碑没到 node4 → 10 天后 node2/node5 清墓 → node4 成唯一「记得者」。护栏：混修复状态不清墓（CompactionController:249-261）+ 建树不提纯墓碑；不等式 max_hint_window(3h) &lt; repair 间隔 &lt; gc_grace(10 天)，Auto Repair 让它自动成立。</p>
+<p>· RocksDB 对照：CRC 是写进文件的封条（比磁盘上的自己），Merkle 是现算的对账凭证（比两个节点）——不可变文件 + 哈希验证的同构，一边防位翻转、一边防副本分叉。</p>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+</div>
+
+<script>
+(function(){
+var PERIOD=6400,PHASE_MAX=720;
+var STR=[{"d":0,"t":"回归对账","x":"14:00 node4 卡死（phi=8.0@14:00:18~20，第 5 章）；16:00 修复重启。缺席 2 小时里业务导入 2,000 行（id=101..2200）：hint 重放补回 1,973 行，node1 上 27 行欠条在其一次重启后没落盘——hint 是尽力而为，丢了没人记得写过。此刻三副本 count 差 27 行，无任何告警。"},{"d":90,"t":"prepare","x":"16:10:00 运维在 node2 敲 nodetool repair -inc demo users。RepairCoordinator（:98）组装增量任务（IncrementalRepairTask:31）；ActiveRepairService.prepareForRepair(:700) 向 node4/node5 广播 PrepareMessage，登记 parent session 9f3c…（TimeUUID）。增量不拍快照——只对账「上次 repair 之后新产生的数据」。"},{"d":180,"t":"建树","x":"三台副本各自对自己的 range 跑 validation：像压缩一样归并读 memtable+SSTable 但不写结果（ValidationManager:102「readonly compaction」），逐分区算行哈希（Digest.forValidator）XOR 进叶子（Validator.add:171），内层哈希惰性上卷。深度=ceil(log2 分区数)，树内存受 repair_session_space（堆 1/16 ÷ RF）预算封顶。教学口径：4 个 range 各建一棵 8 叶树。"},{"d":270,"t":"交树比对","x":"16:10:40 三台树齐（序列化回发起端，Validator.run:256）。RepairJob:397 把树两两 difference（utils/MerkleTree.difference:205）：R1/R2/R3 三对根哈希全等——0 个 SyncTask、0 字节传输；只有 R4 的 node2↔node4 一对不等（0x3f…a1 ≠ 0x92…77）。node5 与两边都一致。"},{"d":360,"t":"下钻锁定","x":"根不等 → 取 midpoint 二分下钻（differenceHelper:250）：第 1 步左孩子 A 相等（左半 12.5 万行出局）、右孩子 B 不等；第 2 步 N56 相等、N78 不等；第 3 步 L7 相等、L8 不等。3 次比较（log2 8）从 25 万行里圈出 L8 子段——27 行的藏身之处。差异稀疏时这步几乎免费。"},{"d":450,"t":"生成流任务","x":"差异清单交给 LocalSyncTask（:52）：node2 为发起方，建 StreamPlan(StreamOperation.REPAIR)（:82-86），方向 node2 → node4 的 transferRanges。它就是第 14 章 bootstrap 搬数据用的同一套 streaming，只是操作码不同——repair 借了拓扑变更的搬运工。"},{"d":540,"t":"流式补齐","x":"16:11:05 开流：L8 子段的 27 行带着 ts=14:00~16:00 原样流过去（时间戳是第 7 章的裁判，谁新谁赢），node4 落盘成新 SSTable，标上本次 session 的 pendingRepair id。16:11:40 流完，node4 持有 1,973 → 2,000，三副本一致。"},{"d":630,"t":"记账收尾","x":"16:12:11 system_distributed.repair_history 写入 status=SUCCESS（表 30 天 TTL，SystemDistributedKeyspace:118）；增量收尾把新 SSTable 归入「已修复」组——下次增量只碰未修复组。口诀：根不等才下钻、三天不改十天内修。"}];
+var STZ=[{"d":0,"t":"写入墓碑","x":"10-25 14:30 业务 DELETE 3 行（id=150..152）。删除=写墓碑（第 3 章）：node2/node5 收到墓碑（ts=14:30）；node4 此刻正卡死（14:00 起），墓碑和普通写入一样进 hint 欠条。"},{"d":90,"t":"hint 丢墓碑","x":"16:00 node4 回归，hint 重放——但 node1 上那批欠条部分丢失，里面恰好含这 3 条墓碑（与 27 行数据同一批丢）。结果：node4 上旧行健在、没有墓碑来压它；node2/node5 有墓碑。三个副本对「这 3 行存不存在」答案不一。"},{"d":180,"t":"分叉持续","x":"此后 10 天里如果没人干预：读这 3 行走 QUORUM，2/3 的答案说「没了」——客户端暂时看到正确结果（墓碑在多数方）。但 node4 那份旧数据一直躺在盘上，它不是错误数据，只是「没人来宣判」。宣判书（墓碑）只在另外两家。"},{"d":270,"t":"清墓引爆","x":"11-04 14:30 墓碑满 10 天（gc_grace=864000s，TableParams:446）。node2/node5 的压缩按 gcBefore=now−gc_grace 清掉墓碑（第 3 章）。此刻墓碑在地球上仅存 0 份——再也没有证据证明这 3 行该死。"},{"d":360,"t":"僵尸复活","x":"node4 成为唯一「记得」这 3 行的副本。某天一个读请求路由到它（CL=ONE，或它恰好进 QUORUM 多数方）：返回 14:30 之前的旧值——删掉的数据复活了。这不是 bug，是「墓碑证据链断裂」的必然结论。"},{"d":450,"t":"反事实","x":"正确的剧本：11-04 之前跑过一次全量 repair——建树时 dontPurgeTombstones（Validator:86）保证树里看得到墓碑，R4 下钻发现差异，墓碑作为「该有的数据」被流给 node4。三副本都持有墓碑后，11-04 各自清墓——清完依然一致。repair 的本质：在证据过期前送达证据。"},{"d":540,"t":"两道护栏","x":"护栏一：repaired/unrepaired 的 SSTable 不混压，混组压缩不清墓（CompactionController:249-261，修复状态不齐 → getPurgeEvaluator 返回「永不清理」）。护栏二：建树不提纯墓碑。运维不等式把它们串起来：max_hint_window(3h) < repair 间隔 < gc_grace(10 天)——Auto Repair 就是让这条不等式自动成立的机器。"},{"d":630,"t":"复盘","x":"口诀：三天不改、十天内修。三层防线各管一段：hint 管刚发生的（分钟级垫付）、read repair 管热数据（读时顺带对账）、repair 管全部（唯一能处理墓碑单边过期）。冷数据+hint 丢失+超期未修=僵尸复活的全条件链——断掉任何一环都安全，repair 是最可靠的那一环。"}];
+var STR_LABEL=[["P1 回归对账","hint 补 1,973 差 27"],["P2 prepare","session 9f3c… 广播"],["P3 建树","只读压缩喂哈希"],["P4 比对下钻","difference:205-239"],["P5 流式补齐","StreamPlan(REPAIR)"]];
+var STZ_LABEL=[["Z1 写入墓碑","14:30 DELETE 3 行"],["Z2 hint 丢墓碑","node4 旧行健在"],["Z3 分叉持续","QUORUM 暂时正确"],["Z4 清墓引爆","11-04 满 10 天"],["Z5 复活/反事实","证据过期前送达"]];
+var PARTS={"acct":["diffTag","bar4","cnt4"],"tree":["treeG","mtR","drillNote"],"rrs":["rr1","rr2","rr3","rr4","rrNote"],"stream":["streamBox","smRows","smBar"],"zombie":["gZ","zFix","zCtl"]};
+var CHIPS=[{"k":"scen","l":"模式"},{"k":"range","l":"差异 range"},{"k":"drill","l":"下钻比较"},{"k":"rows","l":"已流"},{"k":"diff","l":"两副本差"}];
+var QUIZ=[{"q":"hint 重放完成了，为什么还要 repair？","opts":["hint 重放有 bug","hint 是尽力而为：持有欠条的节点自己也可能丢（本例 node1 丢 27 行）、3h 窗口外作废、重放没有回执——repair 是唯一全量兜底","repair 比 hint 快"],"a":1,"exp":"StorageProxy.shouldHint(:3000-3021) 检查 3h 窗口；hint 落在别人盘上，可靠性等于那台节点。repair 主动对账，不依赖任何欠条。"},{"q":"8 叶 Merkle 树只有一个叶子段不同，difference 要比较几次？","opts":["8 次（每叶都比）","3 次：根不等 → 右孩子不等 → N78 不等 → 锁定 L8，每层淘汰一半（log2 8=3）","64 次"],"a":1,"exp":"utils/MerkleTree.difference:205-239 从根二分下钻，相等子树整枝出局。本例 25 万行只圈出 1/8 段——差异稀疏时传输几乎为零。"},{"q":"为什么「两次全量 repair 的间隔必须小于 gc_grace」？","opts":["超过会让 repair 变慢","墓碑满 10 天会被压缩清掉：清之前必须 repair 送达到所有副本，否则某副本的旧行失去宣判书——删掉的数据复活","gc_grace 过期会自动锁表"],"a":1,"exp":"僵尸链：墓碑没到 node4 → node2/node5 清墓 → node4 成唯一记得者。护栏：混修复状态不清墓（CompactionController:249-261）；解法：3h < repair 间隔 < 10 天。"},{"q":"增量 repair 怎么做到「只扫新数据」？","opts":["按时间戳过滤读请求","repair 之后新刷出的 SSTable 打 repairedAt/pendingRepair 标记、归「已修复」组，下次增量只碰未修复组（压缩也按此分组不混压）","跳过所有墓碑"],"a":1,"exp":"RepairJob:413 把 parentSessionId 传给 SyncTask；CompactionStrategyManager 按修复状态分桶。标记在 SSTable 元数据里，重启不丢。"},{"q":"preview repair（-prv）的用途是？","opts":["修复速度快一倍","只走到差异清单：报告「会流多少数据」但不真传——大表全量 repair 前先估爆炸半径","只修主 range"],"a":1,"exp":"tools/nodetool/Repair.java:93-94「Determine ranges and amount of data to be streamed, but don't actually perform repair」。-pr（primary range）才是「只修本节点当主人的 range」。"},{"q":"Merkle 树和 RocksDB 的块 CRC 最本质的区别是？","opts":["一个用 XOR 一个用 CRC32","Merkle 是现算的对账凭证、比的是两个节点的两份数据；CRC 是写入时算好固化在文件里的封条、读时和磁盘上的自己比","没有区别"],"a":1,"exp":"一个解决「多副本不一致」（版本滞后，合并裁判是 ts），一个解决「单副本不完整」（位翻转，验出即废靠 WAL/备份恢复）。共同点：不可变文件 + 哈希验证。"}];
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var scenBtn=document.getElementById('scenBtn');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,STEP_DUR=650;
+var stepIdx=-1;
+var SCEN='R',STEPS=STR;
+var el={};
+document.querySelectorAll('#eng [id],#eng2 [id]').forEach(function(n){el[n.id]=n;});
+function setOp(id,v){var n=typeof id==='string'?el[id]:id;if(n)n.setAttribute('opacity',v.toFixed(2));}
+function setText(id,s){var n=el[id]||document.getElementById(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setAttr(id,k,v){var n=el[id];if(n)n.setAttribute(k,v);}
+function setFill(id,v){var n=el[id];if(n)n.setAttribute('fill',v);}
+function setStroke(id,v){var n=el[id];if(n)n.setAttribute('stroke',v);}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function smooth(t){return t*t*(3-2*t);}
+function lerp2(a,b,t){return a+(b-a)*t;}
+function band(id,a,b,lo,hi){setOp(id,(pr>=a&&pr<b)?(hi===undefined?1:hi):(lo===undefined?0.14:lo));}
+var pr=0;
+function nodeColor(id,fill,stroke){setFill(id,fill);setStroke(id,stroke);}
+function resetTree(){
+ var ids=['mtR','mtA','mtB','mtN12','mtN34','mtN56','mtN78','mtL1','mtL2','mtL3','mtL4','mtL5','mtL6','mtL7','mtL8'];
+ ids.forEach(function(i){nodeColor(i,'#ffffff','#3B3A34');});
+}
+function applyScen(){
+ var L=SCEN==='R'?STR_LABEL:STZ_LABEL;
+ for(var i=0;i<5;i++){setText('stL'+i,L[i][0]);setText('stS'+i,L[i][1]);setText('sg'+(i+1),L[i][0].split(' ')[0]);}
+ setText('sg5',SCEN==='R'?'流式 27 行':'复活/反事实');
+ setText('sg6',SCEN==='R'?'记账':'护栏');
+ setText('sg7',SCEN==='R'?'复盘':'复盘');
+ setText('engTitle',SCEN==='R'?'增量 repair：node2 vs node4，一棵 8 叶 Merkle 树圈出 27 行':'僵尸倒计时：墓碑、压缩与 repair 的十天赛跑（gc_grace=864000s）');
+ setText('engSub',SCEN==='R'?'node2 发起｜nodetool repair -inc demo users｜session 9f3c…（TimeUUID）｜R4 = 25 万行 / 8 叶（教学规模）':'14:30 删除 3 行 → hint 丢墓碑 → 11-04 清墓 → node4 僵尸｜护栏与不等式常驻');
+ setOp('gR',SCEN==='R'?1:0);setOp('gZ',SCEN==='R'?0:1);
+ band('stStrip',0,720,1,1);
+ scenBtn.textContent=SCEN==='R'?'切到僵尸倒计时':'切到增量 repair';
+ setText('roScen',SCEN==='R'?'增量 repair':'僵尸倒计时');
+ setChip('scen',SCEN==='R'?'增量 repair':'僵尸',SCEN==='R');
+}
+function rState(){
+ if(pr<90)return{range:'—',drill:'0 次',rows:0,diff:27,c4:'1,973',note:'hint 补 1,973，仍差 27'};
+ if(pr<180)return{range:'—',drill:'0 次',rows:0,diff:27,c4:'1,973',note:'prepare：session 广播'};
+ if(pr<270)return{range:'建树中',drill:'0 次',rows:0,diff:27,c4:'1,973',note:'三副本并行建树'};
+ if(pr<360)return{range:'R4 ✗',drill:(1+Math.min(2,Math.floor((pr-270)/45)))+' 次',rows:0,diff:27,c4:'1,973',note:'R1~R3 根等；R4 不等'};
+ if(pr<450)return{range:'R4/L8',drill:'3 次',rows:0,diff:27,c4:'1,973',note:'B✗→N78✗→L8✗'};
+ if(pr<540)return{range:'R4/L8',drill:'3 次',rows:Math.min(27,Math.floor((pr-450)/90*27)),diff:27-Math.min(27,Math.floor((pr-450)/90*27)),c4:(1973+Math.min(27,Math.floor((pr-450)/90*27))).toLocaleString(),note:'StreamPlan(REPAIR) 流式中'};
+ return{range:'R4/L8 ✓',drill:'3 次',rows:27,diff:0,c4:'2,000',note:'repair_history=SUCCESS'};
+}
+function zState(){
+ if(pr<90)return{n2:'有墓碑+有新账',n4:'卡死中（无墓碑无新账）',n5:'有墓碑+有新账',ctl:'—'};
+ if(pr<180)return{n2:'有墓碑',n4:'回归：旧行健在（hint 丢了墓碑）',n5:'有墓碑',ctl:'分叉：2 说没了 / 1 说还在'};
+ if(pr<270)return{n2:'有墓碑（9 天）',n4:'旧行健在',n5:'有墓碑（9 天）',ctl:'QUORUM 暂时正确'};
+ if(pr<360)return{n2:'墓碑已清 ⚠',n4:'旧行健在 = 僵尸证据',n5:'墓碑已清 ⚠',ctl:'读到 node4 即复活'};
+ if(pr<450)return{n2:'墓碑已清（反事实：已送抵后清）',n4:'反事实：墓碑已到 → 三副本齐',n5:'墓碑已清（反事实）',ctl:'repair 在清墓前送达 → 安全'};
+ if(pr<540)return{n2:'护栏：混组不清墓',n4:'不等式 3h < 间隔 < 10 天',n5:'护栏：建树不提纯墓碑',ctl:'Auto Repair 自动成立'};
+ return{n2:'—',n4:'复盘：证据过期前送达证据',n5:'—',ctl:'口诀：三天不改、十天内修'};
+}
+function renderScene(){
+ band('st0',0,90);band('st1',90,180);band('st2',180,270);band('st3',270,450);band('st4',450,720);
+ if(SCEN==='R'){
+  var st=rState();
+  setText('cnt4',st.c4);
+  var w4=168*(parseInt(st.c4.replace(',',''),10)/2000);
+  setAttr('bar4','width',w4.toFixed(1));
+  setFill('bar4',st.diff>0?'#E24B4A':'#639922');
+  setText('diffTag',st.diff>0?'差 '+st.diff+' 行（hint 在 node1 丢失）':'0 行 —— 三副本一致 ✓');
+  setFill('diffTag',st.diff>0?'#E24B4A':'#639922');
+  setText('diffTag2',st.diff>0?'hint 3h 窗口内但欠条可丢':'16:12 repair_history=SUCCESS');
+  resetTree();
+  if(pr>=90&&pr<270){
+   ['mtL1','mtL2','mtL3','mtL4','mtL5','mtL6','mtL7','mtL8'].forEach(function(i){nodeColor(i,pr<135?'#FFF6E8':'#FFF6E8','#C46A0A');});
+   if(pr>=135){['mtN12','mtN34','mtN56','mtN78'].forEach(function(i){nodeColor(i,'#EAF2FA','#2F6FA8');});}
+   if(pr>=160){['mtA','mtB'].forEach(function(i){nodeColor(i,'#EAF2FA','#2F6FA8');});nodeColor('mtR','#EAF2FA','#2F6FA8');}
+  }
+  if(pr>=270){
+   ['mtL1','mtL2','mtL3','mtL4','mtL5','mtL6'].forEach(function(i){nodeColor(i,'#EAF3DE','#639922');});
+   nodeColor('mtN12','#EAF3DE','#639922');nodeColor('mtN34','#EAF3DE','#639922');
+   nodeColor('mtA','#EAF3DE','#639922');nodeColor('mtR','#FCEBEB','#E24B4A');
+   if(pr<360){nodeColor('mtB','#FCEBEB','#E24B4A');nodeColor('mtN56','#EAF3DE','#639922');nodeColor('mtL7','#EAF3DE','#639922');
+    if(pr>=315){nodeColor('mtN78','#FCEBEB','#E24B4A');}else{nodeColor('mtN78','#ffffff','#3B3A34');}
+    if(pr>=360){nodeColor('mtL8','#FCEBEB','#E24B4A');}
+   }else{nodeColor('mtB','#FCEBEB','#E24B4A');nodeColor('mtN78','#FCEBEB','#E24B4A');nodeColor('mtL8','#FCEBEB','#E24B4A');}
+  }
+  var rr=[['rr1','rr1t'],['rr2','rr2t'],['rr3','rr3t']];
+  rr.forEach(function(x){
+   if(pr<270){setText(x[1],'—');setStroke(x[0],'#D3D1C7');setFill(x[0],'#FBFAF6');}
+   else{setText(x[1],'根哈希一致 ✓');setStroke(x[0],'#639922');setFill(x[0],'#EAF3DE');}
+  });
+  if(pr<270){setText('rr4t','—');setStroke('rr4','#D3D1C7');setFill('rr4','#FBFAF6');}
+  else if(pr<360){setText('rr4t','0x3f…a1 ≠ 0x92…77 ✗');setStroke('rr4','#E24B4A');setFill('rr4','#FCEBEB');}
+  else{setText('rr4t','差异= L8 子段 → 27 行');setStroke('rr4','#E24B4A');setFill('rr4','#FCEBEB');}
+  setOp('rootHash',pr>=270?1:0);
+  setText('drillNote',pr<270?'下钻记录：—':pr<360?'下钻记录：根✗ → B✗（A✓ 出局）'+(pr>=315?' → N78✗（N56✓）':''):pr<450?'下钻记录：B✗→N78✗→L8✗（3 次比较）':'差异 range = L8 子段 → 27 行');
+  setText('drillNote2',pr<270?'midpoint 二分：differenceHelper（MerkleTree:250）':'log2 8 = 3 次，圈出 25 万行的 1/8 段');
+  setOp('drillNote3',pr>=360?1:0);
+  setText('smRows',String(st.rows));
+  setAttr('smBar','width',(284*st.rows/27).toFixed(1));
+  setFill('smRows',st.rows>=27?'#639922':'#854F0B');
+  setText('roRange',st.range);setText('roDrill',st.drill);setText('roRows',st.rows+' / 27');setText('roDiff',st.diff+' 行');
+  setChip('range',st.range,st.range.indexOf('✗')>=0||st.range.indexOf('L8')>=0);
+  setChip('drill',st.drill,st.drill==='3 次');
+  setChip('rows',st.rows+' / 27',st.rows>=27);
+  setChip('diff',st.diff+' 行',st.diff===0);
+ }else{
+  var z=zState();
+  setText('zN2','node2：'+z.n2);setText('zN4','node4：'+z.n4);setText('zN5','node5：'+z.n5);setText('zCtl','反事实控制：'+z.ctl);
+  setOp('zFix',pr>=450?1:0);
+  var zm=[['zE1',0,90],['zE2',90,180],['zE3',270,360],['zE4',360,450]];
+  zm.forEach(function(m){setOp(m[0],(pr>=m[1]&&pr<m[2])||pr>=630?1:0.45);});
+  setText('roRange','—');setText('roDrill','—');setText('roRows','—');setText('roDiff','3 行墓碑');
+  setChip('range','墓票状态',true);setChip('drill','时间轴',false);setChip('rows','—',false);setChip('diff','分叉 3 行',pr<450);
+ }
+}
+function setChip(k,v,on){var n=document.querySelector('#stateChips .chip[data-k="'+k+'"]');if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',!!on);n.classList.toggle('off',!on);}
+function tokPath(){
+ if(SCEN==='R'){
+  if(pr<90)return[126,220];
+  if(pr<180)return[lerp2(126,440,(pr-90)/90),lerp2(220,180,(pr-90)/90)];
+  if(pr<270)return[lerp2(440,814,(pr-180)/90),lerp2(180,285,(pr-180)/90)];
+  if(pr<360)return[lerp2(814,580,(pr-270)/90),lerp2(285,292,(pr-270)/90)];
+  if(pr<450)return[lerp2(580,814,(pr-360)/90),lerp2(292,395,(pr-360)/90)];
+  return[lerp2(814,814,Math.min(1,(pr-450)/90)),395];
+ }
+ if(pr<90)return[120,200];
+ if(pr<180)return[lerp2(120,330,(pr-90)/90),200];
+ if(pr<270)return[lerp2(330,560,(pr-180)/90),200];
+ if(pr<360)return[lerp2(560,790,(pr-270)/90),200];
+ return[790,200];
+}
+function renderSub(th){
+ var p=norm(th); var si=0;
+ for(var i=0;i<STEPS.length;i++){if(p>=STEPS[i].d)si=i;}
+ for(var i=0;i<9;i++){var on=(i===si)||(i===8&&si>=STEPS.length-1);setOp('seg'+i,on?1:0.35);}
+ var x=40+(p/PHASE_MAX)*920;
+ setAttr('subNow','x1',x.toFixed(1)); setAttr('subNow','x2',x.toFixed(1));
+}
+function render(th){
+ pr=norm(th);
+ setText('roPhase',Math.round(pr)+'°');
+ var si=0;for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)si=i;}
+ if(mode==='step'&&stepIdx>=0)si=stepIdx;
+ setText('roStep',STEPS[si]?STEPS[si].t:'—');
+ var tp=tokPath();
+ if(tp){setAttr('tok','cx',tp[0].toFixed(1));setAttr('tok','cy',tp[1].toFixed(1));setOp('tok',1);}
+ else{setOp('tok',0);}
+ renderScene();
+ if(typeof renderSub==='function')renderSub(th,pr,si);
+}
+function buildStepbar(){
+ stepBar.innerHTML='';
+ for(var s=0;s<STEPS.length;s++){(function(n){
+  var b=document.createElement('button');b.className='stepnode';
+  b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+  b.onclick=function(){goStep(n);};stepBar.appendChild(b);
+ })(s);}
+}
+function tick(now){
+ var dt=Math.min(50,now-last);last=now;
+ if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+ if(mode==='step'&&stepTo!==null){
+  stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);
+  var p=stepElapsed/STEP_DUR;var e=smooth(p);
+  phase=stepFrom+(stepTo-stepFrom)*e;
+  if(p>=1){phase=((stepTo%PERIOD)+PERIOD)%PERIOD;stepTo=null;}
+ }
+ render(phase/PERIOD*PHASE_MAX);
+ requestAnimationFrame(tick);
+}
+function setAuto(on){
+ mode='auto';run=on;stepTo=null;btn.textContent=on?'暂停':'播放';
+ if(on){stepIdx=-1;document.querySelectorAll('.stepnode').forEach(function(d){d.classList.remove('on');});
+ stepT.textContent='自动运转模式';stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格；橙色按钮切换「增量 repair / 僵尸倒计时」两条线。';}
+}
+window.goStep=function(i){
+ stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+ var target=STEPS[stepIdx].d/PHASE_MAX*PERIOD;var delta=target-phase;
+ if(reduced||Math.abs(delta)>PERIOD/3){phase=target;stepTo=null;render(target/PERIOD*PHASE_MAX+0.01);}
+ else{stepFrom=phase;stepTo=phase+delta;stepElapsed=0;render(phase/PERIOD*PHASE_MAX+0.01);}
+ btn.textContent='继续自动运转';
+ document.querySelectorAll('.stepnode').forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+ stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+ stepX.textContent=STEPS[stepIdx].x;
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+btn.textContent=run?'暂停':'播放';
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+scenBtn.onclick=function(){SCEN=SCEN==='R'?'Z':'R';STEPS=SCEN==='R'?STR:STZ;phase=0;stepIdx=-1;applyScen();buildStepbar();setAuto(true);render(0.01);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+buildStepbar();
+applyScen();
+CHIPS.forEach(function(c){var sp=document.createElement('span');sp.className='chip';sp.setAttribute('data-k',c.k);sp.innerHTML=c.l+' <b>--</b>';document.getElementById('stateChips').appendChild(sp);});
+document.querySelectorAll('.part').forEach(function(b){
+  b.onclick=function(){
+    var ids=PARTS[b.getAttribute('data-part')]||[];
+    ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+    document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+    setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+  };
+});
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+  var d=document.createElement('div');d.className='q';
+  var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+  it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+  h+='<div class="exp">'+it.exp+'</div>';d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+  var b=e.target.closest('.opt');if(!b)return;var box2=b.parentElement;if(box2.classList.contains('done'))return;
+  box2.classList.add('done');
+  var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+  box2.querySelectorAll('.opt').forEach(function(x,n){x.classList.add(n===QUIZ[qi].a?'right':'wrong');});
+});
+var BASE=(location.pathname.split('/cassandra-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/cassandra/lab';
+document.getElementById('lnkArt').href=BASE+'/cassandra/operations/01-repair-anti-entropy';
+
+requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

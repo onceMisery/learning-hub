@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>一致性与副本 · Cassandra 互动原理实验室 第 7 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:960px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:720px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:600;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:12px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:600;fill:#1F1E1A}
+.tag{font-size:10.5px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:66px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .outbranch{display:inline-flex;flex-direction:column;align-items:flex-start;gap:6px}
+.flow .outline{display:inline-flex;align-items:center;gap:8px}
+.flow .flownote{font-size:12px;color:#6B695F;font-weight:600;margin-right:4px}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 10px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+#eng [opacity]{transition:opacity .28s ease}
+#eng2 [opacity]{transition:opacity .28s ease}
+@media (prefers-reduced-motion: reduce){#eng [opacity],#eng2 [opacity]{transition:none}}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:8px 4px 0;font-size:12px;color:#6B695F}
+.legend i{display:inline-block;width:18px;height:0;border-top:2px solid #C46A0A;vertical-align:middle;margin-right:5px}
+.legend i.g{border-color:#639922}
+.legend i.r{border-color:#E24B4A}
+.legend i.b{border-color:#2F6FA8}
+.legend i.dash{border-top-style:dashed}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：一致性与副本</a>
+  <span class="idx">第 7 / 15 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · CONSISTENCY &amp; REPLICATION</div>
+<h1>三个副本几个确认</h1>
+<p>同一笔 UPDATE users SET name='阿福2' WHERE id=47，副本名单 {node2, node4, node5}。看它在 CL=ONE/QUORUM/ALL 三档下各等几个 ack；node4 挂掉之后 hint 怎样垫付、CL=ALL 为什么直接 Unavailable；最后用交集图读懂 W+R&gt;RF 为什么是唯一的数学承诺。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span>
+<span class="mnode">② 静态分解</span>
+<span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span>
+<span class="mnode">⑤ 环境场景</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 560" role="img" xmlns="http://www.w3.org/2000/svg"><title>三个副本几个确认</title><defs><marker id="kA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="kG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker></defs><text class="th" x="500" y="24" text-anchor="middle">同一笔写在三档 CL 下的确认过程</text><text class="ts" x="500" y="44" text-anchor="middle">左：协调者与三条副本泳道（ack 徽章随相位点亮）；右：档位卡、hint 欠条、Unavailable / ANY 分支与 W+R&gt;RF 交集</text><text x="976" y="24" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">橙色：请求 / ack</text><text x="976" y="40" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色：成功 / 交集</text><text x="976" y="56" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">红色：挂掉 / Unavailable</text><g id="coordBox"><rect x="28" y="70" width="510" height="66" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="44" y="92" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">协调者 node3（任何节点都能客串，第 1 章）</text><text x="44" y="112" font-size="10.5" fill="#6B695F" text-anchor="start">UPDATE users SET name='阿福2' WHERE id=47 → Mutation（第 8 章）</text><text x="44" y="128" font-size="10.5" fill="#639922" text-anchor="start" font-weight="600">副本名单（第 6 章顺时针数 3 个）：{node2, node4, node5}，RF=3</text></g><line x1="109" y1="136" x2="109" y2="168" stroke="#B4B2A9" stroke-width="1.2" stroke-dasharray="5 5"/><line x1="283" y1="136" x2="283" y2="168" stroke="#B4B2A9" stroke-width="1.2" stroke-dasharray="5 5"/><line x1="457" y1="136" x2="457" y2="168" stroke="#B4B2A9" stroke-width="1.2" stroke-dasharray="5 5"/><g id="laneN2"><rect x="28" y="172" width="162" height="180" rx="10" fill="#ffffff" stroke="#639922" stroke-width="1.3"/><text x="109" y="196" font-size="13" fill="#1F1E1A" text-anchor="middle" font-weight="600">node2</text><text x="109" y="214" font-size="10" fill="#6B695F" text-anchor="middle">token +3.7×10^18</text><text x="109" y="234" font-size="10.5" fill="#6B695F" text-anchor="middle">活 · 延迟最低</text><circle id="ackN2" cx="60" cy="194" r="11" fill="#639922" opacity="0"/><text x="60" y="198" font-size="10" fill="#ffffff" text-anchor="middle" font-weight="600">✓</text><text id="n2note" x="109" y="270" font-size="10.5" fill="#3B3A34" text-anchor="middle" font-weight="400">第一个回话的常客</text><text id="n2ts" x="109" y="290" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">apply ts=1005（示意）</text></g><g id="laneN4"><rect x="202" y="172" width="162" height="180" rx="10" fill="#ffffff" stroke="#639922" stroke-width="1.3"/><text x="283" y="196" font-size="13" fill="#1F1E1A" text-anchor="middle" font-weight="600">node4</text><text x="283" y="214" font-size="10" fill="#6B695F" text-anchor="middle">token +11.2×10^18</text><text id="n4stat" x="283" y="234" font-size="10.5" fill="#639922" text-anchor="middle" font-weight="600">活</text><circle id="ackN4" cx="234" cy="194" r="11" fill="#639922" opacity="0"/><text x="234" y="198" font-size="10" fill="#ffffff" text-anchor="middle" font-weight="600">✓</text><rect id="downBadge" x="255" y="184" width="94" height="21" rx="5" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.2" opacity="0"/><text id="downTxt" x="302" y="199" font-size="10.5" fill="#E24B4A" text-anchor="middle" font-weight="600" opacity="0">14:00 DOWN</text><text id="n4note" x="283" y="270" font-size="10.5" fill="#3B3A34" text-anchor="middle" font-weight="400">第二个 ack 的常客</text><text id="n4note2" x="283" y="290" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">卡死后由 hint 补账</text></g><g id="laneN5"><rect x="376" y="172" width="162" height="180" rx="10" fill="#ffffff" stroke="#639922" stroke-width="1.3"/><text x="457" y="196" font-size="13" fill="#1F1E1A" text-anchor="middle" font-weight="600">node5</text><text x="457" y="214" font-size="10" fill="#6B695F" text-anchor="middle">token -22.1×10^18</text><text x="457" y="234" font-size="10.5" fill="#6B695F" text-anchor="middle">活 · 跨零点入选</text><circle id="ackN5" cx="408" cy="194" r="11" fill="#639922" opacity="0"/><text x="408" y="198" font-size="10" fill="#ffffff" text-anchor="middle" font-weight="600">✓</text><text id="n5note" x="457" y="270" font-size="10.5" fill="#3B3A34" text-anchor="middle" font-weight="400">QUORUM 下的第三票</text><text id="n5ts" x="457" y="290" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">node4 挂后顶上第二票</text></g><g id="cntBox"><rect x="28" y="362" width="510" height="58" rx="10" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/><text x="44" y="384" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">响应处理器（WriteResponseHandler.java:56）：从 blockFor 倒计时，减到 0 放行</text><text id="cntTxt" x="44" y="406" font-size="13" fill="#2F6FA8" text-anchor="start" font-weight="600">当前档位：--｜blockFor --｜ack 0/--</text></g><g id="resBox"><rect x="28" y="430" width="510" height="46" rx="10" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.2"/><text id="resTxt" x="44" y="449" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">结果：等待演示…</text><text id="resSub" x="44" y="468" font-size="10.5" fill="#6B695F" text-anchor="start">体检规则：活副本 &lt; blockFor → Unavailable（ReplicaPlans.java:143）；等待上限 10s（yaml:1396）</text></g><g id="hintCard"><rect x="560" y="70" width="412" height="120" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="576" y="92" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">hint 欠条（Hint.java:61-68）——副本挂了协调者代写</text><text x="576" y="112" font-size="10.5" fill="#3B3A34" text-anchor="start">字段：{ Mutation 全件, 开欠条时刻, min(gcgs) }，写在协调者本地 hints 目录</text><text x="576" y="130" font-size="10.5" fill="#3B3A34" text-anchor="start">门槛（shouldHint，StorageProxy.java:3000）：宕机 ≤ max_hint_window = 3h（yaml:80）</text><text x="576" y="148" font-size="10.5" fill="#3B3A34" text-anchor="start">派发：后台 10s 一轮（cassandra.hint_dispatch_interval_ms）；node4 回魂后兑现</text><text x="576" y="170" font-size="10.5" fill="#C46A0A" text-anchor="start" font-weight="600">纪律：hint 不计入 ack（唯独 CL=ANY 例外，StorageProxy.java:3390）</text></g><g id="unavCard"><rect x="560" y="198" width="412" height="76" rx="10" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/><text x="576" y="220" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">分支一：CL=ALL 且 node4 DOWN → Unavailable</text><text x="576" y="240" font-size="10.5" fill="#3B3A34" text-anchor="start">活副本 {node2, node5} = 2 &lt; blockFor 3，发请求前就被拒</text><text x="576" y="260" font-size="10.5" fill="#6B695F" text-anchor="start">语义：ALL 承诺 3 份都写成，2 份不配叫成功</text></g><g id="anyCard"><rect x="560" y="282" width="412" height="76" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="576" y="304" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">分支二：CL=ANY —— hint 落盘即 ack</text><text x="576" y="324" font-size="10.5" fill="#3B3A34" text-anchor="start">全副本缺席也返回成功：协调者自己给处理器发 ack</text><text x="576" y="344" font-size="10.5" fill="#6B695F" text-anchor="start">代价：此刻任何副本上都还没有这行数据（读要等派发）</text></g><g id="vennBox"><rect x="560" y="366" width="412" height="110" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="766" y="388" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">W+R&gt;RF：QUORUM 写 ∩ QUORUM 读</text><ellipse id="venW" cx="700" cy="428" rx="86" ry="30" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.4" opacity="0.9"/><ellipse id="venR" cx="832" cy="428" rx="86" ry="30" fill="#EAF3DE" stroke="#639922" stroke-width="1.4" opacity="0.7"/><text x="662" y="432" font-size="10.5" fill="#854F0B" text-anchor="middle" font-weight="600">写确认</text><text x="716" y="432" font-size="10.5" fill="#854F0B" text-anchor="middle">node2</text><text x="766" y="426" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">node4</text><text x="766" y="440" font-size="9" fill="#639922" text-anchor="middle" font-weight="600">交集 ≥1</text><text x="816" y="432" font-size="10.5" fill="#3B3A34" text-anchor="middle">node5</text><text x="870" y="432" font-size="10.5" fill="#3B3A34" text-anchor="middle">读凑</text><text x="766" y="466" font-size="10" fill="#6B695F" text-anchor="middle">W=2, R=2, RF=3：2+2=4 &gt; 3 → 读必见新值</text></g><text x="28" y="504" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">读法：✓ 徽章 = 该副本已回话；DOWN 徽章出现后，右上的分支卡接管剧情；交集图只在 620° 后点亮。</text><text x="28" y="522" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">口径：apache/cassandra master（7.0-SNAPSHOT）；ts=1005 为全轨道示意值；node4 DOWN 时刻沿用第 5 章 14:00:00/phi=8.0。</text><circle id="tok" cx="-20" cy="-20" r="8" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/></svg>
+<svg id="eng2" viewBox="0 0 1000 180" role="img" xmlns="http://www.w3.org/2000/svg"><text x="40" y="26" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">相位总线：自动与分步共用同一进度</text><text x="960" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">0° → 720°</text><rect id="seg0" x="40" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="89.1" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">取单</text><text x="89.1" y="96" font-size="10" fill="#6B695F" text-anchor="middle">0°</text><rect id="seg1" x="142.2" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="191.3" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">ONE</text><text x="191.3" y="96" font-size="10" fill="#6B695F" text-anchor="middle">80°</text><rect id="seg2" x="244.4" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="293.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">QUORUM</text><text x="293.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle">180°</text><rect id="seg3" x="346.7" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="395.8" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">node4挂</text><text x="395.8" y="96" font-size="10" fill="#6B695F" text-anchor="middle">280°</text><rect id="seg4" x="448.9" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="498" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">hint</text><text x="498" y="96" font-size="10" fill="#6B695F" text-anchor="middle">360°</text><rect id="seg5" x="551.1" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="600.2" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">ALL拒</text><text x="600.2" y="96" font-size="10" fill="#6B695F" text-anchor="middle">460°</text><rect id="seg6" x="653.3" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="702.4" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">ANY</text><text x="702.4" y="96" font-size="10" fill="#6B695F" text-anchor="middle">540°</text><rect id="seg7" x="755.6" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="804.7" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">交集</text><text x="804.7" y="96" font-size="10" fill="#6B695F" text-anchor="middle">620°</text><rect id="seg8" x="857.8" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="906.9" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">复盘</text><text x="906.9" y="96" font-size="10" fill="#6B695F" text-anchor="middle">680°</text><line id="subNow" x1="40" y1="44" x2="40" y2="126" stroke="#C46A0A" stroke-width="2"/><text x="500" y="152" font-size="11" fill="#6B695F" text-anchor="middle" font-weight="400">每格是一个可定格的关键时刻；分步时所有视图冻结到同一相位。</text></svg>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 轮 / 6.4 秒</span>
+</div>
+
+<div class="readout">
+<span class="ro">相位 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">当前 CL <b id="roCl">--</b></span>
+<span class="ro">blockFor <b id="roBf">--</b></span>
+<span class="ro">ack <b id="roAck">--</b></span>
+<span class="ro">结果 <b id="roRes">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav">
+<button class="btn" onclick="prevStep()">‹ 上一步</button>
+<button class="btn warn" onclick="nextStep()">下一步 ›</button>
+</span>
+</div>
+<div class="legend"><span><i></i>请求 / ack 计数</span><span><i class="g"></i>成功 / 交集</span><span><i class="r"></i>挂掉 / Unavailable</span><span><i class="b"></i>响应处理器</span></div>
+<p class="figcap">进度 0° = 协调者接单，720° = W+R&gt;RF 复盘；同一笔写在三档之间重放，ack 徽章与读数同步点亮。<br>口径：apache/cassandra master（7.0-SNAPSHOT）；演示集群 5 节点、RF=3、QUORUM=2，副本名单 {node2, node4, node5} 与全轨道一致。</p>
+</div>
+</div>
+
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：先把它当黑盒</h2></div>
+<p class="sec-sub">不急着拆源码，只看「写返回成功」这件事对外表现出的差异。</p>
+<div class="quote"><i>先把系统当黑盒：只看输入、输出和边界，不急着解释内部。</i></div>
+
+<p>对客户端来说，同一句 UPDATE 在三档 CL 下的表观差异就三条：<b>返回快慢不同</b>（ONE 最快、ALL 最慢）；<b>挂一台的结果不同</b>（QUORUM 照常、ALL 直接报错）；<b>写完立刻读可能读到旧值</b>（低档位写 + 高档位读的组合）。</p>
+<div class="flow">
+<span class="node">UPDATE ... WHERE id=47（输入）</span><span class="arr">→</span>
+<span class="node box">CL 旋钮 + 副本名单（黑盒）</span>
+<span class="outbranch">
+<span class="outline"><span class="arr">→</span><span class="node">ONE：1 个 ack 即成功（快）</span></span>
+<span class="outline"><span class="arr">→</span><span class="node">QUORUM：2 个 ack（挂 1 台照常）</span></span>
+<span class="outline"><span class="arr">→</span><span class="node">ALL：3 个都要（挂 1 台即 Unavailable）</span></span>
+</span>
+</div>
+<p>黑盒对外承诺的只有一件事：<b>返回成功 = 有 blockFor 个副本各自收下了这笔写</b>。它从不承诺「全部副本此刻都有」，也从不承诺「立刻处处可读」——补齐靠 hint 与读修复，那是后面几节的事。</p>
+<p>反直觉的点先记一个：<b>「等 2 个」不等于「只发给 2 个」</b>——普通 keyspace 的写会发给全部 3 个副本，只是不等第 3 个回话。多出来的那份大概率已经应用了。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：部件各管什么</h2></div>
+<p class="sec-sub">先把结构钉住，再让时间进来。点下面的部件卡，动画里对应部分会亮起。</p>
+<div class="quote"><i>结构分解要 MECE：同一层只放同一粒度的部件。</i></div>
+<div class="figure"><svg viewBox="0 0 920 250" role="img" xmlns="http://www.w3.org/2000/svg"><text x="460" y="22" font-size="15" fill="#1F1E1A" text-anchor="middle" font-weight="600">写确认链上的五件东西</text><text x="460" y="42" font-size="11.5" fill="#6B695F" text-anchor="middle" font-weight="400">旋钮翻译成等待数，体检拦人，倒计时放行，欠条善后，交集兜底</text><rect x="20" y="64" width="168" height="120" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="34" y="88" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">① ConsistencyLevel</text><text x="34" y="110" font-size="10.5" fill="#6B695F" text-anchor="start">db/ConsistencyLevel.java:138</text><text x="34" y="128" font-size="10.5" fill="#3B3A34" text-anchor="start">blockFor：ONE=1</text><text x="34" y="146" font-size="10.5" fill="#3B3A34" text-anchor="start">QUORUM=⌊RF/2⌋+1，ALL=RF</text><text x="34" y="168" font-size="10.5" fill="#6B695F" text-anchor="start">请求属性，每条可换</text><rect x="208" y="64" width="168" height="120" rx="10" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/><text x="222" y="88" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">② ReplicaPlans 体检</text><text x="222" y="110" font-size="10.5" fill="#6B695F" text-anchor="start">locator/ReplicaPlans.java:143</text><text x="222" y="128" font-size="10.5" fill="#3B3A34" text-anchor="start">活副本 ≥ blockFor？</text><text x="222" y="146" font-size="10.5" fill="#3B3A34" text-anchor="start">不够 → Unavailable</text><text x="222" y="168" font-size="10.5" fill="#6B695F" text-anchor="start">ANY 豁免（本地必有 hint 位）</text><rect x="396" y="64" width="168" height="120" rx="10" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/><text x="410" y="88" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">③ 响应处理器</text><text x="410" y="110" font-size="10.5" fill="#6B695F" text-anchor="start">WriteResponseHandler.java:56</text><text x="410" y="128" font-size="10.5" fill="#3B3A34" text-anchor="start">从 blockFor 倒计时</text><text x="410" y="146" font-size="10.5" fill="#3B3A34" text-anchor="start">ack 减一，归零放行</text><text x="410" y="168" font-size="10.5" fill="#6B695F" text-anchor="start">超时上限 10s（yaml:1396）</text><rect x="584" y="64" width="168" height="120" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="598" y="88" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">④ hint 欠条</text><text x="598" y="110" font-size="10.5" fill="#6B695F" text-anchor="start">hints/Hint.java:61</text><text x="598" y="128" font-size="10.5" fill="#3B3A34" text-anchor="start">{Mutation, 时刻, gcgs}</text><text x="598" y="146" font-size="10.5" fill="#3B3A34" text-anchor="start">3h 窗口内才写（yaml:80）</text><text x="598" y="168" font-size="10.5" fill="#6B695F" text-anchor="start">10s 一轮派发</text><rect x="772" y="64" width="128" height="120" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="836" y="88" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">⑤ 交集保证</text><text x="836" y="110" font-size="10.5" fill="#6B695F" text-anchor="middle">W+R&gt;RF</text><text x="836" y="128" font-size="10.5" fill="#3B3A34" text-anchor="middle">QUORUM+QUORUM</text><text x="836" y="146" font-size="10.5" fill="#3B3A34" text-anchor="middle">2+2=4&gt;3</text><text x="836" y="168" font-size="10.5" fill="#639922" text-anchor="middle" font-weight="600">读必见新值</text><path d="M188 124 L204 124" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#kA)"/><path d="M376 124 L392 124" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#kA)"/><path d="M564 124 L580 124" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#kA)"/><path d="M752 124 L768 124" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#kA)"/><rect x="20" y="200" width="880" height="40" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.2"/><text x="460" y="218" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">读侧另有三件：AbstractReadExecutor（1 data + 其余 digest）、DigestResolver（MD5 对账）、BlockingReadRepair（默认，修完才返回）</text><text x="460" y="234" font-size="10.5" fill="#6B695F" text-anchor="middle">读修复管「读到的」，反熵 repair 管「全部的」（第 13 章）。</text></svg></div>
+<div class="partgroup"><div class="gname">写确认链</div><div class="parts"><button class="part" data-part="coordinator"><b>1. 协调者</b><span>任何节点客串；算名单、配处理器、写 hint 都在这里。</span></button><button class="part" data-part="lanes"><b>2. 三条副本泳道</b><span>node2/node4/node5；✓ 徽章 = 已回话，DOWN 后走分支。</span></button><button class="part" data-part="handler"><b>3. 响应处理器</b><span>blockFor 倒计时；归零放行、超时 10s、失败数提前判死。</span></button></div></div><div class="partgroup"><div class="gname">分支与兜底</div><div class="parts"><button class="part" data-part="hint"><b>4. hint 欠条</b><span>3h 窗口内的宕机才写；10s 派发；不计 ack（ANY 除外）。</span></button><button class="part" data-part="unavailable"><b>5. Unavailable 分支</b><span>活副本 &lt; blockFor，发请求前即拒——ALL 挂一台的标准结局。</span></button><button class="part" data-part="any"><b>6. ANY 分支</b><span>hint 落盘即 ack；成功时数据可能还不存在任何副本。</span></button><button class="part" data-part="intersection"><b>7. W+R&gt;RF 交集</b><span>QUORUM 写 ∩ QUORUM 读必有共享副本——必见新值的数学根基。</span></button></div></div>
+<p class="hint">静态图与动画共用同一套编号和口径；把动画暂停，它就是一张可打印的结构图。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：一步一停看顺序</h2></div>
+<p class="sec-sub">重点不是记住箭头，而是记住每一步「谁在等谁、等几个」。</p>
+<div class="quote"><i>动态分析看三件事：顺序、状态、触发条件。</i></div>
+
+<table class="grid">
+<tr><th>相位</th><th>发生了什么</th><th>边界 / 反例</th></tr>
+<tr><td>取单</td><td>node3 客串协调者，算出名单 {node2,node4,node5}</td><td>换协调者名单不变（纯函数，第 6 章）</td></tr>
+<tr><td>CL=ONE</td><td>倒计时 1：node2 ack → 1/1 成功</td><td>写完立刻 QUORUM 读可能读到旧值（3≤3）</td></tr>
+<tr><td>CL=QUORUM</td><td>倒计时 2：node2+node4 ack → 2/2</td><td>node5 迟到不阻塞；写不因个别副本慢而失败</td></tr>
+<tr><td class="hot">node4 挂</td><td>14:00 卡死，phi=8.0 于 :18~:20 确认 DOWN</td><td>没有全局宣告，每个节点各自本地判定（第 5 章）</td></tr>
+<tr><td>hint</td><td>QUORUM 靠 node2+node5 照常 2/2；node4 份额写欠条</td><td>宕机 &gt; 3h 不写；欠条不计 ack</td></tr>
+<tr><td>ALL 拒</td><td>活副本 2 &lt; blockFor 3 → Unavailable</td><td>发请求前即拒；降档重试是唯一出路</td></tr>
+<tr><td>ANY</td><td>hint 落盘即 ack 1/1 → 成功</td><td>成功 ≠ 数据存在；协调者盘毁则欠条蒸发</td></tr>
+<tr><td>交集</td><td>写 {node2,node4} ∩ 读 {node4,node5} = {node4}</td><td>ONE+QUORUM=3≤3：交集可能为空</td></tr>
+</table>
+<p>盯高亮那行：node4 的 DOWN 不是谁广播的，是 phi 触线后各节点自己的结论——写路径拿到这个状态，才走 hint 或 Unavailable 的岔路。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：档位 × 故障</h2></div>
+<p class="sec-sub">同一档位在健康与单点故障两个场景里扮演不同角色。</p>
+<div class="quote"><i>把部件放回阶段里，才能看清谁在什么时候接力。</i></div>
+
+<table class="grid">
+<tr><th>CL 档位</th><th>健康时（3 活）</th><th>node4 挂（2 活）</th><th>挂 2 台（1 活）</th></tr>
+<tr><td>ONE</td><td>1/1 成功，最快</td><td class="act">1/1 成功，无感</td><td class="act">1/1 成功，仍无感</td></tr>
+<tr><td>QUORUM</td><td>2/2 成功</td><td class="act">2/2 成功 + hint 给 node4</td><td class="hot">Unavailable（1 &lt; 2）</td></tr>
+<tr><td>ALL</td><td>3/3 成功，最慢</td><td class="hot">Unavailable（2 &lt; 3）</td><td class="hot">Unavailable</td></tr>
+<tr><td>ANY</td><td>hint 可抵 1/1</td><td class="act">hint 即 ack，成功</td><td class="act">hint 即 ack，成功（最脆）</td></tr>
+</table>
+<p>这张表就是可用性换算表：RF−blockFor = 可容忍的宕机数（QUORUM 容 1、ALL 容 0、ONE 容 2）。反过来选档位时先问：我的集群最多同时挂几台？</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：它依赖什么才能成立</h2></div>
+<p class="sec-sub">拆掉任意一个外部依赖，前面看到的行为都会变。</p>
+<div class="quote"><i>任何机制都有环境前提；拆掉外部依赖，它就不再成立。</i></div>
+<div class="envcards">
+<div class="env"><b>gossip 的活/死判定</b><span>体检数的是「活副本」；phi 阈值 8.0 决定多快发现死掉（第 5 章）——判得越慢，hint 窗口越被吃掉。</span></div>
+<div class="env"><b>max_hint_window = 3h</b><span>yaml:80；超过 3h 的宕机不再写欠条，缺口改由 repair 全量对账（第 13 章）。</span></div>
+<div class="env"><b>hinted_handoff_enabled</b><span>yaml:68 默认开；关掉后 node4 挂期间的写直接少一份，全靠读修复与 repair 补。</span></div>
+<div class="env"><b>时钟（协调者微秒）</b><span>写的时间戳取协调者时钟；节点间时钟漂移会干扰 last-write-wins 的裁决方向。</span></div>
+<div class="env"><b>读写超时预算</b><span>读 5s / 写 10s（yaml:1388/1396）；CL 越高越接近预算上限，跨 DC 的 ALL 常见超时而非失败。</span></div>
+</div>
+<p class="figcap">边界：本页画的是单 DC、无 transient 副本的场景；LOCAL_*/EACH_QUORUM 的 per-DC 计账、cheap quorum 补发与推测重试不在主图，正文有文字交代。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">六个问题，检查你是否能在边界上做判断。</p>
+<div class="quote"><i>自测不是复述结论，而是检查你能否在边界上做判断。</i></div>
+<div id="quiz"></div>
+</section>
+
+
+<div class="summary">
+<h2>一页带走</h2>
+
+<p class="chant">CL 是请求的旋钮，写等 ack 读对账，W+R&gt;RF 才有保证。</p>
+<p>· blockFor 把档位翻译成等待数：ONE=1、QUORUM=⌊RF/2⌋+1、ALL=RF；活副本不够，发请求前就 Unavailable。</p>
+<p>· hint 是欠条不是确认：3h 窗口、10s 派发；唯独 CL=ANY 把欠条当 ack——它的成功最脆。</p>
+<p>· 读 = 1 data + R−1 digest（MD5 对账），不一致触发 BLOCKING 读修复；W+R&gt;RF 是唯一的数学承诺，其余组合都有读到旧值的窗口。</p>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+</div>
+
+<script>
+(function(){
+var PERIOD=6400,PHASE_MAX=720;
+var STEPS=[{"d":0,"t":"取单","x":"node3 客串协调者：按 token 算名单 {node2, node4, node5}（第 6 章）。CL 是这条请求自带的参数——同一个 keyspace，下一条可以换档。"},{"d":80,"t":"CL=ONE","x":"blockFor=1：响应处理器从 1 倒数（WriteResponseHandler.java:56），node2 第一个 ack → 1/1 归零返回。node4/node5 也收到了写，只是不等它们回话。"},{"d":180,"t":"CL=QUORUM","x":"blockFor=2（⌊3/2⌋+1）：node2、node4 先后 ack → 2/2 归零返回；node5 迟到不挡路。写从不因个别副本慢而失败——多余的份额异步追平。"},{"d":280,"t":"node4挂","x":"14:00:00 node4 卡死；phi=8.0 于 14:00:18~:20 让四个观察者各自把它标 DOWN（第 5 章）。活副本只剩 {node2, node5} = 2 个。"},{"d":360,"t":"hint垫付","x":"CL=QUORUM 照常：node2+node5 → 2/2 成功。node4 的份额写一张 hint 欠条（{Mutation, 时刻, gcgs}）——宕机 40min < 3h 窗口 ✓；10s 一轮派发，但不计入 ack。"},{"d":460,"t":"ALL拒","x":"CL=ALL：体检发现活副本 2 < blockFor 3 → UnavailableException（ReplicaPlans.java:143），发请求前即拒。ALL 承诺 3 份都写成，2 份不配叫成功。"},{"d":540,"t":"ANY","x":"CL=ANY：hint 落盘就算 1/1——协调者自己给处理器发 ack（StorageProxy.java:3390「only for CL == ANY」）。极端可用，代价是数据此刻不在任何副本上。"},{"d":620,"t":"交集","x":"W+R>RF：QUORUM 写确认 {node2,node4}，QUORUM 读凑 {node4,node5}，交集 {node4} ≥ 1——读必见新值。ONE+QUORUM=3≤3 时交集可能为空。"},{"d":680,"t":"复盘","x":"口诀：CL 是请求的旋钮，写等 ack 读对账，W+R>RF 才有保证。没等到的份额由 hint（3h 窗口）与读修复（BLOCKING）补齐，全量兜底交给第 13 章 repair。"}];
+var PARTS={"coordinator":["coordBox"],"lanes":["laneN2","laneN4","laneN5"],"handler":["cntBox","resBox"],"hint":["hintCard"],"unavailable":["unavCard","downBadge","downTxt"],"any":["anyCard"],"intersection":["vennBox","venW","venR"]};
+var CHIPS=[{"k":"cl","l":"当前 CL"},{"k":"bf","l":"blockFor"},{"k":"live","l":"活副本"},{"k":"n4","l":"node4"},{"k":"hint","l":"hint"}];
+var QUIZ=[{"q":"RF=3、副本 {node2,node4,node5}，node4 DOWN 后各档写的命运是？","opts":["全部失败","ONE/QUORUM 成功，ALL 抛 Unavailable","全部成功"],"a":1,"exp":"活副本 2 个：ONE 需 1 ✓；QUORUM 需 2 ✓（node2+node5 顶上，node4 份额写 hint）；ALL 需 3，2<3 在发请求前就被 ReplicaPlans 体检拦下（UnavailableException）。"},{"q":"「等 2 个 ack」意味着只发给 2 个副本吗？","opts":["是，省流量","不是：普通 keyspace 写发给全部 3 个，只是不等第 3 个回话","取决于驱动配置"],"a":1,"exp":"writeNormal 选择器在无 transient 副本时联络人=全部副本（ReplicaPlans.java:647-681）。没等到 ack 的副本大概率已应用——「写不阻塞」。"},{"q":"CL=ANY 的写返回成功时，数据在哪？","opts":["至少 1 个副本已应用","可能在任何副本上都不存在：hint 落盘即算 ack","一定在多数副本上"],"a":1,"exp":"StorageProxy.java:3390 的注释「Notify the handler only for CL == ANY」：hint 写盘后协调者自己发 ack。数据要等 10s 一轮的派发才真正落到副本。"},{"q":"CL=ONE 写成功后立刻 CL=QUORUM 读，为什么可能读到旧值？","opts":["哈希算错了","W+R=1+2=3≤3：读的两个副本可能都不含写确认者","Cassandra 会自动重读"],"a":1,"exp":"ONE 只保证 {node2} 有新值；QUORUM 读若凑成 {node4,node5}，两边旧值一致、摘要对账通过，返回旧值。窗口从毫秒（网络+排队）到 hint 派发完（宕机时）。"},{"q":"hint 欠条什么时候不再写？","opts":["从不限制","目标节点累计宕机超过 max_hint_window=3h","副本数超过 3"],"a":1,"exp":"shouldHint 检查 Gossiper 记录的宕机时长（StorageProxy.java:3019-3021）；超过 3h（yaml:80）认为该交给反熵 repair 全量对账，不再积压欠条。"},{"q":"把写改成 QUORUM、读保持 QUORUM，能保证「读己之写」吗？","opts":["能，2+2=4>3 必见最新写","能，且对并发写的先后也排序了","必见「已确认的最新写」，但并发写的胜负由时间戳定（LWT 才管排序）"],"a":2,"exp":"W+R>RF 保证交集非空——读必见已确认的新值。但两笔并发写谁赢由 last-write-wins 的时间戳裁决，要线性一致的并发排序得上轻量事务（LWT）。"}];
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,STEP_DUR=650;
+var stepIdx=-1;
+var el={};
+document.querySelectorAll('#eng [id],#eng2 [id]').forEach(function(n){el[n.id]=n;});
+function setOp(id,v){var n=typeof id==='string'?el[id]:id;if(n)n.setAttribute('opacity',v.toFixed(2));}
+function setText(id,s){var n=el[id]||document.getElementById(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setAttr(id,k,v){var n=el[id];if(n)n.setAttribute(k,v);}
+function setStroke(id,v){var n=el[id];if(n)n.setAttribute('stroke',v);}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){return t*t*(3-2*t);}
+function lerp(a,b,t){return a+(b-a)*t;}
+var CX=283,CY=118;
+function band(id,a,b,lo,hi){setOp(id,(pr>=a&&pr<b)?(hi===undefined?1:hi):(lo===undefined?0.12:lo));}
+var pr=0;
+function state(){
+  if(pr<80)return{cl:'—',bf:0,ack:0,res:'等待演示…',sub:'',hint:false};
+  if(pr<180){var t=clamp((pr-90)/50,0,1);var a=Math.round(t);return{cl:'ONE',bf:1,ack:a,res:a>=1?'成功（1/1 归零）':'等待 ack…',hint:false};}
+  if(pr<280){var t2=clamp((pr-190)/60,0,1);var a2=Math.round(t2*2);return{cl:'QUORUM',bf:2,ack:a2,res:a2>=2?'成功（2/2 归零）':'等待 ack… '+a2+'/2',hint:false};}
+  if(pr<360)return{cl:'QUORUM',bf:2,ack:0,res:'node4 DOWN（第 5 章 phi=8.0）',hint:false};
+  if(pr<460){var t3=clamp((pr-370)/50,0,1);var a3=Math.round(t3*2);return{cl:'QUORUM',bf:2,ack:a3,res:a3>=2?'成功（node2+node5，2/2）':'重发：等待 ack… '+a3+'/2',hint:true};}
+  if(pr<540)return{cl:'ALL',bf:3,ack:0,res:'Unavailable（活 2 < blockFor 3）',hint:true};
+  if(pr<620){var t4=clamp((pr-550)/50,0,1);var a4=Math.round(t4);return{cl:'ANY',bf:1,ack:a4,res:a4>=1?'成功（hint 落盘即 1/1）':'写 hint…',hint:true};}
+  if(pr<680)return{cl:'QUORUM',bf:2,ack:2,res:'W+R>RF：读必见新值',hint:true};
+  return{cl:'QUORUM',bf:2,ack:2,res:'口诀：写等 ack，读对账，W+R>RF 才有保证',hint:true};
+}
+function renderScene(){
+  band('hintCard',360,720,0.14,1);
+  band('unavCard',460,720,0.14,1);
+  band('anyCard',540,720,0.14,1);
+  band('vennBox',620,720,0.14,1);
+  var n4down=pr>=280;
+  setOp('downBadge',n4down?1:0);setOp('downTxt',n4down?1:0);
+  setText('n4stat',n4down?'DOWN（phi=8.0）':'活');
+  setStroke('laneN4',n4down?(pr<460?'#E24B4A':'#B4B2A9'):'#639922');
+  setText('n4note',n4down?(pr>=360?'份额由 hint 欠条垫付':'心跳沉默 18.4s 后触线'):'第二个 ack 的常客');
+  var st=state();
+  var oneAck=pr>=140&&pr<180;
+  var qAck1=pr>=230&&pr<280, qAck2=pr>=245&&pr<280;
+  var hAck1=pr>=400&&pr<460, hAck2=pr>=420&&pr<460;
+  var keep=(pr>=620);
+  var a2=(oneAck||qAck1||hAck1||keep||pr>=680);
+  var a4=(qAck2&&pr<280);
+  var a5=(hAck2||keep||pr>=680);
+  setOp('ackN2',a2?1:0);
+  setOp('ackN4',a4?1:0);
+  setOp('ackN5',a5?1:0);
+  setText('cntTxt','当前档位：'+(st.cl==='—'?'--':st.cl)+'｜blockFor '+(st.bf||'--')+'｜ack '+st.ack+'/'+(st.bf||'--'));
+  setText('resTxt','结果：'+st.res);
+  setText('roCl',st.cl==='—'?'--':st.cl);
+  setText('roBf',st.bf?String(st.bf):'--');
+  setText('roAck',st.ack+'/'+(st.bf||'--'));
+  setText('roRes',st.res.length>14?st.res.slice(0,14)+'…':st.res);
+  setChip('cl',st.cl==='—'?'--':st.cl,st.cl!=='—');
+  setChip('bf',st.bf?String(st.bf):'--',!!st.bf);
+  setChip('live',pr<280?'3 台':(pr>=620?'2 台（node4 缺席）':'2 台'),pr<280);
+  setChip('n4',n4down?(pr>=360?'DOWN·hint 垫付':'DOWN'):'UP',!n4down);
+  setChip('hint',st.hint?(pr>=540?'已落盘·计 ack（ANY）':'已落盘·不计 ack'):('未写'),st.hint);
+}
+function setChip(k,v,on){var n=document.querySelector('#stateChips .chip[data-k="'+k+'"]');if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',!!on);n.classList.toggle('off',!on);}
+function tokPath(p){
+  if(p<80)return null;
+  if(p<180){ if(p<110)return [lerp(CX,109,(p-80)/30),lerp(CY,300,(p-80)/30)]; if(p<140)return [lerp(109,CX,(p-110)/30),lerp(300,CY,(p-110)/30)]; return [CX,CY]; }
+  if(p<280){ if(p<210)return [lerp(CX,109,(p-180)/30),lerp(CY,300,(p-180)/30)]; if(p<230)return [lerp(109,CX,(p-210)/20),lerp(300,CY,(p-210)/20)]; if(p<245)return [lerp(CX,283,(p-230)/15),lerp(CY,300,(p-230)/15)]; if(p<262)return [lerp(283,CX,(p-245)/17),lerp(300,CY,(p-245)/17)]; return [CX,CY]; }
+  if(p<360)return null;
+  if(p<460){ if(p<390)return [lerp(CX,109,(p-360)/30),lerp(CY,300,(p-360)/30)]; if(p<405)return [lerp(109,CX,(p-390)/15),lerp(300,CY,(p-390)/15)]; if(p<425)return [lerp(CX,457,(p-405)/20),lerp(CY,300,(p-405)/20)]; if(p<445)return [lerp(457,CX,(p-425)/20),lerp(300,CY,(p-425)/20)]; if(p<452)return [lerp(CX,700,(p-445)/7),lerp(CY,130,(p-445)/7)]; return [700,130]; }
+  if(p<540)return null;
+  if(p<620){ if(p<570)return [lerp(CX,700,(p-540)/30),lerp(CY,130,(p-540)/30)]; return [700,130]; }
+  if(p<680){ if(p<650)return [lerp(700,766,(p-620)/30),lerp(130,428,(p-620)/30)]; return [766,428]; }
+  return null;
+}
+
+function renderSub(th){
+  var p=norm(th); var si=0;
+  for(var i=0;i<STEPS.length;i++){if(p>=STEPS[i].d)si=i;}
+  for(var i=0;i<STEPS.length;i++){setOp('seg'+i,i===si?1:0.35);}
+  var x=40+(p/PHASE_MAX)*920;
+  setAttr('subNow','x1',x.toFixed(1)); setAttr('subNow','x2',x.toFixed(1));
+}
+
+function render(th){
+  pr=norm(th);
+  setText('roPhase',Math.round(pr)+'°');
+  var si=0;for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)si=i;}
+  if(mode==='step'&&stepIdx>=0)si=stepIdx;
+  setText('roStep',STEPS[si]?STEPS[si].t:'—');
+  var tp=tokPath(pr);
+  if(tp){setAttr('tok','cx',tp[0].toFixed(1));setAttr('tok','cy',tp[1].toFixed(1));setOp('tok',1);}
+  else{setOp('tok',0);}
+  renderScene();
+  if(typeof renderSub==='function')renderSub(th,pr,si);
+}
+function tick(now){
+  var dt=Math.min(50,now-last);last=now;
+  if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+  if(mode==='step'&&stepTo!==null){
+    stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);
+    var p=stepElapsed/STEP_DUR;var e=smooth(p);
+    phase=stepFrom+(stepTo-stepFrom)*e;
+    if(p>=1){phase=((stepTo%PERIOD)+PERIOD)%PERIOD;stepTo=null;}
+  }
+  render(phase/PERIOD*PHASE_MAX);
+  requestAnimationFrame(tick);
+}
+function setAuto(on){
+  mode='auto';run=on;stepTo=null;btn.textContent=on?'暂停':'播放';
+  if(on){stepIdx=-1;document.querySelectorAll('.stepnode').forEach(function(d){d.classList.remove('on');});
+  stepT.textContent='自动运转模式';stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格。';}
+}
+window.goStep=function(i){
+  stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+  var target=STEPS[stepIdx].d/PHASE_MAX*PERIOD;var delta=target-phase;
+  if(reduced||Math.abs(delta)>PERIOD/3){phase=target;stepTo=null;render(target/PERIOD*PHASE_MAX+0.01);}
+  else{stepFrom=phase;stepTo=phase+delta;stepElapsed=0;render(phase/PERIOD*PHASE_MAX+0.01);}
+  btn.textContent='继续自动运转';
+  document.querySelectorAll('.stepnode').forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+  stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+  stepX.textContent=STEPS[stepIdx].x;
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+btn.textContent=run?'暂停':'播放';
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+for(var s=0;s<STEPS.length;s++){(function(n){
+  var b=document.createElement('button');b.className='stepnode';
+  b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+  b.onclick=function(){goStep(n);};stepBar.appendChild(b);
+})(s);}
+CHIPS.forEach(function(c){var sp=document.createElement('span');sp.className='chip';sp.setAttribute('data-k',c.k);sp.innerHTML=c.l+' <b>--</b>';document.getElementById('stateChips').appendChild(sp);});
+document.querySelectorAll('.part').forEach(function(b){
+  b.onclick=function(){
+    var ids=PARTS[b.getAttribute('data-part')]||[];
+    ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+    document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+    setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+  };
+});
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+  var d=document.createElement('div');d.className='q';
+  var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+  it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+  h+='<div class="exp">'+it.exp+'</div>';d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+  var b=e.target.closest('.opt');if(!b)return;var box2=b.parentElement;if(box2.classList.contains('done'))return;
+  box2.classList.add('done');
+  var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+  box2.querySelectorAll('.opt').forEach(function(x,n){x.classList.add(n===QUIZ[qi].a?'right':'wrong');});
+});
+var BASE=(location.pathname.split('/cassandra-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/cassandra/lab';
+document.getElementById('lnkArt').href=BASE+'/cassandra/distributed/03-consistency-replication';
+
+requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

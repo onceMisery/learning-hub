@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>数据类型与列：内存里的列长什么样 · ClickHouse 互动原理实验室</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#fff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:1000px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#fff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px;flex-wrap:wrap}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:38px 0 22px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:750px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#fff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:500;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:11.5px;fill:#3B3A34}
+.tn{font-size:12.5px;font-weight:500;fill:#1F1E1A}
+.tag{font-size:10px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:nowrap;overflow-x:auto;max-width:100%;padding-bottom:4px}
+.stepnode{flex:1;min-width:62px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px;flex-wrap:wrap}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+section{padding:34px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .arr{color:#C46A0A;font-weight:600}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.figcap b{color:#3B3A34;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:13.5px;table-layout:fixed}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 9px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+.env span,.env b,.part span,.figcap,.summary p,table.grid td{overflow-wrap:anywhere;word-break:break-word}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#scene [opacity],#scene2 [opacity],#scene3 [opacity]{transition:opacity .22s ease}
+#eng .hl,#eng2 .hl,#eng3 .hl{stroke:#D96C06 !important;stroke-width:2.2 !important}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+.stage circle{fill:#fff;stroke:#B4B2A9;stroke-width:1.4;transition:fill .18s,stroke .18s}
+.stage.on rect:first-of-type{fill:#FFF6E8;stroke:#C46A0A;stroke-width:2}
+.stage.done rect:first-of-type{fill:#EAF3DE;stroke:#639922}
+.stage.done circle{fill:#EAF3DE;stroke:#639922}
+.stage.on circle{fill:#EF9F27;stroke:#C46A0A;stroke-width:2}
+.stage text{font-size:10px;fill:#6B695F}
+.stage.on text{fill:#854F0B;font-weight:600}
+.subview{margin:8px 0 4px;background:#fff;border:1px dashed #D3D1C7;border-radius:10px;padding:8px 10px}
+.subview .viewtitle{font-size:12px;font-weight:600;color:#854F0B;margin-bottom:4px}
+@media (max-width:560px){.page{padding:0 12px 60px}.labbar{padding:8px 12px}.labbar .idx{width:100%;margin-left:0;text-align:right}.hero h1{font-size:24px}.sec-head h2{font-size:18px}.stepnode{min-width:54px}.stepnode .lab2{font-size:9px}}
+@media (prefers-reduced-motion: reduce){#scene [opacity],#scene2 [opacity],#scene3 [opacity]{transition:none}}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：数据类型与列：内存里的列长什么样</a>
+  <span class="idx">第 10 / 13 章</span>
+</div>
+<div class="page">
+<header class="hero">
+<div class="kicker">DATA LAYER · 数据类型与列</div>
+<h1>数据类型与列：内存里的列长什么样</h1>
+<p>String、Nullable(String)、LowCardinality(String) 在 SQL 里都能存 region，但在内存里是三种完全不同的结构：offset+chars、null map、字典+下标。类型决定布局，布局决定速度和空间。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span><span class="mnode">② 静态分解</span><span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span><span class="mnode">⑤ 环境场景</span><span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 440" role="img" xmlns="http://www.w3.org/2000/svg"><defs>
+<marker id="aW" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aM" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#6B695F" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs><text x="500" y="28" font-size="18" fill="#1F1E1A" text-anchor="middle" font-weight="600">逻辑类型 → 物理列 → 算子：一列在内存里怎么放</text><text x="500" y="48" font-size="11.5" fill="#6B695F" text-anchor="middle">DataType 创建 Column；Column 用不同的内存结构表示 Vector/String/Nullable/LowCardinality</text><text x="976" y="24" font-size="10.5" fill="#C46A0A" text-anchor="end">橙色：类型/可空</text><text x="976" y="39" font-size="10.5" fill="#2F6FA8" text-anchor="end">蓝色：列结构</text><text x="976" y="54" font-size="10.5" fill="#639922" text-anchor="end">绿色：计算/低基数</text><g class="stage" id="s1"><rect x="20.0" y="76" width="111.25" height="142" rx="9" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/><text x="28.0" y="98" class="tn" text-anchor="start" font-size="12">类型</text><text x="28.0" y="118" class="tb" text-anchor="start" font-size="10.2">String</text><text x="28.0" y="132" class="tb" text-anchor="start" font-size="10.2">Nullable(String)</text><text x="28.0" y="146" class="tb" text-anchor="start" font-size="10.2">LowCardinality</text><text x="28.0" y="160" class="tb" text-anchor="start" font-size="10.2">Array/JSON</text><text x="28.0" y="209" class="tag" text-anchor="start" fill="#C46A0A">逻辑</text></g><path d="M131.25 147.0 L139.25 147.0" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><g class="stage" id="s2"><rect x="141.25" y="76" width="111.25" height="142" rx="9" fill="#fff" stroke="#D3D1C7" stroke-width="1.2"/><text x="149.25" y="98" class="tn" text-anchor="start" font-size="12">DataType</text><text x="149.25" y="118" class="tb" text-anchor="start" font-size="10.2">IDataType</text><text x="149.25" y="132" class="tb" text-anchor="start" font-size="10.2">工厂注册</text><text x="149.25" y="146" class="tb" text-anchor="start" font-size="10.2">参数解析</text><text x="149.25" y="160" class="tb" text-anchor="start" font-size="10.2">createColumn</text><text x="149.25" y="209" class="tag" text-anchor="start" fill="#C46A0A">类型对象</text></g><path d="M252.5 147.0 L260.5 147.0" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><g class="stage" id="s3"><rect x="262.5" y="76" width="111.25" height="142" rx="9" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/><text x="270.5" y="98" class="tn" text-anchor="start" font-size="12">ColumnVector</text><text x="270.5" y="118" class="tb" text-anchor="start" font-size="10.2">连续内存</text><text x="270.5" y="132" class="tb" text-anchor="start" font-size="10.2">PaddedArray</text><text x="270.5" y="146" class="tb" text-anchor="start" font-size="10.2">定长值</text><text x="270.5" y="160" class="tb" text-anchor="start" font-size="10.2">SIMD</text><text x="270.5" y="209" class="tag" text-anchor="start" fill="#C46A0A">物理列</text></g><path d="M373.75 147.0 L381.75 147.0" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><g class="stage" id="s4"><rect x="383.75" y="76" width="111.25" height="142" rx="9" fill="#fff" stroke="#D3D1C7" stroke-width="1.2"/><text x="391.75" y="98" class="tn" text-anchor="start" font-size="12">ColumnString</text><text x="391.75" y="118" class="tb" text-anchor="start" font-size="10.2">offsets</text><text x="391.75" y="132" class="tb" text-anchor="start" font-size="10.2">chars</text><text x="391.75" y="146" class="tb" text-anchor="start" font-size="10.2">变长</text><text x="391.75" y="160" class="tb" text-anchor="start" font-size="10.2">任意字节</text><text x="391.75" y="209" class="tag" text-anchor="start" fill="#C46A0A">字符串</text></g><path d="M495.0 147.0 L503.0 147.0" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><g class="stage" id="s5"><rect x="505.0" y="76" width="111.25" height="142" rx="9" fill="#fff" stroke="#D3D1C7" stroke-width="1.2"/><text x="513.0" y="98" class="tn" text-anchor="start" font-size="12">ColumnNullable</text><text x="513.0" y="118" class="tb" text-anchor="start" font-size="10.2">nested</text><text x="513.0" y="132" class="tb" text-anchor="start" font-size="10.2">null map</text><text x="513.0" y="146" class="tb" text-anchor="start" font-size="10.2">多 1 字节</text><text x="513.0" y="160" class="tb" text-anchor="start" font-size="10.2">NULL 判断</text><text x="513.0" y="209" class="tag" text-anchor="start" fill="#C46A0A">可空</text></g><path d="M616.25 147.0 L624.25 147.0" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><g class="stage" id="s6"><rect x="626.25" y="76" width="111.25" height="142" rx="9" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/><text x="634.25" y="98" class="tn" text-anchor="start" font-size="12">LowCardinality</text><text x="634.25" y="118" class="tb" text-anchor="start" font-size="10.2">字典</text><text x="634.25" y="132" class="tb" text-anchor="start" font-size="10.2">下标</text><text x="634.25" y="146" class="tb" text-anchor="start" font-size="10.2">低基数</text><text x="634.25" y="160" class="tb" text-anchor="start" font-size="10.2">高基数反噬</text><text x="634.25" y="209" class="tag" text-anchor="start" fill="#C46A0A">字典</text></g><path d="M737.5 147.0 L745.5 147.0" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><g class="stage" id="s7"><rect x="747.5" y="76" width="111.25" height="142" rx="9" fill="#fff" stroke="#D3D1C7" stroke-width="1.2"/><text x="755.5" y="98" class="tn" text-anchor="start" font-size="12">Array/JSON</text><text x="755.5" y="118" class="tb" text-anchor="start" font-size="10.2">offset + nested</text><text x="755.5" y="132" class="tb" text-anchor="start" font-size="10.2">动态路径</text><text x="755.5" y="146" class="tb" text-anchor="start" font-size="10.2">typed paths</text><text x="755.5" y="160" class="tb" text-anchor="start" font-size="10.2">max_dynamic</text><text x="755.5" y="209" class="tag" text-anchor="start" fill="#C46A0A">嵌套</text></g><path d="M858.75 147.0 L866.75 147.0" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><g class="stage" id="s8"><rect x="868.75" y="76" width="111.25" height="142" rx="9" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/><text x="876.75" y="98" class="tn" text-anchor="start" font-size="12">算子</text><text x="876.75" y="118" class="tb" text-anchor="start" font-size="10.2">过滤/聚合</text><text x="876.75" y="132" class="tb" text-anchor="start" font-size="10.2">在列上循环</text><text x="876.75" y="146" class="tb" text-anchor="start" font-size="10.2">Chunk</text><text x="876.75" y="160" class="tb" text-anchor="start" font-size="10.2">结果</text><text x="876.75" y="209" class="tag" text-anchor="start" fill="#C46A0A">计算</text></g><text x="20" y="244" font-size="12" fill="#C46A0A" font-weight="600">同一条 region 字段，三种内存布局</text>
+<rect x="20" y="256" width="300" height="66" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.1"/>
+<text x="34" y="278" font-size="11.5" fill="#1F1E1A" font-weight="600">String</text>
+<text x="34" y="296" font-size="10.5" fill="#6B695F">offsets + chars</text>
+<text x="34" y="312" font-size="10.5" fill="#2F6FA8">12 亿行 ≈ 12 GB（含 offset）</text>
+<rect x="340" y="256" width="300" height="66" rx="8" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1"/>
+<text x="354" y="278" font-size="11.5" fill="#1F1E1A" font-weight="600">Nullable(String)</text>
+<text x="354" y="296" font-size="10.5" fill="#6B695F">String + null map</text>
+<text x="354" y="312" font-size="10.5" fill="#C46A0A">多 1 字节/行 ≈ 13.2 GB</text>
+<rect x="660" y="256" width="320" height="66" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.1"/>
+<text x="674" y="278" font-size="11.5" fill="#1F1E1A" font-weight="600">LowCardinality(String)</text>
+<text x="674" y="296" font-size="10.5" fill="#6B695F">字典 + UInt8 下标</text>
+<text x="674" y="312" font-size="10.5" fill="#639922">12 亿行 ≈ 1.2 GB</text>
+<rect x="20" y="334" width="960" height="56" rx="8" fill="#fff" stroke="#ECEAE2" stroke-width="1"/>
+<text x="34" y="356" font-size="11" fill="#3B3A34">读法：类型不是「声明一下让 SQL 能跑」，它直接决定内存、磁盘、聚合速度。</text>
+<text x="34" y="376" font-size="10.5" fill="#6B695F">口径：ColumnLowCardinality.h:19；ColumnNullable.h:19；ColumnVector.h:25；DataTypeObject.h:10；数值为演示算术。</text><circle id="tok" cx="75.6" cy="147.0" r="7" fill="#EF9F27" stroke="#D97E06" stroke-width="1.4"/></svg>
+<div class="subview">
+<div class="viewtitle">第二视图 · 四种列的内存布局</div>
+<svg id="eng2" viewBox="0 0 1000 210" role="img" xmlns="http://www.w3.org/2000/svg"><defs>
+<marker id="aW" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aM" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#6B695F" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs><rect x="18" y="14" width="964" height="182" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/><text x="34" y="38" font-size="13" fill="#1F1E1A" font-weight="600">四种列的内存布局：Vector、String、Nullable、LowCardinality</text><rect x="34" y="54" width="180" height="78" rx="6" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.1"/><text x="124.0" y="76" class="tn" text-anchor="middle" font-size="11.5">ColumnVector</text><text x="124.0" y="94" class="tag" text-anchor="middle">连续 T[]</text><text x="124.0" y="106" class="tag" text-anchor="middle">定长</text><text x="124.0" y="118" class="tag" text-anchor="middle">SIMD</text><rect x="234" y="54" width="180" height="78" rx="6" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.1"/><text x="324.0" y="76" class="tn" text-anchor="middle" font-size="11.5">ColumnString</text><text x="324.0" y="94" class="tag" text-anchor="middle">offsets[]</text><text x="324.0" y="106" class="tag" text-anchor="middle">chars[]</text><text x="324.0" y="118" class="tag" text-anchor="middle">变长</text><rect x="434" y="54" width="180" height="78" rx="6" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1"/><text x="524.0" y="76" class="tn" text-anchor="middle" font-size="11.5">ColumnNullable</text><text x="524.0" y="94" class="tag" text-anchor="middle">nested</text><text x="524.0" y="106" class="tag" text-anchor="middle">null map</text><text x="524.0" y="118" class="tag" text-anchor="middle">1 字节/行</text><rect x="634" y="54" width="180" height="78" rx="6" fill="#EAF3DE" stroke="#639922" stroke-width="1.1"/><text x="724.0" y="76" class="tn" text-anchor="middle" font-size="11.5">LowCardinality</text><text x="724.0" y="94" class="tag" text-anchor="middle">dictionary</text><text x="724.0" y="106" class="tag" text-anchor="middle">indexes</text><text x="724.0" y="118" class="tag" text-anchor="middle">UInt8/16/32</text><rect x="834" y="54" width="134" height="78" rx="6" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.1"/><text x="901.0" y="76" class="tn" text-anchor="middle" font-size="11.5">Array</text><text x="901.0" y="94" class="tag" text-anchor="middle">offsets + nested</text><path d="M214 86 L232 86" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><path d="M414 86 L432 86" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><path d="M614 86 L632 86" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><path d="M814 86 L832 86" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><text x="34" y="154" class="tb" text-anchor="start" fill="#3B3A34" font-size="10.8">读法：Vector 是连续值；String 是字符池 + 前缀和；Nullable 加 null map；LowCardinality 是字典 + 下标。</text><text x="34" y="172" class="tb" text-anchor="start" fill="#3B3A34" font-size="10.8">Array 是 offset + 嵌套列；JSON 是动态路径 + typed paths；AggregateFunction 存的是聚合状态。</text><circle id="tok2" cx="109" cy="142" r="6" fill="#639922" stroke="#4C7A1A" stroke-width="1.4"/></svg>
+</div>
+</div>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.5" max="2" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm">默认 ≈ 5.6 秒 / 轮</span>
+</div>
+<div class="readout">
+<span class="ro">进度 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">读数 <b id="roKey">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav"><button class="btn" onclick="prevStep()">‹ 上一步</button><button class="btn warn" onclick="nextStep()">下一步 ›</button></span>
+</div>
+<p class="figcap">相位 0° = 声明类型，630° = 列进入算子；橙色令牌沿类型 → 列 → 计算移动。<br>口径：ClickHouse 26.11.1.1-testing；列实现见 ColumnVector.h:25、ColumnNullable.h:19、ColumnLowCardinality.h:19、ColumnArray.h:17。</p>
+</div>
+
+<section><div class="sec-head"><span class="sec-num">1</span><h2>表象观察：三种 region 写法，差 10 倍空间</h2></div>
+<p class="sec-sub">SQL 语义相同，内存布局完全不同。</p>
+<div class="quote">「类型不是声明，是布局。」</div>
+<div class="flow"><span class="node">String</span><span class="arr">→</span><span class="node box">offsets+chars</span><span class="arr">→</span><span class="node">12 GB</span></div>
+<p>Nullable 多 null map；LowCardinality 用字典 + 下标。12 亿行、100 个区域值，LowCardinality 可能只有 String 的十分之一。</p>
+</section>
+<section><div class="sec-head"><span class="sec-num">2</span><h2>静态分解：DataType 与 Column</h2></div>
+<table class="grid"><tr><th>层</th><th>对象</th><th>职责</th></tr>
+<tr><td>逻辑</td><td>IDataType</td><td>类型名、参数、序列化、运算</td></tr>
+<tr><td>工厂</td><td>DataTypeFactory</td><td>解析 Nullable/String/Decimal...</td></tr>
+<tr><td>物理</td><td>IColumn</td><td>size/getDataAt/insertFrom/filter/compareAt</td></tr>
+<tr><td>块</td><td>Chunk</td><td>列向量 + 行数</td></tr></table>
+<p class="hint">createColumn() 把逻辑类型变成物理列；算子只见 IColumn。</p>
+</section>
+<section><div class="sec-head"><span class="sec-num">3</span><h2>动态分析：四种列的读写</h2></div>
+<table class="grid"><tr><th>列</th><th>结构</th><th>读一行</th><th>注意</th></tr>
+<tr><td>Vector</td><td>连续 T[]</td><td>data[n]</td><td>SIMD/缓存友好</td></tr>
+<tr><td>String</td><td>offsets + chars</td><td>chars[off[n-1]..off[n]]</td><td>不校验 UTF-8</td></tr>
+<tr><td>Nullable</td><td>nested + null map</td><td>先看 null map</td><td>每行多 1 字节</td></tr>
+<tr><td>LowCardinality</td><td>dictionary + indexes</td><td>dict[idx[n]]</td><td>高基数反噬</td></tr></table>
+<p>Array 是 offset + nested；Tuple 是多列并排；Map 通常是 Array(Tuple(K,V))。</p>
+</section>
+<section><div class="sec-head"><span class="sec-num">4</span><h2>动静融合：JSON 与聚合状态</h2></div>
+<table class="grid"><tr><th>类型</th><th>存什么</th><th>查询</th></tr>
+<tr><td>JSON</td><td>typed paths + dynamic paths</td><td>payload.user.name</td></tr>
+<tr><td>AggregateFunction</td><td>聚合状态</td><td>uniqMerge/uniqState</td></tr>
+<tr><td>SimpleAggregateFunction</td><td>可合并的简单值</td><td>sum 的中间和</td></tr>
+<tr><td>Enum</td><td>字符串→整数</td><td>改枚举要 ALTER</td></tr></table>
+<p class="hint">JSON 动态路径默认最多 1024；路径太多会占用大量子列。</p>
+</section>
+<section><div class="sec-head"><span class="sec-num">5</span><h2>环境场景：类型转换与对比</h2></div>
+<div class="envcards">
+<div class="env"><b>隐式转换</b><span>函数/运算符提升到共同类型。</span></div>
+<div class="env"><b>显式转换</b><span>CAST/toUInt64/toDate。</span></div>
+<div class="env"><b>安全转换</b><span>accurateCast/OrNull，失败报错/返回 NULL。</span></div>
+<div class="env"><b>金额</b><span>Decimal 精确；不要用 Float。</span></div>
+<div class="env"><b>MySQL</b><span>VARCHAR 有长度/字符集；String 是任意字节。</span></div>
+<div class="env"><b>Parquet</b><span>物理类型 + 逻辑注解；LowCardinality 不是 Parquet 逻辑类型。</span></div>
+</div>
+</section>
+<section><div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div><div id="quiz"></div></section>
+
+<div class="summary">
+<h2>一页带走</h2>
+<p class="chant">IDataType 是逻辑类型，IColumn 是物理列；createColumn() 把两者对上。</p>
+<p>· IDataType 是逻辑类型，IColumn 是物理列；createColumn() 把两者对上。</p>
+<p>· Vector 连续内存；String 是 offsets+chars；Nullable 多 null map。</p>
+<p>· LowCardinality 是字典+下标，适合低基数；高基数会反噬。</p>
+<p>· Array 是 offset+nested；JSON 是动态路径+typed paths；AggregateFunction 存状态。</p>
+<p>· 金额用 Decimal，低基数字符串用 LowCardinality，能不用 Nullable 就不用。</p>
+</div>
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+<script>
+var STEPS=[{"d": 0, "t": "类型", "x": "SQL 里的类型：String/Nullable/LowCardinality/Array。", "k": "逻辑"}, {"d": 90, "t": "DataType", "x": "DataTypeFactory 解析类型名，创建 IDataType。", "k": "工厂"}, {"d": 180, "t": "ColumnVector", "x": "定长值用连续内存，SIMD 友好。", "k": "连续"}, {"d": 270, "t": "ColumnString", "x": "offset 前缀和 + 连续 chars；不校验 UTF-8。", "k": "变长"}, {"d": 360, "t": "Nullable", "x": "值列 + null map；每行多 1 字节。", "k": "null map"}, {"d": 450, "t": "LowCardinality", "x": "字典 + 下标；低基数省空间，高基数反噬。", "k": "dict"}, {"d": 540, "t": "Array/JSON", "x": "offset + nested；JSON 动态路径/typed paths。", "k": "嵌套"}, {"d": 630, "t": "算子", "x": "过滤/聚合直接在列上循环，产出 Chunk。", "k": "vector"}];
+var CHIPS=[{"k": "mem", "l": "内存"}, {"k": "null", "l": "null"}, {"k": "dict", "l": "字典"}, {"k": "nested", "l": "嵌套"}, {"k": "bytes", "l": "字节"}];
+var PARTS={"type": ["s1", "s2"], "vector": ["s3"], "string": ["s4"], "nullable": ["s5"], "lowcard": ["s6"]};
+var QUIZ=[{"q": "ColumnString 的内存结构是什么？", "opts": ["固定长度数组", "offsets 前缀和 + 连续 chars", "字典 + 下标"], "a": 1, "exp": "offsets 定位每行，chars 存所有字节；变长字符串可 O(1) 取行。"}, {"q": "Nullable(T) 比 T 多存什么？", "opts": ["多一列 T", "一个 UInt8 null map", "一个字典"], "a": 1, "exp": "值列 + null map；NULL 位置的值列填默认值。"}, {"q": "LowCardinality 适合什么？", "opts": ["高基数 order_id", "低基数 region/status", "所有字符串"], "a": 1, "exp": "字典 + 小下标；高基数会让字典爆炸。"}, {"q": "ClickHouse 的 String 会校验 UTF-8 吗？", "opts": ["会", "不会，按字节存储/比较", "只在 ORDER BY 时校验"], "a": 1, "exp": "String 是任意字节；FixedString 定长补零。"}, {"q": "Array 的内存布局是什么？", "opts": ["一行一个对象", "offset + 嵌套列", "字典 + 下标"], "a": 1, "exp": "每行的数组在嵌套列里的结束位置用 offset 记录；arrayJoin 会展开行。"}];
+var TOK=[[75.625, 236], [196.875, 147.0], [318.125, 147.0], [439.375, 147.0], [560.625, 147.0], [681.875, 147.0], [803.125, 147.0], [924.375, 147.0]];
+var TOK2=[[109, 130], [279, 130], [479, 130], [679, 130], [879, 130], [879, 130], [679, 130], [479, 130]];
+
+var PERIOD=5600, PHASE_MAX=720, STEP_DUR=600;
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto', run=!reduced, speed=1, phase=0, last=performance.now();
+var stepFrom=0, stepTo=null, stepElapsed=0, stepIdx=-1, dots=[], ticking=false;
+function $(id){return document.getElementById(id);}
+function setText(id,s){var n=$(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setOp(id,v){var n=$(id);if(n)n.setAttribute('opacity',Math.max(0,Math.min(1,v)).toFixed(2));}
+function setW(id,v){var n=$(id);if(n)n.setAttribute('width',Math.max(0,v).toFixed(1));}
+function setAttr(id,k,v){var n=$(id);if(n)n.setAttribute(k,v);}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){t=clamp(t,0,1);return t*t*(3-2*t);}
+function ramp(x,a,b){return clamp((x-a)/(b-a),0,1);}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function setChip(k,v){var n=chipEls[k];if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',/^(开|是|已|命中|完成|一致|通过|留下|已读|已加密|已解密|写入|可读|生效|追平|选中|返回)/.test(v));n.classList.toggle('off',/^(关|否|待命|—|不|跳过|未|失败|阻塞|只读)/.test(v));}
+function stageAt(th){return clamp(Math.floor(th/(PHASE_MAX/STEPS.length)),0,STEPS.length-1);}
+function lerpPts(pts,th){var i=stageAt(th),a=pts[Math.min(i,pts.length-1)],b=pts[Math.min(i+1,pts.length-1)];var t=smooth((th%(PHASE_MAX/STEPS.length))/(PHASE_MAX/STEPS.length));return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t];}
+function render(th){
+  var pr=norm(th);
+  setText('roPhase',Math.round(pr)+'°');
+  var si=stageAt(pr);
+  if(mode==='step'&&stepIdx>=0)si=stepIdx;
+  setText('roStep',STEPS[si]?STEPS[si].t:'—');
+  setText('roKey',STEPS[si]?STEPS[si].k:'—');
+  document.querySelectorAll('#eng .stage,#eng2 .stage,#eng3 .stage').forEach(function(n,i){});
+  document.querySelectorAll('#eng .stage').forEach(function(n,i){n.classList.toggle('on',i===si);n.classList.toggle('done',i<si);});
+  if(typeof TOK!=='undefined'&&TOK.length){var p=lerpPts(TOK,pr);setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));}
+  if(typeof TOK2!=='undefined'&&TOK2.length){var q=lerpPts(TOK2,pr);setAttr('tok2','cx',q[0].toFixed(1));setAttr('tok2','cy',q[1].toFixed(1));}
+  pageRender(pr,si);
+}
+function tick(now){
+  ticking=false;
+  var dt=Math.min(50,now-last);last=now;
+  if(run&&mode==='auto')phase=(phase+dt/PERIOD*PHASE_MAX)%PHASE_MAX;
+  if(mode==='step'&&stepTo!==null){
+    stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);var p=stepElapsed/STEP_DUR,e=smooth(p);
+    phase=stepFrom+(stepTo-stepFrom)*e;if(p>=1){phase=stepTo;stepTo=null;}
+  }
+  render(phase);
+  if(run||stepTo!==null){ticking=true;requestAnimationFrame(tick);}
+}
+function wake(){if(ticking)return;ticking=true;last=performance.now();requestAnimationFrame(tick);}
+function setAuto(on){
+  mode='auto';run=on;stepTo=null;var b=$('engBtn');if(b)b.textContent=on?'暂停':'播放';
+  if(on){stepIdx=-1;dots.forEach(function(d){d.classList.remove('on');});
+  setText('stepT','自动运转模式');setText('stepX','点下方步骤点可切换到分步演示，随你点击定格。');wake();}
+}
+window.goStep=function(i){
+  stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+  var target=STEPS[stepIdx].d;
+  if(reduced||Math.abs(target-norm(phase))>PHASE_MAX/2){phase=target;stepTo=null;}
+  else{stepFrom=phase;stepTo=target;stepElapsed=0;}
+  render(phase);wake();
+  var b=$('engBtn');if(b)b.textContent='继续自动运转';
+  dots.forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+  setText('stepT','第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t);
+  setText('stepX',STEPS[stepIdx].x);
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+var chipEls={};CHIPS.forEach(function(c){var box=$('stateChips');var s=document.createElement('span');s.className='chip';s.innerHTML=c.l+' <b>--</b>';box.appendChild(s);chipEls[c.k]=s;});
+var stepBar=$('stepBar');
+STEPS.forEach(function(s,n){var b=document.createElement('button');b.className='stepnode';b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+s.t+'</span>';b.onclick=function(){goStep(n);};stepBar.appendChild(b);dots.push(b);});
+var engBtn=$('engBtn');engBtn.textContent=run?'暂停':'播放';
+engBtn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+var spd=$('engSpd');
+if(spd){spd.oninput=function(){speed=parseFloat(spd.value);$('engSpdV').textContent=speed+'×';PERIOD=5600/speed;};}
+document.querySelectorAll('.part').forEach(function(btn){btn.onclick=function(){var ids=(PARTS[btn.dataset.part]||[]);document.querySelectorAll('#eng .hl,#eng2 .hl,#eng3 .hl').forEach(function(n){n.classList.remove('hl');});ids.forEach(function(id){var n=$(id);if(n)n.classList.add('hl');});};});
+var quizBox=$('quiz');QUIZ.forEach(function(q,n){var d=document.createElement('div');d.className='q';var html='<div class="qt">'+(n+1)+'. '+q.q+'</div>';q.opts.forEach(function(o,j){html+='<button class="opt" data-q="'+n+'" data-o="'+j+'">'+o+'</button>';});html+='<div class="exp"><b>答案：</b>'+q.opts[q.a]+'<br>'+q.exp+'</div>';d.innerHTML=html;quizBox.appendChild(d);});
+quizBox.querySelectorAll('.opt').forEach(function(b){b.onclick=function(){var q=QUIZ[+b.dataset.q];var box=b.closest('.q');if(box.classList.contains('done'))return;box.classList.add('done');b.classList.add(+b.dataset.o===q.a?'right':'wrong');box.querySelectorAll('.opt').forEach(function(o){if(+o.dataset.o===q.a)o.classList.add('right');});};});
+if(reduced){run=false;phase=0;render(0);engBtn.textContent='播放';}else{wake();}
+
+
+function pageRender(pr,si){
+  var typed=pr>=90, vec=pr>=180, str=pr>=270, nul=pr>=360, low=pr>=450;
+  setChip('mem',typed?'已分配':'待命');
+  setChip('null',nul?'null map':'—');
+  setChip('dict',low?'字典':'待命');
+  setChip('nested',pr>=540?'offset':'—');
+  setChip('bytes',pr>=630?'已计算':'待命');
+  setOp('tok2',ramp(pr,350,380)*(1-ramp(pr,690,715)));
+}
+
+</script>
+</body>
+</html>

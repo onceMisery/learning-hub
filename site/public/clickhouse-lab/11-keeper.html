@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ClickHouse Keeper：集群的公共记事本 · ClickHouse 互动原理实验室</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#fff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:1000px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#fff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px;flex-wrap:wrap}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:38px 0 22px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:750px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#fff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:500;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:11.5px;fill:#3B3A34}
+.tn{font-size:12.5px;font-weight:500;fill:#1F1E1A}
+.tag{font-size:10px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:nowrap;overflow-x:auto;max-width:100%;padding-bottom:4px}
+.stepnode{flex:1;min-width:62px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px;flex-wrap:wrap}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+section{padding:34px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .arr{color:#C46A0A;font-weight:600}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.figcap b{color:#3B3A34;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:13.5px;table-layout:fixed}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 9px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+.env span,.env b,.part span,.figcap,.summary p,table.grid td{overflow-wrap:anywhere;word-break:break-word}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#scene [opacity],#scene2 [opacity],#scene3 [opacity]{transition:opacity .22s ease}
+#eng .hl,#eng2 .hl,#eng3 .hl{stroke:#D96C06 !important;stroke-width:2.2 !important}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+.stage circle{fill:#fff;stroke:#B4B2A9;stroke-width:1.4;transition:fill .18s,stroke .18s}
+.stage.on rect:first-of-type{fill:#FFF6E8;stroke:#C46A0A;stroke-width:2}
+.stage.done rect:first-of-type{fill:#EAF3DE;stroke:#639922}
+.stage.done circle{fill:#EAF3DE;stroke:#639922}
+.stage.on circle{fill:#EF9F27;stroke:#C46A0A;stroke-width:2}
+.stage text{font-size:10px;fill:#6B695F}
+.stage.on text{fill:#854F0B;font-weight:600}
+.subview{margin:8px 0 4px;background:#fff;border:1px dashed #D3D1C7;border-radius:10px;padding:8px 10px}
+.subview .viewtitle{font-size:12px;font-weight:600;color:#854F0B;margin-bottom:4px}
+@media (max-width:560px){.page{padding:0 12px 60px}.labbar{padding:8px 12px}.labbar .idx{width:100%;margin-left:0;text-align:right}.hero h1{font-size:24px}.sec-head h2{font-size:18px}.stepnode{min-width:54px}.stepnode .lab2{font-size:9px}}
+@media (prefers-reduced-motion: reduce){#scene [opacity],#scene2 [opacity],#scene3 [opacity]{transition:none}}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：ClickHouse Keeper：集群的公共记事本</a>
+  <span class="idx">第 12 / 13 章</span>
+</div>
+<div class="page">
+<header class="hero">
+<div class="kicker">DISTRIBUTED · ClickHouse Keeper</div>
+<h1>ClickHouse Keeper：集群的公共记事本</h1>
+<p>Keeper 不存业务数据，它存「集群应该做什么」：表结构、复制日志、副本状态、quorum、DDL。它用 Raft 保证日志顺序；多数派丢失时，写停摆，已有数据仍可读。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span><span class="mnode">② 静态分解</span><span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span><span class="mnode">⑤ 环境场景</span><span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 440" role="img" xmlns="http://www.w3.org/2000/svg"><defs>
+<marker id="aW" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aM" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#6B695F" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs><text x="500" y="28" font-size="18" fill="#1F1E1A" text-anchor="middle" font-weight="600">客户端 → follower/leader → Raft log → 状态机 → watch</text><text x="500" y="48" font-size="11.5" fill="#6B695F" text-anchor="middle">写请求走 Raft 多数派；日志先落盘，状态机按序执行；读默认本地读</text><text x="976" y="24" font-size="10.5" fill="#C46A0A" text-anchor="end">橙色：请求/边界</text><text x="976" y="39" font-size="10.5" fill="#2F6FA8" text-anchor="end">蓝色：Raft</text><text x="976" y="54" font-size="10.5" fill="#639922" text-anchor="end">绿色：通知/副本</text><g class="stage" id="s1"><rect x="20.0" y="76" width="111.25" height="142" rx="9" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/><text x="28.0" y="98" class="tn" text-anchor="start" font-size="12">客户端</text><text x="28.0" y="118" class="tb" text-anchor="start" font-size="10.2">ClickHouse 副本</text><text x="28.0" y="132" class="tb" text-anchor="start" font-size="10.2">create/set</text><text x="28.0" y="146" class="tb" text-anchor="start" font-size="10.2">watch</text><text x="28.0" y="160" class="tb" text-anchor="start" font-size="10.2">session</text><text x="28.0" y="209" class="tag" text-anchor="start" fill="#C46A0A">请求</text></g><path d="M131.25 147.0 L139.25 147.0" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><g class="stage" id="s2"><rect x="141.25" y="76" width="111.25" height="142" rx="9" fill="#fff" stroke="#D3D1C7" stroke-width="1.2"/><text x="149.25" y="98" class="tn" text-anchor="start" font-size="12">follower</text><text x="149.25" y="118" class="tb" text-anchor="start" font-size="10.2">连任意节点</text><text x="149.25" y="132" class="tb" text-anchor="start" font-size="10.2">auto_forwarding</text><text x="149.25" y="146" class="tb" text-anchor="start" font-size="10.2">转给 leader</text><text x="149.25" y="160" class="tb" text-anchor="start" font-size="10.2">等待结果</text><text x="149.25" y="209" class="tag" text-anchor="start" fill="#C46A0A">转发</text></g><path d="M252.5 147.0 L260.5 147.0" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><g class="stage" id="s3"><rect x="262.5" y="76" width="111.25" height="142" rx="9" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/><text x="270.5" y="98" class="tn" text-anchor="start" font-size="12">leader</text><text x="270.5" y="118" class="tb" text-anchor="start" font-size="10.2">接收写</text><text x="270.5" y="132" class="tb" text-anchor="start" font-size="10.2">追加 Raft log</text><text x="270.5" y="146" class="tb" text-anchor="start" font-size="10.2">并行发 follower</text><text x="270.5" y="160" class="tb" text-anchor="start" font-size="10.2">多数派</text><text x="270.5" y="209" class="tag" text-anchor="start" fill="#C46A0A">Raft</text></g><path d="M373.75 147.0 L381.75 147.0" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><g class="stage" id="s4"><rect x="383.75" y="76" width="111.25" height="142" rx="9" fill="#fff" stroke="#D3D1C7" stroke-width="1.2"/><text x="391.75" y="98" class="tn" text-anchor="start" font-size="12">append log</text><text x="391.75" y="118" class="tb" text-anchor="start" font-size="10.2">日志落盘</text><text x="391.75" y="132" class="tb" text-anchor="start" font-size="10.2">force_sync</text><text x="391.75" y="146" class="tb" text-anchor="start" font-size="10.2">条目不丢</text><text x="391.75" y="160" class="tb" text-anchor="start" font-size="10.2">快照/压缩</text><text x="391.75" y="209" class="tag" text-anchor="start" fill="#C46A0A">持久化</text></g><path d="M495.0 147.0 L503.0 147.0" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><g class="stage" id="s5"><rect x="505.0" y="76" width="111.25" height="142" rx="9" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/><text x="513.0" y="98" class="tn" text-anchor="start" font-size="12">commit</text><text x="513.0" y="118" class="tb" text-anchor="start" font-size="10.2">多数派确认</text><text x="513.0" y="132" class="tb" text-anchor="start" font-size="10.2">提交索引</text><text x="513.0" y="146" class="tb" text-anchor="start" font-size="10.2">按序执行</text><text x="513.0" y="160" class="tb" text-anchor="start" font-size="10.2">状态机</text><text x="513.0" y="209" class="tag" text-anchor="start" fill="#C46A0A">提交</text></g><path d="M616.25 147.0 L624.25 147.0" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><g class="stage" id="s6"><rect x="626.25" y="76" width="111.25" height="142" rx="9" fill="#fff" stroke="#D3D1C7" stroke-width="1.2"/><text x="634.25" y="98" class="tn" text-anchor="start" font-size="12">state machine</text><text x="634.25" y="118" class="tb" text-anchor="start" font-size="10.2">znode 树</text><text x="634.25" y="132" class="tb" text-anchor="start" font-size="10.2">版本/子节点</text><text x="634.25" y="146" class="tb" text-anchor="start" font-size="10.2">ephemeral</text><text x="634.25" y="160" class="tb" text-anchor="start" font-size="10.2">会话</text><text x="634.25" y="209" class="tag" text-anchor="start" fill="#C46A0A">应用</text></g><path d="M737.5 147.0 L745.5 147.0" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><g class="stage" id="s7"><rect x="747.5" y="76" width="111.25" height="142" rx="9" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/><text x="755.5" y="98" class="tn" text-anchor="start" font-size="12">watch</text><text x="755.5" y="118" class="tb" text-anchor="start" font-size="10.2">一次性通知</text><text x="755.5" y="132" class="tb" text-anchor="start" font-size="10.2">副本拉日志</text><text x="755.5" y="146" class="tb" text-anchor="start" font-size="10.2">log_pointer</text><text x="755.5" y="160" class="tb" text-anchor="start" font-size="10.2">更新</text><text x="755.5" y="209" class="tag" text-anchor="start" fill="#C46A0A">通知</text></g><path d="M858.75 147.0 L866.75 147.0" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><g class="stage" id="s8"><rect x="868.75" y="76" width="111.25" height="142" rx="9" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.2"/><text x="876.75" y="98" class="tn" text-anchor="start" font-size="12">quorum</text><text x="876.75" y="118" class="tb" text-anchor="start" font-size="10.2">3 节点容 1</text><text x="876.75" y="132" class="tb" text-anchor="start" font-size="10.2">5 节点容 2</text><text x="876.75" y="146" class="tb" text-anchor="start" font-size="10.2">少数派停写</text><text x="876.75" y="160" class="tb" text-anchor="start" font-size="10.2">恢复继续</text><text x="876.75" y="209" class="tag" text-anchor="start" fill="#C46A0A">边界</text></g><text x="20" y="244" font-size="12" fill="#C46A0A" font-weight="600">Keeper 里存的是「协调元数据」，不是业务数据</text>
+<rect x="20" y="256" width="300" height="66" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.1"/>
+<text x="34" y="278" font-size="11.5" fill="#1F1E1A" font-weight="600">表级共享</text>
+<text x="34" y="296" font-size="10.5" fill="#6B695F">/metadata /columns</text>
+<text x="34" y="312" font-size="10.5" fill="#2F6FA8">/log /block_numbers /quorum</text>
+<rect x="340" y="256" width="300" height="66" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.1"/>
+<text x="354" y="278" font-size="11.5" fill="#1F1E1A" font-weight="600">副本私有</text>
+<text x="354" y="296" font-size="10.5" fill="#6B695F">/replicas/&lt;name&gt;</text>
+<text x="354" y="312" font-size="10.5" fill="#639922">log_pointer / parts / is_lost</text>
+<rect x="660" y="256" width="320" height="66" rx="8" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1"/>
+<text x="674" y="278" font-size="11.5" fill="#1F1E1A" font-weight="600">DDL</text>
+<text x="674" y="296" font-size="10.5" fill="#6B695F">Replicated 数据库 /log</text>
+<text x="674" y="312" font-size="10.5" fill="#C46A0A">ON CLUSTER 按序执行</text>
+<rect x="20" y="334" width="960" height="56" rx="8" fill="#fff" stroke="#ECEAE2" stroke-width="1"/>
+<text x="34" y="356" font-size="11" fill="#3B3A34">读法：Keeper 是 CP 协调服务；多数派丢失就停写，已有数据仍可读。</text>
+<text x="34" y="376" font-size="10.5" fill="#6B695F">口径：KeeperServer.h:30/98；KeeperStateMachine.h:43/89/91；CoordinationSettings.cpp:28-56；StorageReplicatedMergeTree.cpp:1129。</text><circle id="tok" cx="75.6" cy="147.0" r="7" fill="#EF9F27" stroke="#D97E06" stroke-width="1.4"/></svg>
+<div class="subview">
+<div class="viewtitle">第二视图 · Keeper 的 znode 树与副本指针</div>
+<svg id="eng2" viewBox="0 0 1000 210" role="img" xmlns="http://www.w3.org/2000/svg"><defs>
+<marker id="aW" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aM" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#6B695F" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs><rect x="18" y="14" width="964" height="182" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/><text x="34" y="38" font-size="13" fill="#1F1E1A" font-weight="600">Keeper 的 znode 树：共享日志 + 副本指针 + quorum</text><rect x="34" y="54" width="180" height="78" rx="6" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.1"/><text x="124.0" y="76" class="tn" text-anchor="middle" font-size="11.5">/metadata</text><text x="124.0" y="94" class="tag" text-anchor="middle">表结构</text><rect x="234" y="54" width="180" height="78" rx="6" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.1"/><text x="324.0" y="76" class="tn" text-anchor="middle" font-size="11.5">/log</text><text x="324.0" y="94" class="tag" text-anchor="middle">GET_PART</text><text x="324.0" y="106" class="tag" text-anchor="middle">MERGE_PARTS</text><text x="324.0" y="118" class="tag" text-anchor="middle">ALTER</text><rect x="434" y="54" width="180" height="78" rx="6" fill="#EAF3DE" stroke="#639922" stroke-width="1.1"/><text x="524.0" y="76" class="tn" text-anchor="middle" font-size="11.5">/replicas/A</text><text x="524.0" y="94" class="tag" text-anchor="middle">log_pointer</text><text x="524.0" y="106" class="tag" text-anchor="middle">parts</text><rect x="634" y="54" width="180" height="78" rx="6" fill="#EAF3DE" stroke="#639922" stroke-width="1.1"/><text x="724.0" y="76" class="tn" text-anchor="middle" font-size="11.5">/replicas/B</text><text x="724.0" y="94" class="tag" text-anchor="middle">log_pointer</text><text x="724.0" y="106" class="tag" text-anchor="middle">parts</text><rect x="834" y="54" width="134" height="78" rx="6" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1"/><text x="901.0" y="76" class="tn" text-anchor="middle" font-size="11.5">/quorum</text><text x="901.0" y="94" class="tag" text-anchor="middle">last/failed</text><path d="M214 86 L232 86" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><path d="M414 86 L432 86" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><path d="M614 86 L632 86" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><path d="M814 86 L832 86" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><text x="34" y="154" class="tb" text-anchor="start" fill="#3B3A34" font-size="10.8">读法：共享的是操作日志，不是 part；每个副本只维护自己的指针和本地 part。</text><text x="34" y="172" class="tb" text-anchor="start" fill="#3B3A34" font-size="10.8">znode 有 persistent/ephemeral/sequential 三种；副本根节点 persistent，is_active 才 ephemeral，会话断开即消失。</text><circle id="tok2" cx="109" cy="142" r="6" fill="#639922" stroke="#4C7A1A" stroke-width="1.4"/></svg>
+</div>
+</div>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.5" max="2" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm">默认 ≈ 5.6 秒 / 轮</span>
+</div>
+<div class="readout">
+<span class="ro">进度 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">读数 <b id="roKey">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav"><button class="btn" onclick="prevStep()">‹ 上一步</button><button class="btn warn" onclick="nextStep()">下一步 ›</button></span>
+</div>
+<p class="figcap">相位 0° = 客户端写请求，630° = 多数派/边界；橙色令牌沿 follower→leader→log→状态机移动。<br>口径：ClickHouse 26.11.1.1-testing；Keeper 入口见 KeeperServer.h:30；Raft 状态机见 KeeperStateMachine.h:43。</p>
+</div>
+
+<section><div class="sec-head"><span class="sec-num">1</span><h2>表象观察：Keeper 多数派挂了，为什么写停</h2></div>
+<p class="sec-sub">不是 ClickHouse 挂了，是「记事本」写不进去。</p>
+<div class="quote">「Keeper 是 CP 协调服务，不是数据存储。」</div>
+<div class="flow"><span class="node">副本</span><span class="arr">→</span><span class="node box">Keeper /log</span><span class="arr">→</span><span class="node box">多数派</span><span class="arr">→</span><span class="node">commit</span></div>
+<p>没有多数派，就无法保证日志顺序和持久性；宁可停写，也不能让两个分区各自写。</p>
+</section>
+<section><div class="sec-head"><span class="sec-num">2</span><h2>静态分解：znode、session、watch</h2></div>
+<table class="grid"><tr><th>概念</th><th>含义</th><th>典型用途</th></tr>
+<tr><td>znode</td><td>树节点，路径+值+版本</td><td>表结构、日志、副本</td></tr>
+<tr><td>persistent</td><td>永久节点</td><td>/log、/metadata</td></tr>
+<tr><td>ephemeral</td><td>随会话消失</td><td>副本的 is_active、锁</td></tr>
+<tr><td>session</td><td>客户端会话/心跳</td><td>ephemeral 生命周期</td></tr>
+<tr><td>watch</td><td>一次性订阅</td><td>副本感知新日志</td></tr></table>
+<p class="hint">watch 触发后要重新注册；别写成永久监听。</p>
+</section>
+<section><div class="sec-head"><span class="sec-num">3</span><h2>动态分析：一次写请求的 Raft 路径</h2></div>
+<div class="quote">「日志先复制，状态机后执行；多数派 commit。」</div>
+<table class="grid"><tr><th>步骤</th><th>发生什么</th><th>关键点</th></tr>
+<tr><td>1</td><td>follower 收到写，转 leader</td><td>auto_forwarding=true</td></tr>
+<tr><td>2</td><td>leader 追加 Raft log</td><td>force_sync 落盘</td></tr>
+<tr><td>3</td><td>并行发 followers</td><td>多数派确认</td></tr>
+<tr><td>4</td><td>commit + 状态机执行</td><td>按日志顺序</td></tr>
+<tr><td>5</td><td>返回客户端</td><td>watch 通知</td></tr></table>
+<p>状态机是单线程按序执行的；所有节点执行相同日志，得到相同 znode 树。</p>
+</section>
+<section><div class="sec-head"><span class="sec-num">4</span><h2>动静融合：ClickHouse 怎么用 Keeper</h2></div>
+<table class="grid"><tr><th>路径</th><th>内容</th><th>谁用</th></tr>
+<tr><td>/metadata</td><td>表结构</td><td>ReplicatedMergeTree</td></tr>
+<tr><td>/log</td><td>复制日志</td><td>所有副本</td></tr>
+<tr><td>/replicas/&lt;name&gt;</td><td>副本注册/指针</td><td>副本自己</td></tr>
+<tr><td>/quorum</td><td>quorum 状态</td><td>quorum 写入</td></tr>
+<tr><td>/leader_election</td><td>合并/变更协调</td><td>后台任务</td></tr></table>
+<p class="hint">不是「写主」；leader_election 只协调后台合并/变更。</p>
+</section>
+<section><div class="sec-head"><span class="sec-num">5</span><h2>环境场景：部署与故障</h2></div>
+<div class="envcards">
+<div class="env"><b>3 或 5 节点</b><span>奇数；3 容 1，5 容 2。</span></div>
+<div class="env"><b>独立磁盘</b><span>日志/快照写入频繁，别和数据盘混。</span></div>
+<div class="env"><b>低延迟网络</b><span>Raft commit 要多数派往返。</span></div>
+<div class="env"><b>会话过期</b><span>副本只读；重连后继续。</span></div>
+<div class="env"><b>磁盘满</b><span>无法 commit；监控 log/snapshot 路径。</span></div>
+<div class="env"><b>znode 过多</b><span>整棵树在内存；别把 Keeper 当数据库。</span></div>
+</div>
+</section>
+<section><div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div><div id="quiz"></div></section>
+
+<div class="summary">
+<h2>一页带走</h2>
+<p class="chant">Keeper 是协调服务，不是数据存储；存表结构/复制日志/副本状态/DDL。</p>
+<p>· Keeper 是协调服务，不是数据存储；存表结构/复制日志/副本状态/DDL。</p>
+<p>· 数据模型是 znode 树，支持 persistent/ephemeral/sequential、session、watch。</p>
+<p>· Raft：日志先复制，多数派 commit，状态机按序执行。</p>
+<p>· 读默认本地读；强一致读可选 quorum_reads。</p>
+<p>· 3/5 节点、独立磁盘、低延迟网络；别把 Keeper 当数据库。</p>
+</div>
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+<script>
+var STEPS=[{"d": 0, "t": "客户端", "x": "ClickHouse 副本连 Keeper，注册 session，发 create/set/watch。", "k": "session"}, {"d": 90, "t": "follower", "x": "客户端可连任意节点；follower 把写转发给 leader。", "k": "forward"}, {"d": 180, "t": "leader", "x": "leader 追加 Raft log，并并行发给 followers。", "k": "append"}, {"d": 270, "t": "落盘", "x": "force_sync=true 时每条变更 fsync；日志持久化。", "k": "fsync"}, {"d": 360, "t": "commit", "x": "多数派确认后 commit，状态机按序执行。", "k": "majority"}, {"d": 450, "t": "应用", "x": "znode 树更新；ephemeral/session/版本号生效。", "k": "znode"}, {"d": 540, "t": "watch", "x": "watch 一次性通知；副本拉到新日志。", "k": "notify"}, {"d": 630, "t": "quorum", "x": "3 节点容 1；失去多数派停写，恢复后继续。", "k": "CP"}];
+var CHIPS=[{"k": "leader", "l": "leader"}, {"k": "followers", "l": "followers"}, {"k": "log", "l": "log"}, {"k": "session", "l": "session"}, {"k": "quorum", "l": "quorum"}];
+var PARTS={"client": ["s1"], "raft": ["s2", "s3", "s4", "s5"], "state": ["s6", "s7"], "quorum": ["s8"]};
+var QUIZ=[{"q": "Keeper 存 part 数据吗？", "opts": ["存，所有 part", "不存，只存日志/元数据/副本状态", "只存索引"], "a": 1, "exp": "part 在副本本地磁盘；Keeper 只存「谁该做什么」。"}, {"q": "Keeper 的共识算法是什么？", "opts": ["Zab", "Raft", "Paxos"], "a": 1, "exp": "Keeper 用 libnuraft 的 Raft；兼容 ZooKeeper 协议，但不是 Zab。"}, {"q": "3 节点 Keeper 挂 2 个还能写吗？", "opts": ["能", "不能，没有多数派", "只能读"], "a": 1, "exp": "3 节点多数派是 2；只剩 1 个无法 commit，写停摆。"}, {"q": "副本根节点和 is_active 分别是什么类型？", "opts": ["都 persistent", "根节点 persistent，is_active ephemeral", "都 ephemeral"], "a": 1, "exp": "副本根节点持久保存；is_active 随会话消失，其他副本据此判断下线。"}, {"q": "quorum_reads 默认是什么？", "opts": ["true，读也走 Raft", "false，默认本地读", "只在云上为 true"], "a": 1, "exp": "默认本地读，延迟低但可能略旧；需要强一致读时开 quorum_reads。"}];
+var TOK=[[75.625, 236], [196.875, 147.0], [318.125, 147.0], [439.375, 147.0], [560.625, 147.0], [681.875, 147.0], [803.125, 147.0], [924.375, 147.0]];
+var TOK2=[[109, 130], [279, 130], [479, 130], [679, 130], [879, 130], [879, 130], [679, 130], [479, 130]];
+
+var PERIOD=5600, PHASE_MAX=720, STEP_DUR=600;
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto', run=!reduced, speed=1, phase=0, last=performance.now();
+var stepFrom=0, stepTo=null, stepElapsed=0, stepIdx=-1, dots=[], ticking=false;
+function $(id){return document.getElementById(id);}
+function setText(id,s){var n=$(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setOp(id,v){var n=$(id);if(n)n.setAttribute('opacity',Math.max(0,Math.min(1,v)).toFixed(2));}
+function setW(id,v){var n=$(id);if(n)n.setAttribute('width',Math.max(0,v).toFixed(1));}
+function setAttr(id,k,v){var n=$(id);if(n)n.setAttribute(k,v);}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){t=clamp(t,0,1);return t*t*(3-2*t);}
+function ramp(x,a,b){return clamp((x-a)/(b-a),0,1);}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function setChip(k,v){var n=chipEls[k];if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',/^(开|是|已|命中|完成|一致|通过|留下|已读|已加密|已解密|写入|可读|生效|追平|选中|返回)/.test(v));n.classList.toggle('off',/^(关|否|待命|—|不|跳过|未|失败|阻塞|只读)/.test(v));}
+function stageAt(th){return clamp(Math.floor(th/(PHASE_MAX/STEPS.length)),0,STEPS.length-1);}
+function lerpPts(pts,th){var i=stageAt(th),a=pts[Math.min(i,pts.length-1)],b=pts[Math.min(i+1,pts.length-1)];var t=smooth((th%(PHASE_MAX/STEPS.length))/(PHASE_MAX/STEPS.length));return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t];}
+function render(th){
+  var pr=norm(th);
+  setText('roPhase',Math.round(pr)+'°');
+  var si=stageAt(pr);
+  if(mode==='step'&&stepIdx>=0)si=stepIdx;
+  setText('roStep',STEPS[si]?STEPS[si].t:'—');
+  setText('roKey',STEPS[si]?STEPS[si].k:'—');
+  document.querySelectorAll('#eng .stage,#eng2 .stage,#eng3 .stage').forEach(function(n,i){});
+  document.querySelectorAll('#eng .stage').forEach(function(n,i){n.classList.toggle('on',i===si);n.classList.toggle('done',i<si);});
+  if(typeof TOK!=='undefined'&&TOK.length){var p=lerpPts(TOK,pr);setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));}
+  if(typeof TOK2!=='undefined'&&TOK2.length){var q=lerpPts(TOK2,pr);setAttr('tok2','cx',q[0].toFixed(1));setAttr('tok2','cy',q[1].toFixed(1));}
+  pageRender(pr,si);
+}
+function tick(now){
+  ticking=false;
+  var dt=Math.min(50,now-last);last=now;
+  if(run&&mode==='auto')phase=(phase+dt/PERIOD*PHASE_MAX)%PHASE_MAX;
+  if(mode==='step'&&stepTo!==null){
+    stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);var p=stepElapsed/STEP_DUR,e=smooth(p);
+    phase=stepFrom+(stepTo-stepFrom)*e;if(p>=1){phase=stepTo;stepTo=null;}
+  }
+  render(phase);
+  if(run||stepTo!==null){ticking=true;requestAnimationFrame(tick);}
+}
+function wake(){if(ticking)return;ticking=true;last=performance.now();requestAnimationFrame(tick);}
+function setAuto(on){
+  mode='auto';run=on;stepTo=null;var b=$('engBtn');if(b)b.textContent=on?'暂停':'播放';
+  if(on){stepIdx=-1;dots.forEach(function(d){d.classList.remove('on');});
+  setText('stepT','自动运转模式');setText('stepX','点下方步骤点可切换到分步演示，随你点击定格。');wake();}
+}
+window.goStep=function(i){
+  stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+  var target=STEPS[stepIdx].d;
+  if(reduced||Math.abs(target-norm(phase))>PHASE_MAX/2){phase=target;stepTo=null;}
+  else{stepFrom=phase;stepTo=target;stepElapsed=0;}
+  render(phase);wake();
+  var b=$('engBtn');if(b)b.textContent='继续自动运转';
+  dots.forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+  setText('stepT','第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t);
+  setText('stepX',STEPS[stepIdx].x);
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+var chipEls={};CHIPS.forEach(function(c){var box=$('stateChips');var s=document.createElement('span');s.className='chip';s.innerHTML=c.l+' <b>--</b>';box.appendChild(s);chipEls[c.k]=s;});
+var stepBar=$('stepBar');
+STEPS.forEach(function(s,n){var b=document.createElement('button');b.className='stepnode';b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+s.t+'</span>';b.onclick=function(){goStep(n);};stepBar.appendChild(b);dots.push(b);});
+var engBtn=$('engBtn');engBtn.textContent=run?'暂停':'播放';
+engBtn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+var spd=$('engSpd');
+if(spd){spd.oninput=function(){speed=parseFloat(spd.value);$('engSpdV').textContent=speed+'×';PERIOD=5600/speed;};}
+document.querySelectorAll('.part').forEach(function(btn){btn.onclick=function(){var ids=(PARTS[btn.dataset.part]||[]);document.querySelectorAll('#eng .hl,#eng2 .hl,#eng3 .hl').forEach(function(n){n.classList.remove('hl');});ids.forEach(function(id){var n=$(id);if(n)n.classList.add('hl');});};});
+var quizBox=$('quiz');QUIZ.forEach(function(q,n){var d=document.createElement('div');d.className='q';var html='<div class="qt">'+(n+1)+'. '+q.q+'</div>';q.opts.forEach(function(o,j){html+='<button class="opt" data-q="'+n+'" data-o="'+j+'">'+o+'</button>';});html+='<div class="exp"><b>答案：</b>'+q.opts[q.a]+'<br>'+q.exp+'</div>';d.innerHTML=html;quizBox.appendChild(d);});
+quizBox.querySelectorAll('.opt').forEach(function(b){b.onclick=function(){var q=QUIZ[+b.dataset.q];var box=b.closest('.q');if(box.classList.contains('done'))return;box.classList.add('done');b.classList.add(+b.dataset.o===q.a?'right':'wrong');box.querySelectorAll('.opt').forEach(function(o){if(+o.dataset.o===q.a)o.classList.add('right');});};});
+if(reduced){run=false;phase=0;render(0);engBtn.textContent='播放';}else{wake();}
+
+
+function pageRender(pr,si){
+  var follower=pr>=90, leader=pr>=180, committed=pr>=450, watched=pr>=540;
+  setChip('leader',leader?'1':'待命');
+  setChip('followers',leader?'2':'待命');
+  setChip('log',pr>=270?'已落盘':'待命');
+  setChip('session',pr>=90?'活跃':'—');
+  setChip('quorum',committed?'多数派':'—');
+  setOp('tok2',ramp(pr,430,460)*(1-ramp(pr,690,715)));
+}
+
+</script>
+</body>
+</html>

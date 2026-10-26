@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>一行数据的进来与出去 · Cassandra 互动原理实验室 第 1 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:960px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:720px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:600;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:12px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:600;fill:#1F1E1A}
+.tag{font-size:10.5px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:66px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+.modebar{display:flex;align-items:center;gap:8px;margin:6px 4px 0;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.modebar .mlabel{font-weight:600;color:#3B3A34}
+.modebtn{padding:5px 12px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:12.5px;cursor:pointer;font-family:inherit}
+.modebtn:hover{border-color:#888780}
+.modebtn.on{background:#FFF6E8;border-color:#EF9F27;color:#854F0B;font-weight:600}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .outbranch{display:inline-flex;flex-direction:column;align-items:flex-start;gap:6px}
+.flow .outline{display:inline-flex;align-items:center;gap:8px}
+.flow .flownote{font-size:12px;color:#6B695F;font-weight:600;margin-right:4px}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 10px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+#eng [opacity]{transition:opacity .28s ease}
+#eng2 [opacity]{transition:opacity .28s ease}
+@media (prefers-reduced-motion: reduce){#eng [opacity],#eng2 [opacity]{transition:none}}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:8px 4px 0;font-size:12px;color:#6B695F}
+.legend i{display:inline-block;width:18px;height:0;border-top:2px solid #C46A0A;vertical-align:middle;margin-right:5px}
+.legend i.g{border-color:#639922}
+.legend i.r{border-color:#E24B4A}
+.legend i.b{border-color:#2F6FA8}
+.legend i.dash{border-top-style:dashed}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：架构概述：一行数据的进来与出去</a>
+  <span class="idx">第 1 / 15 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · CASSANDRA OVERVIEW</div>
+<h1>一行数据的进来与出去</h1>
+<p>没有主库的集群怎么接单：协调者算 token 选副本，三个副本各自先记日志再落内存，凑够 QUORUM 个确认就答复；读的时候再问两个副本，按时间戳现场拼出答案。RF=3、CL=QUORUM，一行 users(id=47) 走完全程。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span>
+<span class="mnode">② 静态分解</span>
+<span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span>
+<span class="mnode">⑤ 环境场景</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 560" role="img" xmlns="http://www.w3.org/2000/svg"><title>一行数据的进来与出去</title><defs><marker id="flw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="flwG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="flwB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker></defs><text class="th" x="500" y="24" text-anchor="middle">一行数据的进来与出去（RF=3 · CL=QUORUM）</text><text class="ts" x="500" y="44" text-anchor="middle">橙线：写 INSERT；蓝线：读 SELECT；两路共用中间的副本层，写返回时 SSTable 还一个字节都没有</text><text x="990" y="24" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">橙色：写请求 / 数据流</text><text x="990" y="40" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色：日志 / 确认</text><text x="990" y="56" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">蓝色：读路径 / 内存</text><text x="990" y="72" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">灰虚线：异步 / 未被问到</text><g id="clientBox"><rect x="28" y="64" width="150" height="58" rx="9" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="103" y="86" font-size="13" fill="#1F1E1A" text-anchor="middle" font-weight="600">客户端</text><text x="103" y="103" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">驱动程序 / cqlsh</text><text x="103" y="117" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">发给任意节点</text></g><path id="e1" d="M178 92 L246 92" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><text x="212" y="84" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">INSERT</text><g id="coordW"><rect x="250" y="60" width="230" height="66" rx="9" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="365" y="82" font-size="13" fill="#1F1E1A" text-anchor="middle" font-weight="600">协调者 node3（本轮）</text><text x="365" y="100" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">StorageProxy.mutate</text><text x="365" y="116" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">算 token → 副本 {2,4,5}</text></g><path id="f2" d="M340 126 L340 150 L170 150 L170 172" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><path id="f3" d="M365 126 L365 172" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><path id="f4" d="M390 126 L390 150 L830 150 L830 172" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><g id="ackPill"><rect x="800" y="64" width="172" height="52" rx="9" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="886" y="82" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">写确认（QUORUM = 2）</text><text id="ackCount" x="886" y="105" font-size="15" fill="#1F1E1A" text-anchor="middle" font-weight="600">0 / 2</text></g><rect x="40" y="176" width="920" height="150" rx="10" fill="#ffffff" stroke="#ECEAE2" stroke-width="1.2"/><text x="56" y="194" font-size="11.5" fill="#6B695F" text-anchor="start" font-weight="400">副本层：id=47 的三份副本，各自跑一套独立的本地引擎（先记日志，再落内存）</text><g id="node2Box"><rect x="70" y="200" width="200" height="24" rx="6" fill="#FBFAF6" stroke="#3B3A34" stroke-width="1.2"/><text x="170" y="217" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">node2 · 副本</text><g id="cl2"><rect x="70" y="228" width="200" height="24" rx="6" fill="#EAF3DE" stroke="#639922" stroke-width="1.1"/><text x="170" y="245" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="400">CommitLog +1 条（含 CRC）</text></g><g id="mt2"><rect x="70" y="256" width="200" height="24" rx="6" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.1"/><text x="170" y="273" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="400">Memtable +1 行（users）</text></g><g id="st2"><rect x="70" y="284" width="200" height="24" rx="6" fill="#ffffff" stroke="#B4B2A9" stroke-width="1" stroke-dasharray="5 4"/><text x="170" y="301" font-size="11" fill="#6B695F" text-anchor="middle" font-weight="400">SSTable（flush 后才有）</text></g></g><g id="node4Box"><rect x="400" y="200" width="200" height="24" rx="6" fill="#FBFAF6" stroke="#3B3A34" stroke-width="1.2"/><text x="500" y="217" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">node4 · 副本</text><g id="cl4"><rect x="400" y="228" width="200" height="24" rx="6" fill="#EAF3DE" stroke="#639922" stroke-width="1.1"/><text x="500" y="245" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="400">CommitLog +1 条（含 CRC）</text></g><g id="mt4"><rect x="400" y="256" width="200" height="24" rx="6" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.1"/><text x="500" y="273" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="400">Memtable +1 行（users）</text></g><g id="st4"><rect x="400" y="284" width="200" height="24" rx="6" fill="#ffffff" stroke="#B4B2A9" stroke-width="1" stroke-dasharray="5 4"/><text x="500" y="301" font-size="11" fill="#6B695F" text-anchor="middle" font-weight="400">SSTable（flush 后才有）</text></g></g><g id="node5Box"><rect x="730" y="200" width="200" height="24" rx="6" fill="#FBFAF6" stroke="#3B3A34" stroke-width="1.2"/><text x="830" y="217" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">node5 · 副本</text><g id="cl5"><rect x="730" y="228" width="200" height="24" rx="6" fill="#EAF3DE" stroke="#639922" stroke-width="1.1"/><text x="830" y="245" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="400">CommitLog +1 条（含 CRC）</text></g><g id="mt5"><rect x="730" y="256" width="200" height="24" rx="6" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.1"/><text x="830" y="273" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="400">Memtable +1 行（users）</text></g><g id="st5"><rect x="730" y="284" width="200" height="24" rx="6" fill="#ffffff" stroke="#B4B2A9" stroke-width="1" stroke-dasharray="5 4"/><text x="830" y="301" font-size="11" fill="#6B695F" text-anchor="middle" font-weight="400">SSTable（flush 后才有）</text></g></g><text x="56" y="322" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">三份都落了；但写返回只等 node2 + node4 的回执，node5 迟到不影响答复。</text><path id="e5" d="M103 122 L103 396 L176 396" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#flwB)"/><g id="coordR"><rect x="180" y="366" width="230" height="60" rx="9" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/><text x="295" y="387" font-size="13" fill="#1F1E1A" text-anchor="middle" font-weight="600">协调者 node1（本轮）</text><text x="295" y="404" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">StorageProxy.read</text><text x="295" y="419" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">data ← node2 · digest ← node5</text></g><path id="e6" d="M280 366 L280 344 L170 344 L170 302" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#flwB)"/><text x="225" y="340" font-size="10.5" fill="#2F6FA8" text-anchor="middle" font-weight="600">data</text><path id="e7" d="M350 366 L350 344 L830 344 L830 302" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#flwB)"/><text x="590" y="340" font-size="10.5" fill="#2F6FA8" text-anchor="middle" font-weight="600">digest</text><path id="e8" d="M410 396 L466 396" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#flwB)"/><g id="resBox"><rect x="470" y="366" width="280" height="60" rx="9" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/><text x="610" y="386" font-size="13" fill="#1F1E1A" text-anchor="middle" font-weight="600">DataResolver 按单元格时间戳拼接</text><text id="resName" x="610" y="405" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">name：阿福(1001) vs 阿福2(1005) → 阿福2</text><text id="resAge" x="610" y="420" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">age：31(1001)</text></g><path id="e9" d="M750 396 L796 396" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#flwB)"/><g id="resOut"><rect x="800" y="366" width="172" height="60" rx="9" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/><text x="886" y="386" font-size="13" fill="#1F1E1A" text-anchor="middle" font-weight="600">返回（'阿福2', 31）</text><text x="886" y="405" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">发现 node2 落后，顺手补一份</text><text x="886" y="420" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">read repair（第 13 章）</text></g><text x="28" y="472" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">读法：橙线是写、蓝线是读；写推进到「CommitLog + Memtable」就返回，读把各副本手里已有的版本按时间戳拼出最新值。</text><text x="28" y="492" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">口径：apache/cassandra master（7.0-SNAPSHOT）· 演示集群 RF=3 / CL=QUORUM · 出厂默认 num_tokens=16、commitlog_sync=periodic 10000ms</text><text x="28" y="512" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">源码：service/StorageProxy.java:978（写）、:2176（读）· db/Keyspace.java:437-438（先 CommitLog 后 memtable）· AbstractWriteResponseHandler.java:298（blockFor）</text><circle id="tok" cx="-20" cy="-20" r="8" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/><circle id="tokB" cx="-20" cy="-20" r="8" fill="#2F6FA8" stroke="#1F4E77" stroke-width="1.5"/></svg>
+<svg id="eng2" viewBox="0 0 1000 180" role="img" xmlns="http://www.w3.org/2000/svg"><text x="40" y="26" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">相位总线：自动与分步共用同一进度</text><text x="960" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">0° → 720°</text><rect id="seg0" x="40" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="89.1" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">接入</text><text x="89.1" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">0°</text><rect id="seg1" x="142.2" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="191.3" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">算token</text><text x="191.3" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">80°</text><rect id="seg2" x="244.4" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="293.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">分发</text><text x="293.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">160°</text><rect id="seg3" x="346.7" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="395.8" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">记日志</text><text x="395.8" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">240°</text><rect id="seg4" x="448.9" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="498" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">落内存</text><text x="498" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">320°</text><rect id="seg5" x="551.1" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="600.2" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">数确认</text><text x="600.2" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">400°</text><rect id="seg6" x="653.3" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="702.4" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">读</text><text x="702.4" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">480°</text><rect id="seg7" x="755.6" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="804.7" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">拼接</text><text x="804.7" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">560°</text><rect id="seg8" x="857.8" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="906.9" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">返回修复</text><text x="906.9" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">640°</text><line id="subNow" x1="40" y1="44" x2="40" y2="126" stroke="#C46A0A" stroke-width="2"/><text x="500" y="152" font-size="11" fill="#6B695F" text-anchor="middle" font-weight="400">每格是一个可定格的关键时刻；分步时所有视图冻结到同一相位。</text></svg>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 轮 / 5.6 秒</span>
+</div>
+
+<div class="readout">
+<span class="ro">相位 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">写确认 <b id="roAcks">--</b></span>
+<span class="ro">拼接结果 <b id="roMerge">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav">
+<button class="btn" onclick="prevStep()">‹ 上一步</button>
+<button class="btn warn" onclick="nextStep()">下一步 ›</button>
+</span>
+</div>
+<div class="legend"><span><i></i>写请求 / 数据流</span><span><i class="g"></i>CommitLog / 确认</span><span><i class="b"></i>读路径 / 内存</span><span><i class="dash"></i>异步 / 未被问到</span></div>
+<p class="figcap">进度 0° = 客户端发出 INSERT，720° = 读返回并顺带修复；分步定格的是关键时刻，不代表真实耗时。<br>口径：apache/cassandra master（7.0-SNAPSHOT）；演示集群 5 节点、keyspace demo、RF=3、CL=QUORUM；异常与重试细节见第 7、10 章。</p>
+</div>
+</div>
+
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：先把它当黑盒</h2></div>
+<p class="sec-sub">不急着拆类，只看它对外表现出什么。</p>
+<div class="quote"><i>先把系统当黑盒：只看输入、输出和边界，不急着解释内部。</i></div>
+
+<p>站在客户端的角度，Cassandra 对外只做一件事：<b>你把 CQL 发给五个节点里的任何一个，它都收，而且都能给你办成</b>。写一行、读一行、建一张表，换一台节点发结果一样。整个集群没有任何「只有主库才能做」的操作。</p>
+<div class="flow">
+<span class="node">CQL 请求</span><span class="arr">→</span>
+<span class="node box">任意节点（自动成为协调者）</span>
+<span class="outbranch">
+<span class="outline"><span class="arr">→</span><span class="node">写到 RF 份副本，等 CL 个确认</span></span>
+<span class="outline"><span class="arr">→</span><span class="node">问若干副本，按时间戳拼答案</span></span>
+</span>
+</div>
+<p>这个黑盒对外承诺：按分区键查行永远可行、副本坏一份不影响读写（只要确认数还凑得齐）。它不承诺跨分区事务、也不承诺分布式 join——这些 CQL 干脆不支持。</p>
+<p>先记住一个反直觉的点：<b>「写成功」不等于「在磁盘上」</b>。QUORUM 确认的是副本的日志和内存收到了，SSTable 是后台异步 flush 的产物。下一节把黑盒拆开。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：部件各管什么</h2></div>
+<p class="sec-sub">先把结构钉住，再让时间进来。点下面的部件卡，动画里对应部分会亮起。</p>
+<div class="quote"><i>结构分解要 MECE：同一层只放同一粒度的部件。</i></div>
+<div class="figure"><svg viewBox="0 0 920 250" role="img" xmlns="http://www.w3.org/2000/svg"><text x="460" y="22" font-size="15" fill="#1F1E1A" text-anchor="middle" font-weight="600">一个节点的三件套与一副本层</text><text x="460" y="42" font-size="11.5" fill="#6B695F" text-anchor="middle" font-weight="400">daemon 托底，CQL 前端接客，存储引擎持家；协调者逻辑是随叫随到的角色，不是常驻组件</text><rect x="20" y="70" width="200" height="86" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="34" y="94" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">① daemon + StorageService</text><text x="34" y="114" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">CassandraDaemon.java:137</text><text x="34" y="130" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">StorageService.initServer:731</text><text x="34" y="146" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">入环、广播自己的存在</text><rect x="250" y="70" width="200" height="86" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="264" y="94" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">② CQL 前端</text><text x="264" y="114" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">transport/Server.java:72</text><text x="264" y="130" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">cql3/QueryProcessor.java:112</text><text x="264" y="146" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">原生协议 v5 → CQL 解析</text><rect x="480" y="70" width="200" height="86" rx="10" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/><text x="494" y="94" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">③ 协调者逻辑</text><text x="494" y="114" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">service/StorageProxy.java:246</text><text x="494" y="130" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">算 token、选副本、数确认</text><text x="494" y="146" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">每个节点随时能客串</text><rect x="710" y="70" width="190" height="86" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="724" y="94" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">④ 存储引擎</text><text x="724" y="114" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">db/ColumnFamilyStore.java:188</text><text x="724" y="130" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">每表一份：Memtable+SSTable</text><text x="724" y="146" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">CommitLog 全节点共用一本</text><path d="M220 113 L246 113" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><path d="M450 113 L476 113" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><path d="M680 113 L706 113" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><rect x="20" y="184" width="880" height="44" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.2"/><text x="460" y="203" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">副本层（每节点各有一份④）：id=47 的副本名单由分区键 token 决定 —— 本例 {node2, node4, node5}</text><text x="460" y="220" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">写：三份副本各落一遍 CommitLog + Memtable；读：从中挑两个问，DataResolver 按时间戳拼接。</text></svg></div>
+<div class="partgroup"><div class="gname">入口与协调</div><div class="parts"><button class="part" data-part="client"><b>1. 客户端</b><span>把 CQL 发给任意节点；本轮写给 node3、读给 node1。</span></button><button class="part" data-part="coordw"><b>2. 协调者（写）</b><span>StorageProxy.mutate：算 token、选出副本名单、发 Mutation、数确认。</span></button></div></div><div class="partgroup"><div class="gname">副本层</div><div class="parts"><button class="part" data-part="commitlog"><b>3. CommitLog</b><span>每副本本地一本的追加日志，先于 Memtable 落笔，带 CRC 校验。</span></button><button class="part" data-part="memtable"><b>4. Memtable</b><span>每表一本的内存账本；写返回时数据在这里。</span></button><button class="part" data-part="sstable"><b>5. SSTable</b><span>后台异步 flush 的产物；写返回时一个字节都没有。</span></button></div></div><div class="partgroup"><div class="gname">读侧</div><div class="parts"><button class="part" data-part="coordr"><b>6. 协调者（读）</b><span>StorageProxy.read：向 node2 要全量 data、node5 要摘要 digest。</span></button><button class="part" data-part="resolver"><b>7. DataResolver</b><span>按单元格时间戳拼接各副本答案，新者胜。</span></button><button class="part" data-part="result"><b>8. 返回与修复</b><span>把拼好的行给客户端；发现谁落后就顺手补一份（read repair）。</span></button></div></div>
+<p class="hint">静态图与动画共用同一套编号和口径；把动画暂停，它就是一张可打印的结构图。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：一步一停看顺序</h2></div>
+<p class="sec-sub">重点不是记住箭头，而是记住每一步「谁在等谁」。</p>
+<div class="quote"><i>动态分析看三件事：顺序、状态、触发条件。</i></div>
+
+<table class="grid">
+<tr><th>相位</th><th>谁在等谁</th><th>失败会怎样</th></tr>
+<tr><td>接入</td><td>客户端等 node3 受理</td><td>节点挂了，驱动换一台重连</td></tr>
+<tr><td>算 token</td><td>协调者等环上的副本名单</td><td>名单凑不齐 CL → Unavailable</td></tr>
+<tr><td>分发</td><td>协调者等副本收到 Mutation</td><td>网络慢 → 写超时</td></tr>
+<tr><td>记日志</td><td>副本等本地 CommitLog 追加</td><td>盘坏 → 本地写失败，少一个 ack</td></tr>
+<tr><td>落内存</td><td>副本等 Memtable 插入完成</td><td>内存吃紧属于后台问题，不挡这笔</td></tr>
+<tr><td class="hot">数确认</td><td>协调者等满 blockFor()=2 个回执</td><td>凑不齐 2 → WriteTimeout，客户端重试</td></tr>
+<tr><td>读</td><td>node1 等副本的 data/digest</td><td>全挂 → Unavailable；慢 → 读超时</td></tr>
+<tr><td class="hot">拼接</td><td>node1 等齐多份响应</td><td>缺谁的就用 digest 对账补齐</td></tr>
+<tr><td>返回修复</td><td>客户端等结果</td><td>node2 落后被 read repair 顺带补上</td></tr>
+</table>
+<p>这张表里最值得盯的是两行高亮：「数确认」是写路径唯一的等待点——等的是 2 不是 3；「拼接」是读路径的裁决点——每个单元格单独比时间戳，行和行互不牵连。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件 × 阶段</h2></div>
+<p class="sec-sub">同一部件在不同阶段扮演不同角色，这张矩阵是排障时的索引。</p>
+<div class="quote"><i>把部件放回阶段里，才能看清谁在什么时候接力。</i></div>
+
+<table class="grid">
+<tr><th>部件</th><th>写 ①–④</th><th>写完成后</th><th>读 ⑤–⑥</th></tr>
+<tr><td>协调者</td><td>算 token、分发、数确认</td><td>交差，角色随时易主</td><td>发查询、汇聚、拼接</td></tr>
+<tr><td>CommitLog</td><td>每个副本追加 1 条</td><td>留着等 flush 后回收</td><td>不参与</td></tr>
+<tr><td>Memtable</td><td>每个副本插 1 行</td><td>是数据的最新住址</td><td>读路径第一站（命中最新值）</td></tr>
+<tr><td>SSTable</td><td>一个字节都不动</td><td>等后台 flush 生成</td><td>老版本可能还住在这里</td></tr>
+<tr><td>DataResolver</td><td>不参与</td><td>——</td><td>按单元格时间戳挑新值</td></tr>
+</table>
+<p>注意 Memtable 那一行：写完它是「最新住址」，读的时候它还是第一站——所以刚写入的值立即可读，哪怕 SSTable 还不存在。这就是读写两条流水线能并行不悖的原因。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：它依赖什么才能成立</h2></div>
+<p class="sec-sub">拆掉任意一个外部依赖，前面看到的行为都会变。</p>
+<div class="quote"><i>任何机制都有环境前提；拆掉外部依赖，它就不再成立。</i></div>
+<div class="envcards">
+<div class="env"><b>seeds 名单</b><span>conf/cassandra.yaml:764；新人入职的联系人。全写同一个节点只是单点风险，不是主从。</span></div>
+<div class="env"><b>num_tokens = 16</b><span>conf/cassandra.yaml:42；每节点 16 段 token，决定数据摊多匀。</span></div>
+<div class="env"><b>keyspace 复制策略</b><span>demo 用 SimpleStrategy、RF=3；换 NetworkTopologyStrategy 才能按机房分副本。</span></div>
+<div class="env"><b>一致性级别 CL</b><span>QUORUM 是客户端每次请求带上的，不是集群属性；改 ONE 立刻变快也变脆。</span></div>
+<div class="env"><b>commitlog_sync</b><span>periodic / 10000ms（conf/cassandra.yaml:665、:667）；决定崩溃时最坏丢多少。</span></div>
+</div>
+<p class="figcap">边界：本页画的是单 DC、RF=3 的演示集群 happy path；跨 DC、hinted handoff 与 Paxos 读写不在图中。协调者与副本的「角色」每次请求都重新分配。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">五个问题，检查你是否能在边界上做判断。</p>
+<div class="quote"><i>自测不是复述结论，而是检查你能否在边界上做判断。</i></div>
+<div id="quiz"></div>
+</section>
+
+
+<div class="summary">
+<h2>一页带走</h2>
+
+<p class="chant">谁接单谁协调，按 token 找副本；先记账再落内存，读时现场拼。</p>
+<p>· 没有主库：五个节点代码相同角色相同，协调者是每次请求临时客串的角色。</p>
+<p>· 写成功 = 2 个副本的日志和内存收到；SSTable 是后台 flush 的事。</p>
+<p>· 读是现场拼接：每个单元格比时间戳，新者胜；顺带把落后副本补齐。</p>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+</div>
+
+<script>
+(function(){
+var PERIOD=5600,PHASE_MAX=720;
+var STEPS=[{"d":0,"t":"接入","x":"INSERT users(47,'阿福',31) 发给 node3——任意节点都能收单，它临时客串协调者。"},{"d":80,"t":"算token","x":"StorageProxy.mutate：hash(id=47) 的 token 落环，副本名单 = {node2, node4, node5}。"},{"d":160,"t":"分发","x":"Mutation 并行发给三个副本；名单由 token 决定，不是「谁闲发给谁」。"},{"d":240,"t":"记日志","x":"每个副本先追加本地 CommitLog（含 CRC），这是崩溃后的保命账。"},{"d":320,"t":"落内存","x":"再写各表 Memtable；此刻 SSTable 一个字节都没动。"},{"d":400,"t":"数确认","x":"node2、node4 的回执到了：2 ≥ QUORUM(2) → 给客户端回「成功」。"},{"d":480,"t":"读","x":"SELECT id=47 发给 node1；它向 node2 要全量 data、向 node5 要摘要 digest。"},{"d":560,"t":"拼接","x":"DataResolver 按单元格时间戳：name 取 1005 的阿福2，age 取 31。"},{"d":640,"t":"返回修复","x":"返回 ('阿福2',31)；发现 node2 落后，顺手补一份（read repair）。"}];
+var PARTS={"client":["clientBox"],"coordw":["coordW","e1","f2","f3","f4"],"commitlog":["cl2","cl4","cl5"],"memtable":["mt2","mt4","mt5"],"sstable":["st2","st4","st5"],"coordr":["coordR","e5","e6","e7"],"resolver":["resBox","e8"],"result":["resOut","e9"]};
+var CHIPS=[{"k":"cl","l":"CL"},{"k":"ack","l":"写确认"},{"k":"rd","l":"读副本"},{"k":"lag","l":"node2 落后"}];
+var QUIZ=[{"q":"RF=3、CL=QUORUM 时，这条 INSERT 最少要等到几个副本的确认才返回？","opts":["1 个","2 个","3 个"],"a":1,"exp":"QUORUM = ⌊3/2⌋+1 = 2。协调者只数回执（AbstractWriteResponseHandler.blockFor()），第三个副本慢一点不挡答复。"},{"q":"写返回「成功」的那一刻，磁盘上的 SSTable 里有什么？","opts":["这一行的完整数据","只有 CommitLog 对应的记录","什么都没有"],"a":2,"exp":"写只推进到 CommitLog + Memtable；SSTable 是后台异步 flush 的产物。所以「写成功 ≠ 在磁盘上」，崩溃恢复靠日志（第 2 章）。"},{"q":"id=47 的副本名单 {node2, node4, node5} 是怎么定下来的？","opts":["协调者随机挑三个","按分区键 token 在环上的位置","按节点负载排队"],"a":1,"exp":"分区键 id=47 经哈希得到 token，复制策略按 token 位置给出自然副本（第 6 章）；协调者只做查询和核对。"},{"q":"读拼接时 name 取了「阿福2」，裁决依据是什么？","opts":["谁先返回用谁的","单元格的写时间戳，新者胜","副本编号小的优先"],"a":1,"exp":"DataResolver 对每个单元格单独按时间戳对账（本例 1005 > 1001），行内各列互不牵连。"},{"q":"node2 永远比另外两个副本慢半拍，集群会怎么处理？","opts":["自动把 node2 踢出集群","读时按时间戳拼接 + read repair 顺带补齐","等人工跑修复才行"],"a":1,"exp":"每轮 QUORUM 读都会发现落后者并补数据（read repair）；更系统的抹平靠反熵修复（第 13 章）。"},{"q":"把 CL 从 QUORUM 降到 ONE，写会更快，代价是什么？","opts":["没有代价","确认数变 1，中途挂两个副本可能丟刚写的数据窗口","副本数变 1"],"a":1,"exp":"CL 只改「等几个确认」，不动副本数。ONE 时第二个副本还没收到就算成功，失败窗口变大——这正是第 7 章的主题。"}];
+var WP1=[[0,103,86],[60,103,90],[90,246,92],[130,365,100],[160,365,126],[200,170,196],[235,170,262],[285,500,196],[320,500,262],[365,830,196],[400,830,262],[435,886,170],[470,886,96]];
+var WP2=[[480,103,86],[500,103,390],[522,178,396],[548,170,306],[568,178,396],[590,830,306],[612,614,396],[645,886,396],[700,886,396]];
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,STEP_DUR=650;
+var stepIdx=-1;
+var el={};
+document.querySelectorAll('#eng [id],#eng2 [id]').forEach(function(n){el[n.id]=n;});
+function setOp(id,v){var n=typeof id==='string'?el[id]:id;if(n)n.setAttribute('opacity',v.toFixed(2));}
+function setText(id,s){var n=el[id]||document.getElementById(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setAttr(id,k,v){var n=el[id];if(n)n.setAttribute(k,v);}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){return t*t*(3-2*t);}
+function posOn(wp,th){
+  if(!wp||wp.length<2)return null;
+  var p=norm(th);var i=0;while(i<wp.length-2&&p>wp[i+1][0])i++;
+  var a=wp[i],b=wp[i+1];var t=(p-a[0])/((b[0]-a[0])||1);t=clamp(t,0,1);
+  return [a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+}
+function band(id,a,b,lo,hi){setOp(id,(pr>=a&&pr<b)?(hi===undefined?1:hi):(lo===undefined?0.18:lo));}
+var pr=0;
+
+function renderScene(){
+  band('e1',0,90);band('f2',130,205);band('f3',130,205);band('f4',130,205);
+  band('cl2',200,262,0.35,1);band('mt2',235,340,0.35,1);
+  band('cl4',280,340,0.35,1);band('mt4',315,395,0.35,1);
+  band('cl5',360,440,0.35,1);band('mt5',395,475,0.35,1);
+  band('st2',0,720,0.3,0.3);band('st4',0,720,0.3,0.3);band('st5',0,720,0.3,0.3);
+  band('ackPill',330,480,0.3,1);
+  band('e5',485,540);band('coordR',485,720,0.45);
+  band('e6',535,575);band('e7',575,615);
+  band('e8',600,650);band('resBox',600,720,0.4);
+  band('e9',635,720);band('resOut',640,720,0.4);
+  band('clientBox',0,720,0.75,1);
+  band('node2Box',0,720,0.75,1);band('node4Box',0,720,0.75,1);band('node5Box',0,720,0.75,1);
+  var acks='0 / 2';
+  if(pr>=380)acks='2 / 2';else if(pr>=330)acks='1 / 2';
+  setText('ackCount',acks);
+  setText('roAcks',acks);
+  var merge='—';
+  if(pr>=600)merge='name=阿福2 · age=31';
+  else if(pr>=480)merge='等待副本响应…';
+  setText('roMerge',merge);
+  setChip('cl','QUORUM',true);
+  setChip('ack',acks.replace(' / ','/'),acks!=='0 / 2');
+  setChip('rd',pr>=548?'2':'0',pr>=548);
+  setChip('lag',pr>=600?'是':'否',pr>=600);
+}
+function setChip(k,v,on){var n=document.querySelector('#stateChips .chip[data-k="'+k+'"]');if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',!!on);n.classList.toggle('off',!on);}
+
+function renderSub(th){
+  var p=norm(th); var si=0;
+  for(var i=0;i<STEPS.length;i++){if(p>=STEPS[i].d)si=i;}
+  for(var i=0;i<STEPS.length;i++){setOp('seg'+i,i===si?1:0.35);}
+  var x=40+(p/PHASE_MAX)*920;
+  setAttr('subNow','x1',x.toFixed(1)); setAttr('subNow','x2',x.toFixed(1));
+}
+
+function render(th){
+  pr=norm(th);
+  setText('roPhase',Math.round(pr)+'°');
+  var si=0;for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)si=i;}
+  if(mode==='step'&&stepIdx>=0)si=stepIdx;
+  setText('roStep',STEPS[si]?STEPS[si].t:'—');
+  var p1=posOn(WP1,th),p2=posOn(WP2,th);
+  if(p1&&pr<480){setAttr('tok','cx',p1[0].toFixed(1));setAttr('tok','cy',p1[1].toFixed(1));setOp('tok',1);}else{setOp('tok',0);}
+  if(p2&&pr>=480){setAttr('tokB','cx',p2[0].toFixed(1));setAttr('tokB','cy',p2[1].toFixed(1));setOp('tokB',1);}else{setOp('tokB',0);}
+  renderScene();
+  if(typeof renderSub==='function')renderSub(th,pr,si);
+}
+function tick(now){
+  var dt=Math.min(50,now-last);last=now;
+  if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+  if(mode==='step'&&stepTo!==null){
+    stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);
+    var p=stepElapsed/STEP_DUR;var e=smooth(p);
+    phase=stepFrom+(stepTo-stepFrom)*e;
+    if(p>=1){phase=((stepTo%PERIOD)+PERIOD)%PERIOD;stepTo=null;}
+  }
+  render(phase/PERIOD*PHASE_MAX);
+  requestAnimationFrame(tick);
+}
+function setAuto(on){
+  mode='auto';run=on;stepTo=null;btn.textContent=on?'暂停':'播放';
+  if(on){stepIdx=-1;document.querySelectorAll('.stepnode').forEach(function(d){d.classList.remove('on');});
+  stepT.textContent='自动运转模式';stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格。';}
+}
+window.goStep=function(i){
+  stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+  var target=STEPS[stepIdx].d/PHASE_MAX*PERIOD;var delta=target-phase;
+  if(reduced||Math.abs(delta)>PERIOD/3){phase=target;stepTo=null;render(target/PERIOD*PHASE_MAX+0.01);}
+  else{stepFrom=phase;stepTo=phase+delta;stepElapsed=0;render(phase/PERIOD*PHASE_MAX+0.01);}
+  btn.textContent='继续自动运转';
+  document.querySelectorAll('.stepnode').forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+  stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+  stepX.textContent=STEPS[stepIdx].x;
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+btn.textContent=run?'暂停':'播放';
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+for(var s=0;s<STEPS.length;s++){(function(n){
+  var b=document.createElement('button');b.className='stepnode';
+  b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+  b.onclick=function(){goStep(n);};stepBar.appendChild(b);
+})(s);}
+CHIPS.forEach(function(c){var s=document.createElement('span');s.className='chip';s.setAttribute('data-k',c.k);s.innerHTML=c.l+' <b>--</b>';document.getElementById('stateChips').appendChild(s);});
+document.querySelectorAll('.part').forEach(function(b){
+  b.onclick=function(){
+    var ids=PARTS[b.getAttribute('data-part')]||[];
+    ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+    document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+    setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+  };
+});
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+  var d=document.createElement('div');d.className='q';
+  var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+  it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+  h+='<div class="exp">'+it.exp+'</div>';d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+  var b=e.target.closest('.opt');if(!b)return;var box2=b.parentElement;if(box2.classList.contains('done'))return;
+  box2.classList.add('done');
+  var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+  box2.querySelectorAll('.opt').forEach(function(x,n){x.classList.add(n===QUIZ[qi].a?'right':'wrong');});
+});
+var BASE=(location.pathname.split('/cassandra-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/cassandra/lab';
+document.getElementById('lnkArt').href=BASE+'/cassandra/overview/01-architecture';
+
+requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

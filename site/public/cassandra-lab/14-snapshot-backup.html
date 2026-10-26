@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>快照与备份 · Cassandra 互动原理实验室 第 15 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:960px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:720px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:600;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:12px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:600;fill:#1F1E1A}
+.tag{font-size:10.5px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:66px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .outbranch{display:inline-flex;flex-direction:column;align-items:flex-start;gap:6px}
+.flow .outline{display:inline-flex;align-items:center;gap:8px}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 10px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+#eng [opacity]{transition:opacity .28s ease}
+#eng2 [opacity]{transition:opacity .28s ease}
+@media (prefers-reduced-motion: reduce){#eng [opacity],#eng2 [opacity]{transition:none}}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:8px 4px 0;font-size:12px;color:#6B695F}
+.legend i{display:inline-block;width:18px;height:0;border-top:2px solid #C46A0A;vertical-align:middle;margin-right:5px}
+.legend i.g{border-color:#639922}
+.legend i.r{border-color:#E24B4A}
+.legend i.b{border-color:#2F6FA8}
+.legend i.dash{border-top-style:dashed}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：快照与备份</a>
+  <span class="idx">第 15 / 15 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · SNAPSHOT &amp; BACKUP</div>
+<h1>快照不拷数据，只拷名字</h1>
+<p>100GB 的 users 表拍快照只要亚秒：先 flush、再把每本 SSTable 硬链接进 snapshots/pre-upg-1026/。跟着数字走完一周——写入一小时、压缩并账后盘上 210GB、clearsnapshot 回到 110GB；再切「恢复两条路」看冷拷回 10 分钟停机 vs sstableloader 按令牌环 BULK_LOAD 重灌 300GB、最后由时间戳裁决。读数与正文第 15 章完全同口径。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span>
+<span class="mnode">② 静态分解</span>
+<span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span>
+<span class="mnode">⑤ 环境场景</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 560" role="img" xmlns="http://www.w3.org/2000/svg"><title>快照的一生与恢复的两条路</title><defs><marker id="tA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="tB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="tG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="tR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker></defs><text class="th" x="500" y="24" text-anchor="middle" id="engTitle">快照的一生：硬链接落位 → 写入压缩一小时 → 清快照释放</text><text class="ts" x="500" y="44" text-anchor="middle" id="engSub">node2 · demo.users 100GB（4 本 25GB）｜tag=pre-upg-1026｜周一 02:00 → 周三 14:00（教学时间轴）</text><text x="972" y="24" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">橙色：快照独占 / 流程</text><text x="972" y="40" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">蓝色：空间账 / 目录</text><text x="972" y="56" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色：释放 / 恢复</text><text x="972" y="72" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">红色：峰值 / 风险</text>
+<g id="stStrip"><rect id="st0" x="28" y="64" width="172" height="52" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/><text id="stL0" x="38" y="84" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">S1 接单 flush</text><text id="stS0" x="38" y="102" font-size="9.5" fill="#6B695F" text-anchor="start">nodetool snapshot -t</text><rect id="st1" x="212" y="64" width="172" height="52" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/><text id="stL1" x="222" y="84" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">S2 硬链接落位</text><text id="stS1" x="222" y="102" font-size="9.5" fill="#6B695F" text-anchor="start">createLinks·28+2 个</text><rect id="st2" x="396" y="64" width="172" height="52" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/><text id="stL2" x="406" y="84" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">S3 写入+压缩</text><text id="stS2" x="406" y="102" font-size="9.5" fill="#6B695F" text-anchor="start">+10GB→并账 110GB</text><rect id="st3" x="580" y="64" width="172" height="52" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/><text id="stL3" x="590" y="84" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">S4 盘上 210GB</text><text id="stS3" x="590" y="102" font-size="9.5" fill="#6B695F" text-anchor="start">独占 100·true size</text><rect id="st4" x="764" y="64" width="208" height="52" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/><text id="stL4" x="774" y="84" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">S5 清快照释放</text><text id="stS4" x="774" y="102" font-size="9.5" fill="#6B695F" text-anchor="start">clearsnapshot→110GB</text></g>
+<g id="gS"><rect x="28" y="128" width="270" height="308" rx="10" fill="#ffffff" stroke="#3B3A34" stroke-width="1.2"/><text x="163" y="150" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">data/demo/users-xxxx/（数据目录）</text>
+<text id="z1h" x="42" y="170" font-size="10" fill="#2F6FA8" text-anchor="start" font-weight="600">活表区（CANONICAL 视图）</text>
+<rect id="lb1" x="42" y="178" width="55" height="36" rx="5" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/><text id="lb1t" x="69.5" y="193" font-size="8.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">nb-31</text><text id="lb1s" x="69.5" y="205" font-size="8" fill="#6B695F" text-anchor="middle">25GB</text>
+<rect id="lb2" x="103" y="178" width="55" height="36" rx="5" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/><text id="lb2t" x="130.5" y="193" font-size="8.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">nb-32</text><text id="lb2s" x="130.5" y="205" font-size="8" fill="#6B695F" text-anchor="middle">25GB</text>
+<rect id="lb3" x="164" y="178" width="55" height="36" rx="5" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/><text id="lb3t" x="191.5" y="193" font-size="8.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">nb-33</text><text id="lb3s" x="191.5" y="205" font-size="8" fill="#6B695F" text-anchor="middle">25GB</text>
+<rect id="lb4" x="225" y="178" width="55" height="36" rx="5" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/><text id="lb4t" x="252.5" y="193" font-size="8.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">nb-34</text><text id="lb4s" x="252.5" y="205" font-size="8" fill="#6B695F" text-anchor="middle">25GB</text>
+<g id="smallGrid"></g><text id="smT" x="42" y="248" font-size="9" fill="#6B695F" text-anchor="start"></text>
+<text id="z2h" x="42" y="258" font-size="10" fill="#C46A0A" text-anchor="start" font-weight="600">snapshots/pre-upg-1026/</text>
+<g id="snapNames"><rect x="42" y="266" width="238" height="16" rx="3" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1"/><text x="50" y="278" font-size="8.5" fill="#3B3A34" text-anchor="start">nb-31..nb-34（7 组件 × 4 本 = 28 个硬链接）</text><rect x="42" y="286" width="238" height="16" rx="3" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1"/><text x="50" y="298" font-size="8.5" fill="#3B3A34" text-anchor="start">manifest.json（文件清单）+ schema.cql（建表语句）</text></g>
+<text id="snapNote" x="42" y="322" font-size="9" fill="#6B695F" text-anchor="start">快照尚未拍摄：目录不存在</text>
+<rect x="42" y="334" width="238" height="30" rx="6" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1"/><text x="50" y="346" font-size="8.5" fill="#3B3A34" text-anchor="start">backups/（增量备份目录，见第 5 节）</text><text x="50" y="358" font-size="8" fill="#6B695F" text-anchor="start">新 flush / streaming 的 SSTable 自动硬链接进来</text>
+<text id="dirNote" x="42" y="382" font-size="9.5" fill="#6B695F" text-anchor="start">快照与正本住在同一目录树、同一块盘</text>
+<text id="dirNote2" x="42" y="398" font-size="9.5" fill="#6B695F" text-anchor="start">机器着火快照也没了——外运才是异地容灾</text>
+<text id="dirNote3" x="42" y="422" font-size="9.5" fill="#639922" text-anchor="start" font-weight="600"></text>
+<rect x="308" y="128" width="330" height="308" rx="10" fill="#ffffff" stroke="#2F6FA8" stroke-width="1.3"/><text x="473" y="150" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">盘上空间账本（users 表，本节点）</text>
+<line x1="330" y1="408" x2="620" y2="408" stroke="#3B3A34" stroke-width="1.3"/><line x1="330" y1="188" x2="620" y2="188" stroke="#E24B4A" stroke-width="1.2" stroke-dasharray="5 4"/><text x="616" y="184" font-size="9" fill="#E24B4A" text-anchor="end" font-weight="600">峰值线 220GB</text>
+<rect id="barLive" x="380" y="353" width="90" height="55" rx="3" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/><rect id="barExcl" x="380" y="188" width="90" height="0" rx="3" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text id="barNum" x="425" y="340" font-size="16" fill="#1F1E1A" text-anchor="middle" font-weight="700">100GB</text>
+<text x="500" y="230" font-size="10" fill="#2F6FA8" text-anchor="start" font-weight="600">■ 活表文件</text><text x="500" y="248" font-size="10" fill="#C46A0A" text-anchor="start" font-weight="600">■ 快照独占</text>
+<text id="svLive" x="500" y="280" font-size="11" fill="#3B3A34" text-anchor="start" font-weight="600">活表 100GB</text><text id="svExcl" x="500" y="300" font-size="11" fill="#3B3A34" text-anchor="start" font-weight="600">快照独占 0GB</text><text id="svTrue" x="500" y="320" font-size="10" fill="#6B695F" text-anchor="start">true size（listsnapshots）= 独占部分</text>
+<text id="svPeak" x="500" y="344" font-size="10" fill="#6B695F" text-anchor="start"></text>
+<text id="svClock" x="500" y="368" font-size="10.5" fill="#C46A0A" text-anchor="start" font-weight="600">周一 02:00 前</text>
+<text id="svClock2" x="500" y="386" font-size="9.5" fill="#6B695F" text-anchor="start"></text>
+<text id="barNote" x="473" y="424" font-size="9.5" fill="#6B695F" text-anchor="middle">高度 = 盘上占用；刻度 220GB = 顶格虚线</text>
+<rect x="650" y="128" width="322" height="150" rx="10" fill="#FBFAF6" stroke="#C46A0A" stroke-width="1.3"/><text x="811" y="150" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">inode 档案卡（以 nb-31 为例）</text>
+<text id="inCnt" x="664" y="172" font-size="10.5" fill="#3B3A34" text-anchor="start" font-weight="600">链接数：1（只有正本一个名字）</text>
+<text id="inN1" x="664" y="192" font-size="9.5" fill="#3B3A34" text-anchor="start">名字① data/demo/users-xxxx/nb-31-big-Data.db</text>
+<text id="inN2" x="664" y="210" font-size="9.5" fill="#8A877C" text-anchor="start">名字② …/snapshots/pre-upg-1026/nb-31-big-Data.db</text>
+<text id="inData" x="664" y="230" font-size="9.5" fill="#6B695F" text-anchor="start">盘上数据：25GB × 1 份（硬链接不复制数据）</text>
+<text id="inNote" x="664" y="250" font-size="9.5" fill="#6B695F" text-anchor="start">删除任一名字只减引用计数；引用归零才真删</text>
+<rect x="650" y="286" width="322" height="66" rx="10" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.2"/><text x="811" y="306" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">机制卡（TakeSnapshotTask.java:117-193）</text><text x="664" y="324" font-size="9.5" fill="#3B3A34" text-anchor="start">默认先 flush（:128-138）；nodetool -sf 才跳过</text><text x="664" y="340" font-size="9.5" fill="#3B3A34" text-anchor="start">默认快照名 = 当前毫秒数（Snapshot.java:50）</text><text x="664" y="356" font-size="9.5" fill="#3B3A34" text-anchor="start">JOINING 未完不许拍（:79-80）；跨表逐张连拍</text>
+<rect x="650" y="358" width="322" height="78" rx="10" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.2"/><text x="811" y="378" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">保留策略（conf/cassandra.yaml）</text><text x="664" y="396" font-size="9.5" fill="#3B3A34" text-anchor="start">auto_snapshot: true（:1205）：truncate/drop 前自动拍</text><text x="664" y="412" font-size="9.5" fill="#3B3A34" text-anchor="start">auto_snapshot_ttl: 30d（:1207-1213 注释）自动过期</text><text x="664" y="428" font-size="9.5" fill="#3B3A34" text-anchor="start">snapshot_links_per_second: 0（:1220）不限速</text></g>
+<g id="gR" opacity="0"><rect x="28" y="128" width="270" height="308" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="163" y="150" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">路 A：冷拷回（换盘式）</text>
+<text id="ra1" x="42" y="176" font-size="10" fill="#3B3A34" text-anchor="start" font-weight="600">① 停节点（停机窗口开始）</text>
+<text id="ra2" x="42" y="196" font-size="10" fill="#3B3A34" text-anchor="start" font-weight="600">② 清数据目录，拷回快照 100GB</text>
+<text id="ra3" x="42" y="216" font-size="10" fill="#3B3A34" text-anchor="start" font-weight="600">③ 按 schema.cql 重建表结构</text>
+<text id="ra4" x="42" y="236" font-size="10" fill="#3B3A34" text-anchor="start" font-weight="600">④ 启动；回界后靠 repair/streaming 追平</text>
+<rect x="42" y="252" width="242" height="22" rx="5" fill="#ffffff" stroke="#639922" stroke-width="1.2"/><rect id="raBar" x="43" y="253" width="0" height="20" rx="4" fill="#EAF3DE"/><text id="raT" x="163" y="268" font-size="9.5" fill="#3B3A34" text-anchor="middle" font-weight="600">停机窗口 0 / 10 分钟（本地 NVMe）</text>
+<text x="42" y="296" font-size="9.5" fill="#E24B4A" text-anchor="start" font-weight="600">前提：token 归属与快照时一致（第 14 章）</text>
+<text x="42" y="314" font-size="9.5" fill="#6B695F" text-anchor="start">拷回的是当时那个节点的数据分布；</text>
+<text x="42" y="330" font-size="9.5" fill="#6B695F" text-anchor="start">拓扑已变则有「错位段」，要事后对齐</text>
+<text id="raOK" x="42" y="358" font-size="10" fill="#639922" text-anchor="start" font-weight="600"></text>
+<text x="42" y="386" font-size="9.5" fill="#6B695F" text-anchor="start">场景：磁盘损坏、升级回滚、整表误删</text>
+<text x="42" y="404" font-size="9.5" fill="#6B695F" text-anchor="start">整目录原位放回 = 单机视角的恢复</text>
+<rect x="308" y="128" width="330" height="308" rx="10" fill="#ffffff" stroke="#639922" stroke-width="1.3"/><text x="473" y="150" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">路 B：sstableloader（不停机，BULK_LOAD）</text>
+<text x="322" y="172" font-size="9.5" fill="#6B695F" text-anchor="start">① 问拓扑 getEndpointToRangesMap（SSTableLoader.java:202）</text>
+<rect x="322" y="182" width="302" height="24" rx="4" fill="#FBFAF6" stroke="#2F6FA8" stroke-width="1.2"/><rect id="rbSeg1" x="323" y="183" width="100" height="22" rx="3" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1"/><rect id="rbSeg2" x="423" y="183" width="100" height="22" rx="3" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1"/><rect id="rbSeg3" x="523" y="183" width="100" height="22" rx="3" fill="#EAF3DE" stroke="#639922" stroke-width="1"/><text x="473" y="198" font-size="9" fill="#6B695F" text-anchor="middle">快照目录里的一本 SSTable → 按 token range 切段（:163）</text>
+<text x="322" y="222" font-size="9.5" fill="#6B695F" text-anchor="start">② 切文件：getPositionsForRanges 只算「哪段归谁」，不重写数据</text>
+<circle cx="420" cy="308" r="66" fill="none" stroke="#B4B2A9" stroke-width="1.2" stroke-dasharray="4 3"/>
+<circle cx="420" cy="242" r="11" fill="#ffffff" stroke="#3B3A34" stroke-width="1.5"/><text x="420" y="246" font-size="8" fill="#1F1E1A" text-anchor="middle" font-weight="600">n1</text>
+<circle id="rr2" cx="482" cy="288" r="12" fill="#ffffff" stroke="#3B3A34" stroke-width="1.6"/><text x="482" y="292" font-size="8" fill="#1F1E1A" text-anchor="middle" font-weight="600">n2</text>
+<circle cx="455" cy="362" r="11" fill="#ffffff" stroke="#3B3A34" stroke-width="1.5"/><text x="455" y="366" font-size="8" fill="#1F1E1A" text-anchor="middle" font-weight="600">n3</text>
+<circle id="rr4" cx="385" cy="362" r="12" fill="#ffffff" stroke="#3B3A34" stroke-width="1.6"/><text x="385" y="366" font-size="8" fill="#1F1E1A" text-anchor="middle" font-weight="600">n4</text>
+<circle id="rr5" cx="358" cy="288" r="12" fill="#ffffff" stroke="#3B3A34" stroke-width="1.6"/><text x="358" y="292" font-size="8" fill="#1F1E1A" text-anchor="middle" font-weight="600">n5</text>
+<text id="ringLab" x="420" y="312" font-size="8.5" fill="#6B695F" text-anchor="middle">id=47 token≈-9.0×10^18</text>
+<text id="rbT1" x="322" y="240" font-size="9.5" fill="#6B695F" text-anchor="start">③ StreamPlan(BULK_LOAD)（:200）分发</text>
+<text id="rbT2" x="322" y="398" font-size="9.5" fill="#C46A0A" text-anchor="start" font-weight="600">那段同时发给 node2 / node4 / node5（RF=3）</text>
+<text id="rbT3" x="322" y="416" font-size="9.5" fill="#6B695F" text-anchor="start">集群总流入 ≈ 100GB × 3 = 300GB；与第 14 章</text>
+<text id="rbT4" x="322" y="432" font-size="9.5" fill="#6B695F" text-anchor="start">bootstrap / repair 共用同一 streaming 底座</text>
+<rect x="650" y="128" width="322" height="308" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="811" y="150" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">灌入之后：LWW 裁决（第 7 章）</text>
+<text x="664" y="172" font-size="9.5" fill="#6B695F" text-anchor="start">恢复不是覆盖：目标节点新增一批 SSTable（不可变）</text>
+<rect x="664" y="184" width="294" height="34" rx="6" fill="#ffffff" stroke="#2F6FA8" stroke-width="1.2"/><text id="lw1" x="674" y="198" font-size="9.5" fill="#3B3A34" text-anchor="start" font-weight="600">快照版：id=48, ts=2001</text><text id="lw1s" x="674" y="212" font-size="8.5" fill="#6B695F" text-anchor="start">来自 pre-upg-1026（周一 02:00 之前的老值）</text>
+<rect x="664" y="224" width="294" height="34" rx="6" fill="#ffffff" stroke="#C46A0A" stroke-width="1.2"/><text id="lw2" x="674" y="238" font-size="9.5" fill="#3B3A34" text-anchor="start" font-weight="600">线上版：id=48, ts=5007</text><text id="lw2s" x="674" y="252" font-size="8.5" fill="#6B695F" text-anchor="start">周二 09:00 的新写</text>
+<text x="811" y="276" font-size="10" fill="#6B695F" text-anchor="middle">读路径按写入时间戳归并，ts 大者赢：</text>
+<rect id="lwBox" x="664" y="286" width="294" height="30" rx="6" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.2"/><text id="lwR" x="811" y="306" font-size="10.5" fill="#3B3A34" text-anchor="middle" font-weight="600">尚未灌入</text>
+<text id="lwT" x="664" y="340" font-size="9.5" fill="#E24B4A" text-anchor="start" font-weight="600"></text>
+<text x="664" y="368" font-size="9.5" fill="#6B695F" text-anchor="start">推论：快照救不回「比快照新的写」；</text>
+<text x="664" y="384" font-size="9.5" fill="#6B695F" text-anchor="start">恢复不是时光倒流，是把旧版本加回来，</text>
+<text x="664" y="400" font-size="9.5" fill="#6B695F" text-anchor="start">让裁决规则继续裁决</text>
+<text id="rbOK" x="664" y="424" font-size="10" fill="#639922" text-anchor="start" font-weight="600"></text></g>
+<text id="engFoot" x="28" y="466" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">读法：站条随相位点亮；快照模式看目录、inode 与空间账三联动；恢复模式看两条路的进度与 LWW 裁决。</text>
+<text id="engFoot2" x="28" y="484" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">口径：apache/cassandra master（7.0-SNAPSHOT）；100GB/28 链接/210GB/300GB 与正文第 15 章手算完全一致。</text>
+<text id="engFoot3" x="28" y="502" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">环图为单环示意；时间轴为教学压缩（写入 1h → 动画一个相位段）。</text>
+<circle id="tok" cx="-20" cy="-20" r="8" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/></svg>
+<svg id="eng2" viewBox="0 0 1000 180" role="img" xmlns="http://www.w3.org/2000/svg"><text x="40" y="26" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">相位总线：快照的一生 / 恢复两条路 各一条 0°→720°</text><text x="960" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">切换模式时相位归零</text><rect id="seg0" x="40" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg0" x="89.1" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">S1</text><text id="sd0" x="89.1" y="96" font-size="10" fill="#6B695F" text-anchor="middle">0°</text><rect id="seg1" x="142.2" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg1" x="191.3" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd1" x="191.3" y="96" font-size="10" fill="#6B695F" text-anchor="middle">90°</text><rect id="seg2" x="244.4" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg2" x="293.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd2" x="293.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle">180°</text><rect id="seg3" x="346.7" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg3" x="395.8" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd3" x="395.8" y="96" font-size="10" fill="#6B695F" text-anchor="middle">270°</text><rect id="seg4" x="448.9" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg4" x="498" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd4" x="498" y="96" font-size="10" fill="#6B695F" text-anchor="middle">360°</text><rect id="seg5" x="551.1" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg5" x="600.2" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd5" x="600.2" y="96" font-size="10" fill="#6B695F" text-anchor="middle">450°</text><rect id="seg6" x="653.3" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg6" x="702.4" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd6" x="702.4" y="96" font-size="10" fill="#6B695F" text-anchor="middle">540°</text><rect id="seg7" x="755.6" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg7" x="804.7" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd7" x="804.7" y="96" font-size="10" fill="#6B695F" text-anchor="middle">630°</text><rect id="seg8" x="857.8" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg8" x="906.9" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">复盘</text><text id="sd8" x="906.9" y="96" font-size="10" fill="#6B695F" text-anchor="middle">680°</text><line id="subNow" x1="40" y1="44" x2="40" y2="126" stroke="#C46A0A" stroke-width="2"/><text x="500" y="152" font-size="11" fill="#6B695F" text-anchor="middle" font-weight="400">每格是一个可定格的关键时刻；分步时所有视图冻结到同一相位。</text></svg>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<button class="btn warn" id="scenBtn">切到恢复两条路</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 轮 / 6.4 秒</span>
+</div>
+
+<div class="readout">
+<span class="ro">相位 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">模式 <b id="roScen">快照的一生</b></span>
+<span class="ro"><span id="roLDisk">盘上占用</span> <b id="roDisk">100GB</b></span>
+<span class="ro"><span id="roLExcl">快照独占</span> <b id="roExcl">0GB</b></span>
+<span class="ro"><span id="roLLnk">硬链接数</span> <b id="roLnk">0</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格；橙色按钮切换「快照的一生 / 恢复两条路」两条线。</span>
+<span class="snav">
+<button class="btn" onclick="prevStep()">‹ 上一步</button>
+<button class="btn warn" onclick="nextStep()">下一步 ›</button>
+</span>
+</div>
+<div class="legend"><span><i></i>快照流程 / 独占</span><span><i class="b"></i>空间账 / 目录 / 活表</span><span><i class="g"></i>释放 / 恢复 / 完成</span><span><i class="r"></i>峰值 / 风险</span></div>
+<p class="figcap">两条线各 0°=接单/事故、720°=复盘；数字全部与正文第 15 章对齐（100GB/28+2 链接/210GB/110GB/300GB）。<br>口径：apache/cassandra master（7.0-SNAPSHOT）；快照名 pre-upg-1026、ts=2001/5007 为教学数值。</p>
+</div>
+</div>
+
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：先把它当黑盒</h2></div>
+<p class="sec-sub">一条命令一秒返回、盘上数字三次跳变、恢复却有两种完全不同的价码。</p>
+<div class="quote"><i>先把系统当黑盒：只看输入、输出和边界，不急着解释内部。</i></div>
+
+<p>黑盒视角三句话：<b>100GB 的表拍快照只要亚秒</b>——没有任何 100GB 级的拷贝发生；<b>拍完写一小时、压一次，盘上从 100GB 涨到 210GB 又回到 110GB</b>——数字会呼吸，但表一直是好的；<b>恢复有两种价码</b>——停机 10 分钟换整盘回滚，或不停机但要按令牌环重灌 300GB。三件「反直觉」的事，背后是同一句话：快照不拷数据，只拷名字。</p>
+<div class="flow">
+<span class="node">nodetool snapshot / 恢复诉求（输入）</span><span class="arr">→</span>
+<span class="node box">快照与备份（黑盒）</span>
+<span class="outbranch">
+<span class="outline"><span class="arr">→</span><span class="node">快照：亚秒完成，额外空间近零，线上不停写</span></span>
+<span class="outline"><span class="arr">→</span><span class="node">之后：写入+压缩 → 盘上 210GB（true size 100GB）</span></span>
+<span class="outline"><span class="arr">→</span><span class="node">clearsnapshot → 释放 100GB → 盘上 110GB</span></span>
+<span class="outline"><span class="arr">→</span><span class="node">恢复：冷拷回（停机 10 分钟）vs sstableloader（300GB 重灌 + LWW）</span></span>
+</span>
+</div>
+<p>反直觉的点先记一个：210GB 不是事故——那是旧账本被快照拽住、新账本照常并账的正常形态。删快照的那一刻，旧账才真正下架。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：部件各管什么</h2></div>
+<p class="sec-sub">一套快照引擎（service/snapshot/）、一个目录规则（Directories）、一个重灌器（SSTableLoader）。点下面的部件卡，动画里对应部分会亮起。</p>
+<div class="quote"><i>结构分解要 MECE：同一层只放同一粒度的部件。</i></div>
+<div class="figure"><svg viewBox="0 0 920 250" role="img" xmlns="http://www.w3.org/2000/svg"><text x="460" y="22" font-size="15" fill="#1F1E1A" text-anchor="middle" font-weight="600">快照引擎 + 目录规则 + 重灌器（service/snapshot/、db/、io/sstable/）</text><text x="460" y="42" font-size="11.5" fill="#6B695F" text-anchor="middle" font-weight="400">快照 = 硬链接 + manifest/schema；增量 = backups/ 自动链接；恢复 = 冷拷回或按令牌环重灌</text><rect x="20" y="64" width="280" height="130" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="34" y="88" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">① 快照引擎 service/snapshot/</text><text x="34" y="110" font-size="10.5" fill="#6B695F" text-anchor="start">SnapshotManager:61（takeSnapshot:429/clear:449）</text><text x="34" y="128" font-size="10.5" fill="#3B3A34" text-anchor="start">TakeSnapshotTask:117 flush→硬链接:166→清单</text><text x="34" y="146" font-size="10.5" fill="#3B3A34" text-anchor="start">ClearSnapshotTask:178 递归删；九种 SnapshotType:21</text><text x="34" y="164" font-size="10.5" fill="#3B3A34" text-anchor="start">TableSnapshot:250 true size 只计独占文件</text><text x="34" y="182" font-size="10.5" fill="#6B695F" text-anchor="start">nodetool：snapshot / clearsnapshot / listsnapshots</text><rect x="320" y="64" width="280" height="130" rx="10" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/><text x="334" y="88" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">② 目录与链接 db/ + io/</text><text x="334" y="110" font-size="10.5" fill="#6B695F" text-anchor="start">Directories:640 snapshots/&lt;名字&gt;/、:729 backups/</text><text x="334" y="128" font-size="10.5" fill="#3B3A34" text-anchor="start">SSTableReader.createLinks:1182 逐组件链接</text><text x="334" y="146" font-size="10.5" fill="#3B3A34" text-anchor="start">FileUtils.createHardLink:127（inode+名字）</text><text x="334" y="164" font-size="10.5" fill="#3B3A34" text-anchor="start">Tracker.maybeIncrementallyBackup:483 增量</text><text x="334" y="182" font-size="10.5" fill="#6B695F" text-anchor="start">开关：yaml 全局 &amp;&amp; 表参数双闸（CFS:3227）</text><rect x="620" y="64" width="280" height="130" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="634" y="88" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">③ 重灌器 SSTableLoader</text><text x="634" y="110" font-size="10.5" fill="#6B695F" text-anchor="start">BulkLoader:53 命令入口（tools/sstableloader）</text><text x="634" y="128" font-size="10.5" fill="#3B3A34" text-anchor="start">:202 问拓扑 → :163 按 range 切段</text><text x="634" y="146" font-size="10.5" fill="#3B3A34" text-anchor="start">:200 StreamPlan(BULK_LOAD) 逐副本分发</text><text x="634" y="164" font-size="10.5" fill="#3B3A34" text-anchor="start">灌入=新增 SSTable；读按 ts 归并（LWW）</text><text x="634" y="182" font-size="10.5" fill="#6B695F" text-anchor="start">冷拷回 = 不走代码，直接换目录（运维动作）</text><path d="M300 128 L316 128" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#tB)"/><path d="M600 128 L616 128" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#tG)"/><rect x="20" y="204" width="880" height="40" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.2"/><text x="460" y="222" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">运输不归 Cassandra 管：快照目录 / backups/ 就是普通目录，rsync / 对象存储外运——硬链接只在同一文件系统内有意义</text><text x="460" y="238" font-size="10.5" fill="#6B695F" text-anchor="middle">RocksDB 对照：BackupEngine share_table_files 同样「只拷新文件」；恢复 RestoreDBFromLatestBackup 直接还原目录</text></svg></div>
+<div class="partgroup"><div class="gname">快照线</div><div class="parts"><button class="part" data-part="datadir"><b>1. 数据目录</b><span>users-xxxx/ 下活表区与快照区并排；写入与压缩只动活表区。</span></button><button class="part" data-part="snapdir"><b>2. snapshots/ 目录</b><span>28 个硬链接 + manifest.json + schema.cql；拍完才存在，清掉即空。</span></button><button class="part" data-part="inode"><b>3. inode 档案卡</b><span>同一 inode 两个名字；链接数 1→2→1；引用归零才真删。</span></button><button class="part" data-part="space"><b>4. 空间账本</b><span>活表/独占堆叠条：100→110→220→210→110GB 随相位呼吸。</span></button></div></div>
+<div class="partgroup"><div class="gname">恢复线</div><div class="parts"><button class="part" data-part="cold"><b>5. 冷拷回</b><span>停机 10 分钟窗口、四步换盘；前提 token 归属未变。</span></button><button class="part" data-part="loader"><b>6. sstableloader 切段</b><span>一本 SSTable 按各节点 range 切字节段，色段即归属。</span></button><button class="part" data-part="ring"><b>7. 令牌环分发</b><span>id=47 那段同时发给 node2/node4/node5（RF=3，BULK_LOAD）。</span></button><button class="part" data-part="lww"><b>8. LWW 裁决</b><span>ts=2001 vs ts=5007：旧版救不回新写；墓碑同理压住。</span></button></div></div>
+<p class="hint">静态图与动画共用同一套编号和口径；把动画暂停，它就是一张可打印的结构图。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：一步一停看顺序</h2></div>
+<p class="sec-sub">两条线各八个关键时刻——快照线盯「链接数、盘上占用、独占」三个读数的联动；恢复线盯「切段→分发→裁决」的接力。</p>
+<div class="quote"><i>动态分析看三件事：顺序、状态、触发条件。</i></div>
+
+<table class="grid">
+<tr><th>相位</th><th>快照的一生（S）</th><th>恢复两条路（R）</th></tr>
+<tr><td>0°</td><td>02:00 接单：nodetool snapshot -t pre-upg-1026；memtable 干净 flush 跳过</td><td>周二晚升级失败，决定回滚到 pre-upg-1026：两条路选型</td></tr>
+<tr><td>90°</td><td class="act">硬链接落位：4 本×7 组件=28 链接 + manifest + schema；inode 链接数 2</td><td>路 A 冷拷回：停节点 → 拷回 100GB（停机 10 分钟）→ 启动</td></tr>
+<tr><td>180°</td><td>写入 1h：+20 本 0.5GB；盘上 110GB；快照指向旧 4 本不动</td><td class="act">路 B 接单：sstableloader 问拓扑 getEndpointToRangesMap:202</td></tr>
+<tr><td class="hot">270°</td><td>03:00 全量压缩：读 110 写 110，盘上冲向峰值 220GB</td><td class="hot">切段：getPositionsForRanges:163 算「哪段归谁」，不重写数据</td></tr>
+<tr><td>360°</td><td class="act">03:25 并账完成：新 4 本 110GB 上岗；旧 100GB 被快照持有删不掉</td><td class="act">分发：StreamPlan(BULK_LOAD)→node2/node4/node5；流入 300GB</td></tr>
+<tr><td>450°</td><td>盘上 210GB；true size=100GB（listsnapshots 盯的就是它）</td><td>灌入=新增 SSTable，不覆盖旧文件（不可变纪律）</td></tr>
+<tr><td class="hot">540°</td><td class="hot">周三 14:00 clearsnapshot：引用归零，释放 100GB → 110GB</td><td class="hot">LWW：id=48 读归并 ts=5007 赢；墓碑 ts=4008 同理压住旧版</td></tr>
+<tr><td>630°</td><td>复盘：快照不拷数据只拷名字；旧账等最后一个引用走</td><td>复盘：冷恢复换盘、loader 换账；恢复不是时光倒流</td></tr>
+</table>
+<p>盯两张高亮行：S 线 270° 的峰值 220GB 是「输入还没删、输出边写」的窗口；R 线 270° 的切段发生在任何数据移动之前——先算归属、再搬字节，与第 14 章「账本先行、搬运随后」同构。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件 × 阶段</h2></div>
+<p class="sec-sub">同一批部件在「拍、写、清、灌」四趟里接力——链接永远指向不可变文件，换的只是引用的增减。</p>
+<div class="quote"><i>把部件放回阶段里，才能看清谁在什么时候接力。</i></div>
+
+<table class="grid">
+<tr><th>阶段</th><th>打快照（拍）</th><th>写入+压缩（变）</th><th>清快照（收）</th><th>loader 灌入（还）</th></tr>
+<tr><td>活表 SSTable</td><td>名单定格（CANONICAL 视图）</td><td>新增 10GB → 并成 110GB 新 4 本</td><td>不变（110GB）</td><td class="hot">再添一批旧版本 SSTable</td></tr>
+<tr><td>硬链接 / inode</td><td>+28 个，链接数 1→2</td><td>旧文件压缩淘汰但引用在</td><td class="act">引用归零 → 真删 100GB</td><td>无链接（走网络重写）</td></tr>
+<tr><td>manifest / schema</td><td>写清单（恢复凭据）</td><td>不动（文件不可变）</td><td>随目录删除</td><td>快照侧读取目录</td></tr>
+<tr><td>streaming 底座</td><td>—</td><td>—</td><td>—</td><td class="hot">BULK_LOAD 与 bootstrap/repair 同底座（第 14 章）</td></tr>
+<tr><td>时间戳裁判</td><td>—</td><td>压缩内按 ts 收敛（第 3 章）</td><td>—</td><td class="hot">读归并 ts 大者赢（第 7 章 LWW）</td></tr>
+</table>
+<p>表里四格绿色是本轨道的扣合点：<b>不可变文件是快照、压缩、streaming、恢复四个机制的共同地基</b>——第 3 章的纪律在这里收成了「备份变便宜」的架构红利。RocksDB 对照：BackupEngine 的 share_table_files 同样只拷新 SST（backup_engine.h:50-57），恢复 RestoreDBFromLatestBackup 直接还原目录——单机没有令牌环，也就不需要 sstableloader 这样的「翻译器」。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：它依赖什么才能成立</h2></div>
+<p class="sec-sub">拆掉任意一个外部依赖，快照与恢复的行为都会变。</p>
+<div class="quote"><i>任何机制都有环境前提；拆掉外部依赖，它就不再成立。</i></div>
+<div class="envcards">
+<div class="env"><b>同一文件系统</b><span>硬链接不能跨文件系统/分区——数据目录与快照目录天然同盘，这本身就是设计约束。</span></div>
+<div class="env"><b>盘空间余量</b><span>true size 是容量规划项：快照叠加压缩峰值（本例 220GB）；repair 的快照也要计入。</span></div>
+<div class="env"><b>外运管道</b><span>rsync / 对象存储把快照送出机房——快照和正本同一块盘，机器着火就都没了。</span></div>
+<div class="env"><b>拓扑稳定</b><span>冷拷回的前提是 token 归属未变（第 14 章 CMS）；变了就有错位段，要事后 repair。</span></div>
+<div class="env"><b>链接限速</b><span>snapshot_links_per_second（yaml:1220）防几万个目录项操作冲击消费级 SSD。</span></div>
+<div class="env"><b>schema 一致</b><span>schema.cql 随快照保存；跨大版本恢复要先核对表结构兼容。</span></div>
+</div>
+<p class="figcap">边界：本页时间轴为教学压缩（写入 1h ↔ 一个相位段）；id=47 的 token≈-9.0×10^18 沿用第 6 章口径；ts=2001/5007 为本章教学数值。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">六个问题，检查你是否能在边界上做判断。</p>
+<div class="quote"><i>自测不是复述结论，而是检查你能否在边界上做判断。</i></div>
+<div id="quiz"></div>
+</section>
+
+
+<div class="summary">
+<h2>一页带走</h2>
+
+<p class="chant">快照不拷数据，只拷名字；旧账不删，等最后一个引用走；冷恢复换盘、loader 换账、时间戳说了算。</p>
+<p>· 快照线：接单（默认先 flush，-sf 才跳过）→ 硬链接落位（4 本×7 组件=28 链接 + manifest + schema，亚秒、近零）→ 写入 1h +10GB → 压缩峰值 220GB → 并账后盘上 210GB（独占 100GB = true size）→ clearsnapshot 释放 → 110GB。</p>
+<p>· 恢复线：路 A 冷拷回（停机 10 分钟、token 前提、整目录原位放回）；路 B sstableloader（问拓扑:202 → 切段:163 → StreamPlan(BULK_LOAD):200 发给全部副本，集群流入 300GB）；灌入=新增 SSTable，读按 ts 归并——恢复不是时光倒流。</p>
+<p>· 增量：Tracker.maybeIncrementallyBackup:483 把新 flush/streaming 的 SSTable 链进 backups/；双闸 = yaml 全局（默认 false）&amp;&amp; 表参数（默认 true）；链接清理是运维责任。RocksDB 同红利：share_table_files 只拷新文件——不可变文件让备份变便宜。</p>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+</div>
+
+<script>
+(function(){
+var PERIOD=6400,PHASE_MAX=720;
+var STS=[{"d":0,"t":"S1 接单 flush","x":"周一 02:00:00 运维敲下 nodetool snapshot demo.users -t pre-upg-1026（命令定义 tools/nodetool/Snapshot.java:40；不指定 -t 时默认用当前毫秒数当名字，:50）。任务先查 memtable：本例 01:59 刚手动 flush 过、账面干净，flush 步骤跳过；若脏会先 switchMemtableIfCurrent 刷成 SSTable（TakeSnapshotTask.java:128-138），nodetool -sf 才跳过这套。JOINING 未完成的节点会被直接拒绝（:79-80）。"},{"d":90,"t":"S2 硬链接落位","x":"02:00:00.4 完成：对 4 本 SSTable 逐组件建硬链接（TakeSnapshotTask.java:166 注释就一行 // hard links，落到 SSTableReader.createLinks:1182-1211 → FileUtils.createHardLink:127）：4 本 × 7 组件 = 28 个链接，再加 manifest.json（文件清单）与 schema.cql（建表语句）（:178-188）。inode 90337 的链接数 1→2；盘上仍 100GB、快照独占 0——快照不拷数据，只给每个文件再登记一个名字。"},{"d":180,"t":"S3 写入 1h","x":"02:00~03:00 业务照常写：memtable → flush 出 20 本 0.5GB 新 SSTable，盘上 110GB。快照名单取自拍那一刻的 CANONICAL 视图（:161），新文件不在名单里；名单里的旧文件因不可变也不会被打搅——备份窗口和生产高峰可以重叠，「锁表」根本不存在。"},{"d":270,"t":"S4 压缩中","x":"03:00 nodetool compact demo.users：读 110GB 输入（旧 4 本 + 新 20 本，压缩期间照常可读）、写 110GB 输出，25 分钟 ≈ 220GB IO。盘上占用 = 输入 110 + 输出按进度增长，冲向峰值 220GB——这是「输入还没删、输出边写」的正常窗口，不是事故。"},{"d":360,"t":"S5 并账完成","x":"03:25 新 4 本（共 110GB）上岗；110GB 输入从活表除名——新 10GB 输入文件无快照链接、直接删除；旧 100GB 的 inode 还有 snapshots/pre-upg-1026/ 里的硬链接指着，删不掉。盘上 210GB = 110 新活表 + 100 快照独占。第 3 章的不可变纪律在这里兑现成「旧账不删，等最后一个引用走」。"},{"d":450,"t":"true size 观察","x":"此刻 nodetool listsnapshots 的 true size = 100GB：TableSnapshot.computeTrueSizeBytes（:250-270）只计「不在活表清单里」的快照文件——即删快照能真正释放的部分。同账本里还有九种用途的快照（SnapshotType.java:21-37）：repair 对账前的、truncate/drop 前的 auto_snapshot（yaml:1205，可配 auto_snapshot_ttl 自动过期，yaml:1207-1213）——都要计入容量规划。"},{"d":540,"t":"S7 清快照","x":"周三 14:00 nodetool clearsnapshot -t pre-upg-1026：ClearSnapshotTask:178 递归删快照目录 → 28 个链接摘除 → 旧 4 本的 inode 引用归零 → 文件系统真正释放 100GB。盘上回到 110GB。大集群几万个目录项的增删会冲击 SSD，snapshot_links_per_second（yaml:1220）可限速。"},{"d":630,"t":"S8 复盘","x":"口诀：快照不拷数据，只拷名字；旧账不删，等最后一个引用走。亚秒、近零、不停写——不可变 SSTable 白捡的便宜。快照=某一刻的盘上状态：单表完整、跨表有时间缝（逐张连拍）、CommitLog 不进快照；机器着火快照也没了，外运（rsync/对象存储）才是异地容灾。"}];
+var STR=[{"d":0,"t":"R1 事故与选型","x":"周二晚升级失败，决定回滚到 pre-upg-1026。两条路价码完全不同：路 A 冷拷回——停机 10 分钟、整盘回滚、要求 token 归属未变；路 B sstableloader——不停机、按令牌环重灌、集群总流入约 300GB。日常最稳的组合：全量快照外运兜底 + loader 灌影子表捞行。"},{"d":90,"t":"R2 路 A 冷拷回","x":"停节点（停机窗口开始）→ 清/挪数据目录 → 拷回快照 100GB（本地 NVMe ≈10 分钟）→ 按 schema.cql 重建表结构（若丢了）→ 启动。前提：节点 token 归属与快照时一致（第 14 章 CMS 账本）；若拓扑已变，拷回的数据有「错位段」，要靠事后 repair/streaming 重新对齐。适合磁盘损坏、升级回滚、整表误删。"},{"d":180,"t":"R3 路 B 问拓扑","x":"sstableloader 快照目录（命令入口 tools/sstableloader/…/BulkLoader.java:53-65，核心类 io/sstable/SSTableLoader.java:67）——不停机。第一步问拓扑：client.getEndpointToRangesMap（:202）拿到「每个节点拥有哪些 token range」，这就是第 6 章的环账。"},{"d":270,"t":"R4 按 range 切段","x":"第二步切文件：对每本快照 SSTable，getPositionsForRanges（:163）按各节点的 range 切出文件内的字节段——不重写任何数据，只算「哪段归谁」。一本 SSTable 通常横跨多个 range，切段是纯元数据计算；不属于任何目标节点的段直接不发（:166-167 空流会报错）。"},{"d":360,"t":"R5 分发 300GB","x":"第三步分发：StreamPlan(StreamOperation.BULK_LOAD)（:200、StreamOperation.java:28）把每段发给持有它的全部副本——id=47 那段（token≈-9.0×10^18）同时发给 node2/node4/node5（RF=3）。与 bootstrap/repair 共用第 14 章的 streaming 底座；集群总流入 ≈ 100GB × 3 = 300GB——RF 的另一面。"},{"d":450,"t":"R6 灌入=新增","x":"目标节点收到的不是覆盖，而是一批新增 SSTable——不可变纪律的又一次兑现：恢复不改旧文件，只是多了一份旧账。流式数据与本地数据按写入时间戳归并落盘；loader 灌完集群自动完成视图切换。"},{"d":540,"t":"R7 LWW 裁决","x":"读 id=48：快照版 ts=2001 vs 线上版 ts=5007 → 归并后新值赢（第 7 章 last-write-wins）。推论：快照救不回「比快照新的写」；若线上那行是 ts=4008 的墓碑，灌回的旧版照样被墓碑压住。恢复不是时光倒流，是把旧版本加回来，让裁决规则继续裁决。"},{"d":630,"t":"R8 复盘","x":"口诀：冷恢复换盘、loader 换账、时间戳说了算。选型：整台回滚能停机 → 路 A 十分钟；挑几张表/几行、线上不能停 → 路 B 慢工细活（算好 300GB 对读带宽的挤压，第 14 章同款账）。单机库没有令牌环——RocksDB 的 RestoreDBFromLatestBackup 直接还原目录，一步到位。"}];
+var SS_LAB=[["S1 接单 flush","nodetool snapshot -t"],["S2 硬链接落位","createLinks·28+2 个"],["S3 写入+压缩","+10GB→并账 110GB"],["S4 盘上 210GB","独占 100·true size"],["S5 清快照释放","clearsnapshot→110GB"]];
+var SR_LAB=[["R1 事故选型","两条路两种价"],["R2 路 A 冷拷回","停机 10 分钟"],["R3 路 B 问拓扑","getEndpointToRanges"],["R4 切段分发","BULK_LOAD·300GB"],["R5 LWW 裁决","ts 大者赢"]];
+var S_SHORT=["S1 接单","S2 链接","S3 写入","S4 压缩","S5 并账","S6 独占","S7 清快照","S8 复盘"];
+var R_SHORT=["R1 事故","R2 冷拷","R3 拓扑","R4 切段","R5 分发","R6 灌入","R7 LWW","R8 复盘"];
+var PARTS={"datadir":["z1h","lb1","lb2","lb3","lb4","smT"],"snapdir":["z2h","snapNote"],"inode":["inCnt","inN1","inN2","inData"],"space":["barNum","svLive","svExcl","svTrue"],"cold":["ra1","ra2","ra3","ra4","raT"],"loader":["rbSeg1","rbSeg2","rbSeg3","rbT1"],"ring":["rr2","rr4","rr5","ringLab"],"lww":["lw1","lw2","lwR","lwT"]};
+var CHIPS=[{"k":"scen","l":"模式"},{"k":"disk","l":"盘上"},{"k":"excl","l":"独占"},{"k":"lnk","l":"链接"},{"k":"st","l":"状态"}];
+var QUIZ=[{"q":"100GB 的表拍快照为什么只要亚秒？","opts":["Cassandra 偷懒没真备份","快照只是给每个 SSTable 的组件建硬链接并写两份小清单——与文件大小无关，100GB 与 1KB 同价","它先把数据压缩了"],"a":1,"exp":"TakeSnapshotTask.java:166 // hard links → SSTableReader.createLinks:1182 → FileUtils.createHardLink:127。硬链接=目录项+引用计数，不动数据一个字节。"},{"q":"快照后写入一小时再全量压缩，盘上为什么会到 210GB？","opts":["快照偷偷拷了一份数据","压缩输出 110GB 上岗，旧 100GB 输入虽从活表除名，但 inode 还被快照硬链接指着删不掉：110+100=210","压缩产生了 100GB 垃圾"],"a":1,"exp":"不可变文件 + 引用计数：删除任一名字只减计数，引用归零才真删。true size（listsnapshots）= 快照独占的 100GB = 删快照能拿回的空间。"},{"q":"nodetool clearsnapshot 之后数据会怎样？","opts":["活表数据也被删掉","只摘掉快照目录里的链接：旧文件引用归零才真正释放 100GB，活表 110GB 一个字节不动","集群自动重拍一张新快照"],"a":1,"exp":"ClearSnapshotTask:178 递归删快照目录；活表文件有自己的名字，与快照链接的增删无关——这正是硬链接方案的安全所在。"},{"q":"incremental_backups 打开后 backups/ 目录里会出现什么？谁负责清理？","opts":["每小时的快照拷贝，自动过期","新 flush / streaming 落盘的 SSTable 的硬链接；Cassandra 不自动清理，运维责任（yaml:1187-1192 明说）","WAL 日志的压缩件，自动轮转"],"a":1,"exp":"Tracker.maybeIncrementallyBackup:483-493；开关是双闸：yaml 全局（默认 false）&& 表参数（默认 true，CFS:3227）。备份系统取走后要人工清。"},{"q":"sstableloader 恢复时，id=47 那段数据（token≈-9.0×10^18）会发给谁？","opts":["只发给 node2","发给持有该 range 的全部副本：node2 / node4 / node5（RF=3）——所以集群总流入约 300GB","随机挑一个节点"],"a":1,"exp":"SSTableLoader.stream:195-225：先 getEndpointToRangesMap 问拓扑、再 getPositionsForRanges 切段、StreamPlan(BULK_LOAD) 逐副本分发——与第 14 章 bootstrap/repair 同一 streaming 底座。"},{"q":"为什么说「恢复不是时光倒流」？","opts":["因为恢复速度太慢","灌入的是旧时间戳版本，与线上新版本按 ts 归并、大者赢——快照救不回比它新的写，墓碑同理压住旧版","因为 Cassandra 会拒绝旧数据"],"a":1,"exp":"恢复=新增一批 SSTable（不可变，不覆盖）；读路径按写入时间戳归并（第 7 章 LWW、第 10 章读路径）。ts=2001 赢不了 ts=5007，更赢不了 ts=4008 的墓碑。"}];
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var scenBtn=document.getElementById('scenBtn');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,STEP_DUR=650;
+var stepIdx=-1;
+var SCEN='S',STEPS=STS;
+var el={};
+document.querySelectorAll('#eng [id],#eng2 [id]').forEach(function(n){el[n.id]=n;});
+(function buildSmall(){
+ var g=el['smallGrid'];if(!g)return;
+ var s='';
+ for(var i=0;i<20;i++){var x=42+i*11.9;s+='<rect id="sm_'+i+'" x="'+x.toFixed(1)+'" y="222" width="9" height="10" rx="1.5" fill="#ECEAE2"/>';}
+ g.innerHTML=s;
+ for(var i=0;i<20;i++){el['sm_'+i]=g.querySelector('#sm_'+i);}
+})();
+function setOp(id,v){var n=typeof id==='string'?el[id]:id;if(n)n.setAttribute('opacity',v.toFixed(2));}
+function setText(id,s){var n=el[id]||document.getElementById(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setAttr(id,k,v){var n=el[id];if(n)n.setAttribute(k,v);}
+function setFill(id,v){var n=el[id];if(n)n.setAttribute('fill',v);}
+function setStroke(id,v){var n=el[id];if(n)n.setAttribute('stroke',v);}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function smooth(t){return t*t*(3-2*t);}
+function lerp2(a,b,t){return a+(b-a)*t;}
+function band(id,a,b,lo,hi){setOp(id,(pr>=a&&pr<b)?(hi===undefined?1:hi):(lo===undefined?0.14:lo));}
+var pr=0;
+function applyScen(){
+ var S=SCEN==='S';
+ var L=S?SS_LAB:SR_LAB;
+ for(var i=0;i<5;i++){setText('stL'+i,L[i][0]);setText('stS'+i,L[i][1]);}
+ var sh=S?S_SHORT:R_SHORT;
+ for(var i=1;i<8;i++){setText('sg'+i,sh[i]);}
+ setText('sg0',sh[0]);setText('sg8','复盘');
+ setText('engTitle',S?'快照的一生：硬链接落位 → 写入压缩一小时 → 清快照释放':'恢复的两条路：冷拷回 10 分钟 vs sstableloader 按令牌环重灌 300GB');
+ setText('engSub',S?'node2 · demo.users 100GB（4 本 25GB）｜tag=pre-upg-1026｜周一 02:00 → 周三 14:00（教学时间轴）':'升级失败回滚到 pre-upg-1026｜路 A 停机换盘 / 路 B BULK_LOAD + LWW｜id=47 → node2/node4/node5');
+ setOp('gS',S?1:0);setOp('gR',S?0:1);
+ scenBtn.textContent=S?'切到恢复两条路':'切到快照的一生';
+ setText('roScen',S?'快照的一生':'恢复两条路');
+ setText('roLDisk',S?'盘上占用':'集群流入');
+ setText('roLExcl',S?'快照独占':'裁决规则');
+ setText('roLLnk',S?'硬链接数':'恢复方式');
+ setChip('scen',S?'快照':'恢复',false);
+}
+function sSpace(){
+ if(pr<90)return{d:100,e:0,c:'周一 02:00 前',c2:'稳态：4 本 25GB'};
+ if(pr<180)return{d:100,e:0,c:'周一 02:00:00',c2:'快照完成：28+2 个名字'};
+ if(pr<270){var w=10*(pr-180)/90;var m=Math.floor(60*(pr-180)/90);return{d:100+w,e:0,c:'周一 02:'+(m<10?'0':'')+m,c2:'写入中：+'+w.toFixed(1)+'GB 新 SSTable'};}
+ if(pr<360){var o=110*(pr-270)/90;var m2=Math.floor(25*(pr-270)/90);return{d:110+o,e:0,c:'周一 03:'+(m2<10?'0':'')+m2,c2:'压缩中：输出 '+o.toFixed(0)+'GB，冲向峰值'};}
+ if(pr<540)return{d:210,e:100,c:'周一 03:25',c2:'并账完成：110 新 + 100 独占'};
+ if(pr<630){var k=(pr-540)/90;return{d:210-100*k,e:100-100*k,c:'周三 14:00',c2:'clearsnapshot：引用归零释放中'};}
+ return{d:110,e:0,c:'周三 14:00 后',c2:'终态：110GB，快照不存在'};
+}
+function sState(){
+ if(pr<90)return{lnk:0,n:'稳态·未拍'};
+ if(pr<180)return{lnk:30,n:'快照在册·inode 链接数 2'};
+ if(pr<360)return{lnk:30,n:'快照钉住旧 4 本·线上照常写'};
+ if(pr<540)return{lnk:30,n:'旧文件被快照持有·删不掉'};
+ if(pr<630)return{lnk:30,n:'clearsnapshot 摘链中'};
+ return{lnk:0,n:'引用归零·真删完成'};
+}
+function rState(){
+ if(pr<90)return{p:'—',v:'—',n:'选型中：两条路两种价'};
+ if(pr<180)return{p:'路 A',v:'拷回 100GB',n:'停机窗口 10 分钟（token 前提）'};
+ if(pr<270)return{p:'路 B',v:'问拓扑',n:'getEndpointToRangesMap:202'};
+ if(pr<360)return{p:'路 B',v:'切段',n:'getPositionsForRanges:163 算归属'};
+ if(pr<450)return{p:'路 B',v:'分发 0→300GB',n:'BULK_LOAD → node2/4/5'};
+ if(pr<540)return{p:'路 B',v:'灌入=新增 SSTable',n:'不覆盖旧文件'};
+ return{p:'LWW',v:'ts=5007 赢',n:'恢复不是时光倒流'};
+}
+function renderScene(){
+ band('st0',0,90);band('st1',90,180);band('st2',180,360);band('st3',360,450);band('st4',450,720);
+ if(SCEN==='S'){
+  var sp=sSpace(),st=sState();
+  var live=sp.d-sp.e;
+  var SC=200/220;
+  var lh=Math.max(2,live*SC),eh=Math.max(0,sp.e*SC);
+  setAttr('barLive','height',lh.toFixed(1));setAttr('barLive','y',(408-lh).toFixed(1));
+  setAttr('barExcl','height',eh.toFixed(1));setAttr('barExcl','y',(408-lh-eh).toFixed(1));
+  setText('barNum',sp.d.toFixed(0)+'GB');
+  setText('svLive','活表 '+live.toFixed(0)+'GB');setText('svExcl','快照独占 '+sp.e.toFixed(0)+'GB');
+  setText('svClock',sp.c);setText('svClock2',sp.c2);
+  setText('svPeak',pr>=270&&pr<360?'峰值窗口：输入未删 + 输出在写':pr>=360&&pr<540?'true size = '+sp.e.toFixed(0)+'GB（listsnapshots）':'');
+  setText('roDisk',sp.d.toFixed(0)+'GB');setText('roExcl',sp.e.toFixed(0)+'GB');
+  setText('roLnk',st.lnk===0?'0':st.lnk+' 个');
+  var snapOn=pr>=90;
+  setOp('snapNames',snapOn?1:0.1);
+  setStroke('inN2',snapOn?'#3B3A34':'#8A877C');
+  var cleared=pr>=540;
+  setText('inCnt',pr<90?'链接数：1（只有正本一个名字）':pr<540?'链接数：2（正本 + 快照两个名字）':'链接数：1（快照名字已摘除）');
+  setText('inData',pr<540?'盘上数据：25GB × 1 份（硬链接不复制数据）':'旧 inode 引用归零 → 25GB × 4 真正释放');
+  setText('snapNote',pr<90?'快照尚未拍摄：目录不存在':pr<180?'02:00:00.4 落位：28 链接 + manifest + schema（亚秒）':pr<360?'快照钉住旧 4 本：压缩淘汰它们也删不掉':pr<540?'旧文件从活表退役，但 inode 引用还在 → true size 100GB':'clearsnapshot：目录删除、引用归零，100GB 真正释放');
+  var comp=pr>=360;
+  for(var i=1;i<=4;i++){
+   setText('lb'+i+'t',comp?'新-'+i:'nb-3'+i);
+   setText('lb'+i+'s',comp?'27.5GB':'25GB');
+   setFill('lb'+i,comp?'#EAF3DE':'#EAF2FA');
+   setStroke('lb'+i,comp?'#639922':'#2F6FA8');
+  }
+  var nSmall=comp?20:Math.floor(20*Math.max(0,Math.min(1,(pr-180)/90)));
+  for(var i=0;i<20;i++){var n=el['sm_'+i];if(n){setOp(n,pr>=180&&pr<360?1:(comp?0.15:0));setFill(n,i<nSmall&&pr<360?'#EAF2FA':'#ECEAE2');if(pr<360&&i<nSmall)setStroke(n,'#2F6FA8');else if(n.removeAttribute)n.removeAttribute('stroke');}}
+  setText('smT',pr<180?'':pr<270?'新写 '+nSmall+' 本 × 0.5GB（+10GB）':pr<360?'写入完成：20 本 +10GB；快照不占新空间':comp?'20 本并进新 4 本（新 10GB 输入删除——无快照链接）':'');
+  setText('dirNote3',pr>=540?'✓ 盘上 110GB，回到快照前 + 一小时新写':'');
+  setChip('disk',sp.d.toFixed(0)+'GB',sp.d>=210);
+  setChip('excl','独占 '+sp.e.toFixed(0)+'GB',sp.e>=100);
+  setChip('lnk',st.lnk,st.lnk>0);
+  setChip('st',st.n,st.lnk>0);
+ }else{
+  var r=rState();
+  setText('roDisk',r.v);setText('roExcl','ts 大者赢');setText('roLnk',r.p);
+  var doneA=Math.max(0,Math.min(1,(pr-90)/90));
+  setAttr('raBar','width',(240*doneA).toFixed(0));
+  setText('raT','停机窗口 '+(doneA*10).toFixed(1)+' / 10 分钟（本地 NVMe）');
+  var aOn=function(id,on,col){setFill(id,on?(col||'#3B3A34'):'#8A877C');};
+  aOn('ra1',pr>=90);aOn('ra2',pr>=100);aOn('ra3',pr>=130);aOn('ra4',pr>=170,'#639922');
+  setText('raOK',pr>=180?'✓ 路 A 完成：节点回界，事后 repair/streaming 追平差异':'');
+  setOp('rbSeg1',pr>=270?1:0.3);setOp('rbSeg2',pr>=270?1:0.3);setOp('rbSeg3',pr>=270?1:0.3);
+  var nOn=function(id,on){setStroke(id,on?'#C46A0A':'#3B3A34');setFill(id,on?'#FFF6E8':'#ffffff');};
+  nOn('rr2',pr>=360);nOn('rr4',pr>=360);nOn('rr5',pr>=360);
+  setText('rbT1',pr<180?'③ StreamPlan(BULK_LOAD)（:200）分发':pr<270?'③ StreamPlan(BULK_LOAD) 待切段完成':pr<360?'③ BULK_LOAD：那段同时发给三个副本':'③ 已分发：node2 / node4 / node5 各收自己段');
+  setText('rbT2',pr<360?'id=47 那段准备发给 node2 / node4 / node5（RF=3）':'✓ id=47 段 → node2 / node4 / node5（RF=3）');
+  setText('lwR',pr<450?'尚未灌入':pr<540?'灌入中：新增 SSTable，不覆盖旧文件':'读 id=48 → ts=5007 赢（新值）');
+  setText('lwT',pr>=540?'墓碑对照：若线上是 ts=4008 的墓碑，旧版照样救不回':'');
+  setFill('lwBox',pr>=540?'#EAF3DE':'#FBFAF6');setStroke('lwBox',pr>=540?'#639922':'#D3D1C7');
+  setText('rbOK',pr>=540?'✓ 两版并存、按 ts 归并——恢复完成':'');
+  setChip('disk',r.v,pr>=360&&pr<450);
+  setChip('excl','LWW',pr>=540);
+  setChip('lnk',r.p,r.p!=='—');
+  setChip('st',r.n,pr>=540);
+ }
+}
+function setChip(k,v,on){var n=document.querySelector('#stateChips .chip[data-k="'+k+'"]');if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',!!on);n.classList.toggle('off',!on);}
+function tokPath(){
+ if(SCEN==='S'){
+  if(pr<90)return[lerp2(160,160,pr/90),lerp2(300,290,pr/90)];
+  if(pr<180)return[lerp2(163,163,(pr-90)/90),lerp2(285,285,(pr-90)/90)];
+  if(pr<360)return[lerp2(163,473,(pr-180)/180),lerp2(285,330,(pr-180)/180)];
+  if(pr<450)return[473,lerp2(330,368,(pr-360)/90)];
+  return[lerp2(473,811,(pr-450)/270),lerp2(368,404,(pr-450)/270)];
+ }
+ if(pr<90)return[70,280];
+ if(pr<180)return[lerp2(70,163,(pr-90)/90),lerp2(280,280,(pr-90)/90)];
+ if(pr<270)return[lerp2(163,473,(pr-180)/90),lerp2(280,300,(pr-180)/90)];
+ if(pr<360)return[lerp2(473,420,(pr-270)/90),lerp2(300,308,(pr-270)/90)];
+ if(pr<450)return[420,308];
+ if(pr<540)return[lerp2(420,811,(pr-360)/180),lerp2(308,306,(pr-360)/180)];
+ return[811,306];
+}
+function renderSub(th){
+ var p=norm(th); var si=0;
+ for(var i=0;i<STEPS.length;i++){if(p>=STEPS[i].d)si=i;}
+ for(var i=0;i<9;i++){var on=(i===si)||(i===8&&si>=STEPS.length-1);setOp('seg'+i,on?1:0.35);}
+ var x=40+(p/PHASE_MAX)*920;
+ setAttr('subNow','x1',x.toFixed(1)); setAttr('subNow','x2',x.toFixed(1));
+}
+function render(th){
+ pr=norm(th);
+ setText('roPhase',Math.round(pr)+'°');
+ var si=0;for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)si=i;}
+ if(mode==='step'&&stepIdx>=0)si=stepIdx;
+ setText('roStep',STEPS[si]?STEPS[si].t:'—');
+ var tp=tokPath();
+ if(tp){setAttr('tok','cx',tp[0].toFixed(1));setAttr('tok','cy',tp[1].toFixed(1));setOp('tok',1);}
+ else{setOp('tok',0);}
+ renderScene();
+ if(typeof renderSub==='function')renderSub(th,pr,si);
+}
+function buildStepbar(){
+ stepBar.innerHTML='';
+ for(var s=0;s<STEPS.length;s++){(function(n){
+  var b=document.createElement('button');b.className='stepnode';
+  b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+  b.onclick=function(){goStep(n);};stepBar.appendChild(b);
+ })(s);}
+}
+function tick(now){
+ var dt=Math.min(50,now-last);last=now;
+ if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+ if(mode==='step'&&stepTo!==null){
+  stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);
+  var p=stepElapsed/STEP_DUR;var e=smooth(p);
+  phase=stepFrom+(stepTo-stepFrom)*e;
+  if(p>=1){phase=((stepTo%PERIOD)+PERIOD)%PERIOD;stepTo=null;}
+ }
+ render(phase/PERIOD*PHASE_MAX);
+ requestAnimationFrame(tick);
+}
+function setAuto(on){
+ mode='auto';run=on;stepTo=null;btn.textContent=on?'暂停':'播放';
+ if(on){stepIdx=-1;document.querySelectorAll('.stepnode').forEach(function(d){d.classList.remove('on');});
+ stepT.textContent='自动运转模式';stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格；橙色按钮切换「快照的一生 / 恢复两条路」两条线。';}
+}
+window.goStep=function(i){
+ stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+ var target=STEPS[stepIdx].d/PHASE_MAX*PERIOD;var delta=target-phase;
+ if(reduced||Math.abs(delta)>PERIOD/3){phase=target;stepTo=null;render(target/PERIOD*PHASE_MAX+0.01);}
+ else{stepFrom=phase;stepTo=phase+delta;stepElapsed=0;render(phase/PERIOD*PHASE_MAX+0.01);}
+ btn.textContent='继续自动运转';
+ document.querySelectorAll('.stepnode').forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+ stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+ stepX.textContent=STEPS[stepIdx].x;
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+btn.textContent=run?'暂停':'播放';
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+scenBtn.onclick=function(){SCEN=SCEN==='S'?'R':'S';STEPS=SCEN==='S'?STS:STR;phase=0;stepIdx=-1;applyScen();buildStepbar();setAuto(true);render(0.01);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+buildStepbar();
+applyScen();
+CHIPS.forEach(function(c){var sp=document.createElement('span');sp.className='chip';sp.setAttribute('data-k',c.k);sp.innerHTML=c.l+' <b>--</b>';document.getElementById('stateChips').appendChild(sp);});
+document.querySelectorAll('.part').forEach(function(b){
+  b.onclick=function(){
+    var ids=PARTS[b.getAttribute('data-part')]||[];
+    ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+    document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+    setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+  };
+});
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+  var d=document.createElement('div');d.className='q';
+  var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+  it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+  h+='<div class="exp">'+it.exp+'</div>';d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+  var b=e.target.closest('.opt');if(!b)return;var box2=b.parentElement;if(box2.classList.contains('done'))return;
+  box2.classList.add('done');
+  var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+  box2.querySelectorAll('.opt').forEach(function(x,n){x.classList.add(n===QUIZ[qi].a?'right':'wrong');});
+});
+var BASE=(location.pathname.split('/cassandra-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/cassandra/lab';
+document.getElementById('lnkArt').href=BASE+'/cassandra/operations/03-snapshot-backup';
+
+requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

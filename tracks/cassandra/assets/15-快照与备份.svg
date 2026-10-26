@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 700" width="1000" height="700" font-family="Microsoft YaHei, sans-serif">
+<defs>
+<marker id="sA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="sB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="sG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="sR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<rect x="0" y="0" width="1000" height="700" fill="#ffffff"/>
+<text x="500" y="34" font-size="20" fill="#1F1E1A" text-anchor="middle" font-weight="600">快照与备份：硬链接的时光机</text>
+<text x="500" y="56" font-size="12" fill="#6B695F" text-anchor="middle" font-weight="400">node2 · demo.users 100GB（4 本 25GB SSTable）：nodetool snapshot 亚秒完成 → 写 1h + 压缩后盘上 210GB → clearsnapshot 回到 110GB；恢复两路（冷拷回 / sstableloader 按令牌环重灌）</text>
+<text x="976" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">橙色：快照流程</text>
+<text x="976" y="42" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">蓝色：空间账 / 目录</text>
+<text x="976" y="58" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色：恢复 / 释放</text>
+<text x="976" y="74" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">红色：风险 / 峰值</text>
+
+<!-- ============ 泳道一：打快照三步 + 目录树 ============ -->
+<rect x="28" y="86" width="944" height="158" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.3"/>
+<text x="44" y="108" font-size="13" fill="#C46A0A" text-anchor="start" font-weight="600">打快照三步（TakeSnapshotTask.java:117-193）：02:00:00 接单 → 02:00:01 完成，线上写入全程不停（名单取自 CANONICAL 视图，拍完的新写入与快照无关）</text>
+<rect x="44" y="120" width="240" height="62" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/>
+<text x="58" y="140" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">① 接单 flush（02:00:00）</text>
+<text x="58" y="156" font-size="10" fill="#3B3A34" text-anchor="start">nodetool snapshot demo.users -t pre-upg-1026</text>
+<text x="58" y="172" font-size="10" fill="#6B695F" text-anchor="start">memtable 脏则先刷（:128-138）；-sf 才跳过</text>
+<path d="M284 151 L298 151" fill="none" stroke="#C46A0A" stroke-width="1.5" marker-end="url(#sA)"/>
+<rect x="302" y="120" width="240" height="62" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/>
+<text x="316" y="140" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">② 逐组件硬链接（亚秒）</text>
+<text x="316" y="156" font-size="10" fill="#3B3A34" text-anchor="start">每本 SSTable 链 7 个组件（:166 // hard links）</text>
+<text x="316" y="172" font-size="10" fill="#6B695F" text-anchor="start">createLinks → FileUtils.createHardLink:127</text>
+<path d="M542 151 L556 151" fill="none" stroke="#C46A0A" stroke-width="1.5" marker-end="url(#sA)"/>
+<rect x="560" y="120" width="240" height="62" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/>
+<text x="574" y="140" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">③ 写清单（02:00:01 完成）</text>
+<text x="574" y="156" font-size="10" fill="#3B3A34" text-anchor="start">manifest.json + schema.cql（:178-188）</text>
+<text x="574" y="172" font-size="10" fill="#6B695F" text-anchor="start">额外空间 ≈ 几 KB；30 个链接 &lt; 1 秒</text>
+<rect x="812" y="120" width="146" height="62" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/>
+<text x="885" y="140" font-size="11" fill="#1F1E1A" text-anchor="middle" font-weight="600">为什么安全？</text>
+<text x="824" y="156" font-size="9.5" fill="#3B3A34" text-anchor="start">SSTable 不可变（第 3 章）：</text>
+<text x="824" y="170" font-size="9.5" fill="#3B3A34" text-anchor="start">压缩产新文件、不改旧的</text>
+<rect x="44" y="188" width="914" height="48" rx="8" fill="#ffffff" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="58" y="207" font-size="10.5" fill="#3B3A34" text-anchor="start" font-weight="600">data/demo/users-xxxx/nb-31-big-Data.db（inode 90337，链接数 2）  ←→  data/demo/users-xxxx/snapshots/pre-upg-1026/nb-31-big-Data.db（同一 inode 90337）</text>
+<text x="58" y="225" font-size="10" fill="#6B695F" text-anchor="start">快照不复制数据，只给每个文件的 inode 再登记一个名字（目录项 + 引用计数 +1）——100GB 与 1KB 拍快照同价；默认快照名 = 当前毫秒数（Snapshot.java:50）</text>
+
+<!-- ============ 泳道二：空间账本六时刻 ============ -->
+<rect x="28" y="254" width="944" height="196" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.3"/>
+<text x="44" y="276" font-size="13" fill="#2F6FA8" text-anchor="start" font-weight="600">盘上空间账本：六个时刻（users 表单节点视角；高度 = 盘上占用，括号 = 快照独占 true size）</text>
+<line x1="60" y1="408" x2="956" y2="408" stroke="#3B3A34" stroke-width="1.3"/>
+<rect x="70" y="353" width="88" height="55" rx="3" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="114" y="346" font-size="11" fill="#2F6FA8" text-anchor="middle" font-weight="600">100GB</text>
+<text x="114" y="424" font-size="9.5" fill="#3B3A34" text-anchor="middle" font-weight="600">02:00 前</text>
+<text x="114" y="437" font-size="9" fill="#6B695F" text-anchor="middle">4 本 × 25GB</text>
+<text x="114" y="403" font-size="8.5" fill="#6B695F" text-anchor="middle">(独占 0)</text>
+<rect x="216" y="353" width="88" height="55" rx="3" fill="#EAF3DE" stroke="#639922" stroke-width="1.4"/>
+<text x="260" y="346" font-size="11" fill="#639922" text-anchor="middle" font-weight="600">100GB</text>
+<text x="260" y="424" font-size="9.5" fill="#3B3A34" text-anchor="middle" font-weight="600">02:00:01 拍完</text>
+<text x="260" y="437" font-size="9" fill="#6B695F" text-anchor="middle">+30 链接 ≈ 0</text>
+<text x="260" y="403" font-size="8.5" fill="#6B695F" text-anchor="middle">(独占 0)</text>
+<rect x="362" y="348" width="88" height="60" rx="3" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="406" y="341" font-size="11" fill="#2F6FA8" text-anchor="middle" font-weight="600">110GB</text>
+<text x="406" y="424" font-size="9.5" fill="#3B3A34" text-anchor="middle" font-weight="600">03:00 写 1h 后</text>
+<text x="406" y="437" font-size="9" fill="#6B695F" text-anchor="middle">+20 本 × 0.5GB</text>
+<text x="406" y="403" font-size="8.5" fill="#6B695F" text-anchor="middle">(独占 0)</text>
+<rect x="508" y="288" width="88" height="120" rx="3" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.5"/>
+<text x="552" y="281" font-size="11" fill="#E24B4A" text-anchor="middle" font-weight="600">峰值 220GB</text>
+<text x="552" y="424" font-size="9.5" fill="#E24B4A" text-anchor="middle" font-weight="600">03:00~03:25 压缩中</text>
+<text x="552" y="437" font-size="9" fill="#6B695F" text-anchor="middle">输入 110 + 输出 110</text>
+<text x="552" y="403" font-size="8.5" fill="#6B695F" text-anchor="middle">(独占 0)</text>
+<rect x="654" y="293" width="88" height="115" rx="3" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.4"/>
+<text x="698" y="286" font-size="11" fill="#C46A0A" text-anchor="middle" font-weight="600">210GB</text>
+<text x="698" y="424" font-size="9.5" fill="#3B3A34" text-anchor="middle" font-weight="600">03:25 压缩完成</text>
+<text x="698" y="437" font-size="9" fill="#6B695F" text-anchor="middle">新活表 110</text>
+<text x="698" y="403" font-size="8.5" fill="#C46A0A" text-anchor="middle" font-weight="600">(独占 100)</text>
+<rect x="800" y="348" width="88" height="60" rx="3" fill="#EAF3DE" stroke="#639922" stroke-width="1.5"/>
+<text x="844" y="341" font-size="11" fill="#639922" text-anchor="middle" font-weight="600">110GB</text>
+<text x="844" y="424" font-size="9.5" fill="#3B3A34" text-anchor="middle" font-weight="600">周三 14:00 清快照</text>
+<text x="844" y="437" font-size="9" fill="#6B695F" text-anchor="middle">clearsnapshot -t</text>
+<text x="844" y="403" font-size="8.5" fill="#639922" text-anchor="middle" font-weight="600">(释放 100)</text>
+<path d="M918 378 L942 378" fill="none" stroke="#639922" stroke-width="1.5" marker-end="url(#sG)"/>
+<rect x="914" y="358" width="10" height="40" rx="2" fill="none" stroke="none"/>
+<text x="952" y="352" font-size="9" fill="#639922" text-anchor="end" font-weight="600">旧文件 inode</text>
+<text x="952" y="364" font-size="9" fill="#639922" text-anchor="end" font-weight="600">引用归零</text>
+<text x="952" y="376" font-size="9" fill="#639922" text-anchor="end" font-weight="600">真正删除</text>
+<text x="44" y="452" font-size="10" fill="#6B695F" text-anchor="start">true size（TableSnapshot.java:250-270）只计「不在活表清单里」的快照文件——nodetool listsnapshots 盯的就是它；repair 每次全量对账前的快照（第 13 章）也要计入容量规划。保留策略：auto_snapshot: true（yaml:1205）+ auto_snapshot_ttl（yaml:1207-1213）+ snapshot_links_per_second（yaml:1215-1220）。</text>
+
+<!-- ============ 泳道三：恢复两条路 ============ -->
+<rect x="28" y="460" width="944" height="152" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.3"/>
+<text x="44" y="482" font-size="13" fill="#639922" text-anchor="start" font-weight="600">恢复的两条路（SSTableLoader.java:195-225）：路 A 换盘式整目录拷回 / 路 B 按令牌环切段 BULK_LOAD 重灌（与第 14 章 streaming 同底座）</text>
+<rect x="44" y="494" width="200" height="104" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="58" y="514" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">路 A 冷拷回（停机 10 分钟）</text>
+<text x="58" y="531" font-size="9.5" fill="#3B3A34" text-anchor="start">停节点 → 拷回快照目录 100GB</text>
+<text x="58" y="546" font-size="9.5" fill="#3B3A34" text-anchor="start">→ 按 schema.cql 重建 → 启动</text>
+<text x="58" y="562" font-size="9.5" fill="#E24B4A" text-anchor="start" font-weight="600">前提：token 归属与快照时一致</text>
+<text x="58" y="578" font-size="9.5" fill="#6B695F" text-anchor="start">回界后靠 repair / streaming 追平</text>
+<text x="58" y="592" font-size="9.5" fill="#6B695F" text-anchor="start">场景：磁盘损坏、升级回滚</text>
+<rect x="260" y="494" width="440" height="104" rx="8" fill="#ffffff" stroke="#639922" stroke-width="1.2"/>
+<text x="274" y="514" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">路 B sstableloader（不停机，BULK_LOAD）</text>
+<text x="274" y="531" font-size="9.5" fill="#3B3A34" text-anchor="start">① 问拓扑：getEndpointToRangesMap（:202）拿每个节点持有</text>
+<text x="274" y="546" font-size="9.5" fill="#3B3A34" text-anchor="start">② 切文件：getPositionsForRanges（:163）按 range 切字节段</text>
+<text x="274" y="561" font-size="9.5" fill="#3B3A34" text-anchor="start">③ 分发：StreamPlan(BULK_LOAD)（:200）发给全部副本</text>
+<text x="274" y="576" font-size="9.5" fill="#C46A0A" text-anchor="start" font-weight="600">id=47（token≈-9.0×10^18）那段 → node2 / node4 / node5</text>
+<text x="274" y="591" font-size="9.5" fill="#6B695F" text-anchor="start">集群总流入 ≈ 100GB × 3 副本 = 300GB（RF 的另一面）</text>
+<rect x="716" y="494" width="242" height="104" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="837" y="514" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">灌入之后：LWW 裁决（第 7 章）</text>
+<text x="730" y="531" font-size="9.5" fill="#3B3A34" text-anchor="start">恢复 ≠ 覆盖：新增一批 SSTable（不可变），</text>
+<text x="730" y="546" font-size="9.5" fill="#3B3A34" text-anchor="start">读路径按写入时间戳归并，ts 大者赢：</text>
+<text x="730" y="561" font-size="9.5" fill="#C46A0A" text-anchor="start" font-weight="600">id=48：快照 ts=2001 &lt; 线上 ts=5007 → 新值赢</text>
+<text x="730" y="576" font-size="9.5" fill="#E24B4A" text-anchor="start" font-weight="600">若线上是墓碑 ts=4008 → 旧版照样救不回</text>
+<text x="730" y="591" font-size="9.5" fill="#6B695F" text-anchor="start">恢复不是时光倒流，是让裁决规则继续裁决</text>
+
+<!-- ============ 底部：增量备份 + 口诀 ============ -->
+<rect x="28" y="622" width="944" height="48" rx="8" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="44" y="642" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">增量备份：新 flush / streaming 落盘的 SSTable 自动硬链接进 backups/（Tracker.java:483-493）；双闸 = yaml 全局 incremental_backups: false（yaml:1193）&amp;&amp; 表参数默认 true（TableParams.java:447）；backups/ 不会自动清理，运维责任。</text>
+<text x="44" y="660" font-size="11" fill="#6B695F" text-anchor="start">口诀：快照不拷数据，只拷名字；旧账不删，等最后一个引用走；冷恢复换盘、loader 换账；灌回的是旧版本，时间戳说了算。全轨道十五章至此收束。</text>
+<text x="28" y="692" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">数据来源：service/snapshot/TakeSnapshotTask.java:117-193 · io/sstable/SSTableLoader.java:163-225 · db/lifecycle/Tracker.java:483-493 · conf/cassandra.yaml:1187-1220（apache/cassandra master，7.0-SNAPSHOT）</text>
+</svg>

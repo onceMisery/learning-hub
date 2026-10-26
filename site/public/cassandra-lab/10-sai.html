@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>存储附着索引 SAI · Cassandra 互动原理实验室 第 11 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:960px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:720px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:600;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:12px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:600;fill:#1F1E1A}
+.tag{font-size:10.5px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:66px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .outbranch{display:inline-flex;flex-direction:column;align-items:flex-start;gap:6px}
+.flow .outline{display:inline-flex;align-items:center;gap:8px}
+.flow .flownote{font-size:12px;color:#6B695F;font-weight:600;margin-right:4px}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 10px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+#eng [opacity]{transition:opacity .28s ease}
+#eng2 [opacity]{transition:opacity .28s ease}
+@media (prefers-reduced-motion: reduce){#eng [opacity],#eng2 [opacity]{transition:none}}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:8px 4px 0;font-size:12px;color:#6B695F}
+.legend i{display:inline-block;width:18px;height:0;border-top:2px solid #C46A0A;vertical-align:middle;margin-right:5px}
+.legend i.g{border-color:#639922}
+.legend i.r{border-color:#E24B4A}
+.legend i.b{border-color:#2F6FA8}
+.legend i.dash{border-top-style:dashed}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：存储附着索引（SAI）</a>
+  <span class="idx">第 11 / 15 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · STORAGE-ATTACHED INDEXING</div>
+<h1>索引跟着 SSTable 走</h1>
+<p>第 6 章被 ALLOW FILTERING 拒绝的那句 WHERE name='阿福2'，这一章正式拆雷。切「建索引」看 5 行写入怎么进内存 Trie、flush 怎么长出 -SAI+aa 文件族、压缩怎么带着索引搬家；切「查询」看 min/max 裁掉两本 SSTable、posting list 只剩 [rowId 1]、回表返回 1 行——右侧常驻无索引全表扫的对照计数。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span>
+<span class="mnode">② 静态分解</span>
+<span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span>
+<span class="mnode">⑤ 环境场景</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 560" role="img" xmlns="http://www.w3.org/2000/svg"><title>SAI 写入落盘与查询</title><defs><marker id="rA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="rB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="rG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker></defs><text class="th" x="500" y="24" text-anchor="middle" id="engTitle">建索引：写 5 行 → 内存 Trie → flush 长出索引文件族</text><text class="ts" x="500" y="44" text-anchor="middle" id="engSub">node2 视角｜CREATE INDEX users_name_idx ON demo.users (name) USING 'sai'｜数据沿用 id=47（阿福2）</text><text x="972" y="24" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">橙色：写路径</text><text x="972" y="40" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色：落盘 / flush</text><text x="972" y="56" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">蓝色：查询 / posting</text><text x="972" y="72" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">红色：裁剪 / 对照</text><g id="stStrip"><rect id="st0" x="28" y="64" width="172" height="52" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/><text id="stL0" x="38" y="84" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">W1 写入</text><text id="stS0" x="38" y="102" font-size="9.5" fill="#6B695F" text-anchor="start">Keyspace.apply:438</text><rect id="st1" x="212" y="64" width="172" height="52" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/><text id="stL1" x="222" y="84" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">W2 内存索引</text><text id="stS1" x="222" y="102" font-size="9.5" fill="#6B695F" text-anchor="start">index:74 → TrieMemoryIndex</text><rect id="st2" x="396" y="64" width="172" height="52" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/><text id="stL2" x="406" y="84" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">W3 flush 阶段一</text><text id="stS2" x="406" y="102" font-size="9.5" fill="#6B695F" text-anchor="start">先写数据 + RowMapping</text><rect id="st3" x="580" y="64" width="172" height="52" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/><text id="stL3" x="590" y="84" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">W4 flush 阶段二</text><text id="stS3" x="590" y="102" font-size="9.5" fill="#6B695F" text-anchor="start">complete():189 写索引文件</text><rect id="st4" x="764" y="64" width="208" height="52" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/><text id="stL4" x="774" y="84" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">W5 压缩搬运</text><text id="stS4" x="774" y="102" font-size="9.5" fill="#6B695F" text-anchor="start">索引随 SSTable 重写</text></g>
+<g id="gW"><rect id="wTab" x="28" y="134" width="186" height="164" rx="10" fill="#ffffff" stroke="#3B3A34" stroke-width="1.2"/><text x="121" y="156" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">表 users（node2）</text><text id="wr0" x="40" y="180" font-size="10.5" fill="#3B3A34" text-anchor="start">rowId0 id=52 阿福</text><text id="wr1" x="40" y="198" font-size="10.5" fill="#3B3A34" text-anchor="start">rowId1 id=47 阿福2 ★</text><text id="wr2" x="40" y="216" font-size="10.5" fill="#3B3A34" text-anchor="start">rowId2 id=61 大壮</text><text id="wr3" x="40" y="234" font-size="10.5" fill="#3B3A34" text-anchor="start">rowId3 id=73 阿福</text><text id="wr4" x="40" y="252" font-size="10.5" fill="#3B3A34" text-anchor="start">rowId4 id=88 大壮</text><text id="wTabN" x="40" y="282" font-size="10" fill="#6B695F" text-anchor="start">UPDATE 型事务才挂 Indexer</text><path d="M214 216 L238 216" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#rA)"/><rect id="wMem" x="242" y="134" width="190" height="164" rx="10" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/><text x="337" y="156" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">Memtable + 内存索引</text><text x="254" y="178" font-size="10" fill="#6B695F" text-anchor="start">MemtableIndexManager:44</text><text x="254" y="196" font-size="10" fill="#6B695F" text-anchor="start">每本 memtable 一份，随生随灭</text><text id="wm1" x="254" y="220" font-size="10.5" fill="#2F6FA8" text-anchor="start" font-weight="600">TrieMemoryIndex（:61）</text><text id="wm2" x="254" y="238" font-size="10.5" fill="#3B3A34" text-anchor="start">InMemoryTrie&lt;PrimaryKeys&gt; :67</text><text id="wm3" x="254" y="256" font-size="10.5" fill="#3B3A34" text-anchor="start">＝第 4 章 TrieMemtable 同款</text><text id="wm4" x="254" y="282" font-size="10" fill="#6B695F" text-anchor="start">CommitLog 只记数据，索引可重建</text><path d="M432 216 L456 216" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#rA)"/><rect id="wTrie" x="460" y="134" width="240" height="164" rx="10" fill="#ffffff" stroke="#2F6FA8" stroke-width="1.3"/><text x="580" y="154" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">内存 Trie 里的 term（按字节序）</text><g id="wNodeD"><circle id="tnD" cx="500" cy="182" r="13" fill="#EAF3DE" stroke="#639922" stroke-width="1.4"/><text x="500" y="186" font-size="10" fill="#1F1E1A" text-anchor="middle" font-weight="600">大</text><circle id="tnDz" cx="546" cy="182" r="13" fill="#EAF3DE" stroke="#639922" stroke-width="1.4"/><text x="546" y="186" font-size="10" fill="#1F1E1A" text-anchor="middle" font-weight="600">壮</text><text id="tpD" x="568" y="186" font-size="10.5" fill="#639922" text-anchor="start" font-weight="600">→ {id61, id88}</text></g><g id="wNodeA"><circle id="tnA" cx="500" cy="226" r="13" fill="#EAF3DE" stroke="#639922" stroke-width="1.4"/><text x="500" y="230" font-size="10" fill="#1F1E1A" text-anchor="middle" font-weight="600">阿</text><circle id="tnA2" cx="546" cy="212" r="13" fill="#EAF3DE" stroke="#639922" stroke-width="1.4"/><text x="546" y="216" font-size="9.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">福2</text><text id="tpA2" x="568" y="216" font-size="10.5" fill="#C46A0A" text-anchor="start" font-weight="600">→ {id47} ★</text><circle id="tnAf" cx="546" cy="240" r="13" fill="#EAF3DE" stroke="#639922" stroke-width="1.4"/><text x="546" y="244" font-size="10" fill="#1F1E1A" text-anchor="middle" font-weight="600">福</text><text id="tpA" x="568" y="244" font-size="10.5" fill="#639922" text-anchor="start" font-weight="600">→ {id52, id73}</text></g><text id="wTrieN" x="472" y="278" font-size="10" fill="#6B695F" text-anchor="start">term 只存一份；值变体挂 PrimaryKeys</text><text id="wTrieN2" x="472" y="292" font-size="10" fill="#6B695F" text-anchor="start">删除不索引（Group:182）</text><rect id="wCL" x="722" y="134" width="250" height="164" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.2"/><text x="847" y="156" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">盘上：索引是 SSTable 的行李</text><rect id="wS11" x="738" y="170" width="106" height="112" rx="8" fill="#ffffff" stroke="#639922" stroke-width="1.3"/><text x="791" y="188" font-size="11" fill="#1F1E1A" text-anchor="middle" font-weight="600">SSTable-11</text><text id="ws11d" x="791" y="206" font-size="9" fill="#6B695F" text-anchor="middle">Data.db ✓</text><text id="ws11a" x="791" y="222" font-size="9" fill="#639922" text-anchor="middle">SAI+aa 共享层…</text><text id="ws11b" x="791" y="238" font-size="9" fill="#639922" text-anchor="middle">name_idx+TermsData</text><text id="ws11c" x="791" y="254" font-size="9" fill="#639922" text-anchor="middle">name_idx+PostingLists</text><text id="ws11e" x="791" y="272" font-size="9" fill="#6B695F" text-anchor="middle">ColumnComplete 封条</text><rect id="wS12" x="852" y="170" width="106" height="112" rx="8" fill="#ffffff" stroke="#639922" stroke-width="1.3" opacity="0.15"/><text id="wS12t" x="905" y="188" font-size="11" fill="#1F1E1A" text-anchor="middle" font-weight="600">SSTable-12</text><text id="wS12s" x="905" y="222" font-size="9" fill="#6B695F" text-anchor="middle">第二本 flush</text><text id="wS12s2" x="905" y="238" font-size="9" fill="#6B695F" text-anchor="middle">同款索引文件族</text><text id="wComp" x="738" y="308" font-size="10.5" fill="#639922" text-anchor="start" font-weight="600">压缩：S11+S12 → S21，索引随行重写（handleNotification:258-289）</text><text id="wCompN" x="738" y="324" font-size="10" fill="#6B695F" text-anchor="start">SSTableListChanged → onSSTableChanged:318 换视图；memtable 通知清内存索引</text><rect id="wPost" x="28" y="316" width="666" height="60" rx="10" fill="#ffffff" stroke="#2F6FA8" stroke-width="1.2"/><text x="42" y="338" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">flush 落盘后的 posting 账本（PostingsWriter:47-67：rowId 升序 → 差分 → 128/块 FoR 定宽 + 跳表）</text><text id="wp1" x="42" y="358" font-size="10.5" fill="#3B3A34" text-anchor="start">'阿福' → [0, 3]　　'阿福2' → [1] ★　　'大壮' → [2, 4]</text><text id="wFl1" x="28" y="398" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">两阶段（官方 sai-read-write-paths.adoc）：阶段一随数据逐行 nextRow:281 记 RowMapping（rowId→主键，共享层共用）；</text><text id="wFl2" x="28" y="414" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">阶段二 complete():189-224 逐列写 term 字典与 posting，fsync 收尾。观察者由组统一发放（Group:206-221）。</text><text id="wBui" x="28" y="438" font-size="10.5" fill="#639922" text-anchor="start" font-weight="600">CREATE INDEX 之初：打断压缩（:962）→ 强制 flush（:969）→ 分组并行构建（:991），走压缩线程池。</text></g>
+<g id="gQ"><rect id="qQry" x="28" y="134" width="200" height="120" rx="10" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/><text x="128" y="156" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">SELECT * FROM users</text><text x="128" y="174" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">WHERE name='阿福2'</text><text id="qQ1" x="40" y="198" font-size="10" fill="#6B695F" text-anchor="start">第 0 步：内存索引落空（已 flush）</text><text id="qQ2" x="40" y="216" font-size="10" fill="#6B695F" text-anchor="start">分岔：executeLocally 里</text><text id="qQ3" x="40" y="232" font-size="10" fill="#2F6FA8" text-anchor="start" font-weight="600">searcher.search() 顶替 queryStorage</text><path d="M228 194 L252 194" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#rB)"/><g id="qViews"><rect id="qv11" x="256" y="134" width="226" height="120" rx="10" fill="#ffffff" stroke="#639922" stroke-width="1.4"/><text x="369" y="156" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">⑨ View.match 按 min/max 裁 SSTable</text><text id="qs11" x="268" y="180" font-size="10.5" fill="#639922" text-anchor="start" font-weight="600">S11 [大壮 .. 阿福2]　'阿福2' 落区间 → 打开 ✓</text><text id="qs12" x="268" y="200" font-size="10.5" fill="#E24B4A" text-anchor="start" font-weight="600">S12 [大壮 .. 北京]　超区间 → 整本跳过 ✗</text><text id="qs13" x="268" y="220" font-size="10.5" fill="#E24B4A" text-anchor="start" font-weight="600">S13 [阿福 .. 阿福]　超区间 → 整本跳过 ✗</text><text id="qvn" x="268" y="242" font-size="9.5" fill="#6B695F" text-anchor="start">min/max 建索引时写进元数据（SSTableIndex:109-122）</text></g><path d="M482 194 L506 194" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#rB)"/><rect id="qPost" x="510" y="134" width="226" height="120" rx="10" fill="#ffffff" stroke="#2F6FA8" stroke-width="1.3"/><text x="623" y="156" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">⑩ 定位 term → 读 posting</text><text id="qp1" x="522" y="180" font-size="10.5" fill="#3B3A34" text-anchor="start">TermsData Trie 找到 '阿福2'</text><text id="qp2" x="522" y="200" font-size="10.5" fill="#3B3A34" text-anchor="start">叶子挂 posting 偏移 → 读文件</text><text id="qp3" x="522" y="220" font-size="11" fill="#639922" text-anchor="start" font-weight="600">posting = [rowId 1]，只有一条</text><text id="qp4" x="522" y="242" font-size="9.5" fill="#6B695F" text-anchor="start">advance(target) 可直接跳块（求交集用）</text><path d="M736 194 L760 194" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#rB)"/><rect id="qBack" x="764" y="134" width="208" height="120" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="868" y="156" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">⑪ 回表 + 复核</text><text id="qb1" x="776" y="180" font-size="10.5" fill="#3B3A34" text-anchor="start">rowId 1 →（共享层反查）id=47</text><text id="qb2" x="776" y="200" font-size="10.5" fill="#3B3A34" text-anchor="start">读原表该行 → FilterTree 复核</text><text id="qb3" x="776" y="220" font-size="11" fill="#639922" text-anchor="start" font-weight="600">返回 1 行：{47, 阿福2, 31}</text><text id="qb4" x="776" y="242" font-size="9.5" fill="#6B695F" text-anchor="start">QueryContext 全程计时（:86-93）</text><rect id="qInter" x="28" y="266" width="460" height="110" rx="10" fill="#ffffff" stroke="#2F6FA8" stroke-width="1.2"/><text x="42" y="288" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">多条件交集：name='阿福' AND age=31（示意）</text><text id="qi1" x="42" y="310" font-size="10.5" fill="#3B3A34" text-anchor="start">name 侧 [0, 3] 吐 0；age 侧 [0, 2, 3] 当前 0 → 相等，rowId0 进结果</text><text id="qi2" x="42" y="328" font-size="10.5" fill="#3B3A34" text-anchor="start">name 侧吐 3 → age 侧 advance(3) 从 2 跳到 3 → rowId3 进结果</text><text id="qi3" x="42" y="346" font-size="10.5" fill="#2F6FA8" text-anchor="start" font-weight="600">小侧到头 → 交集收工，大侧剩余 posting 免读</text><text id="qi4" x="42" y="366" font-size="9.5" fill="#6B695F" text-anchor="start">KeyRangeIntersectionIterator（QueryController:270-273）；AND 命中未修复数据时降级 OR 再后置过滤</text><rect id="qScan" x="498" y="266" width="474" height="110" rx="10" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/><text x="512" y="288" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">对照：同一个查询，无索引（ALLOW FILTERING）</text><text id="qs1" x="512" y="310" font-size="10.5" fill="#E24B4A" text-anchor="start" font-weight="600">3 本 SSTable 全开（无 min/max 可裁）</text><text id="qs2" x="512" y="328" font-size="10.5" fill="#E24B4A" text-anchor="start" font-weight="600">300 万行（示意）逐行取 name 比对</text><text id="qs3" x="512" y="346" font-size="10.5" fill="#3B3A34" text-anchor="start">每行都要经历第 4 章那套分区定位 → 解行</text><text id="qs4" x="512" y="366" font-size="9.5" fill="#6B695F" text-anchor="start">第 6 章：5 亿行的表加 ALLOW FILTERING 也跑不动——索引把「读的行」压回 posting 命中数</text><text id="qFoot" x="28" y="404" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">索引是本地结构：三个副本各自建各自的，跨副本一致性仍走 QUORUM 与读修复（第 7、10 章）——物流层对索引一无所知。</text><text id="qFoot2" x="28" y="422" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">read 单送抵副本后才分岔（第 10 章 fetchRows → executeLocally），协调者只管对账。</text></g>
+<text id="engFoot" x="28" y="470" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">读法：站条随相位点亮；建索引模式看 Trie 与文件族生长，查询模式看裁剪与回表；红色对照卡始终给出无索引的账。</text>
+<text id="engFoot2" x="28" y="488" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">口径：apache/cassandra master（7.0-SNAPSHOT）；demo keyspace、RF=3、QUORUM=2、id=47 name='阿福2'（ts=1005）与全轨道一致。</text>
+<text id="engFoot3" x="28" y="506" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">代价常驻：每索引列 +1 笔内存写、flush +3 个小文件；墓碑不进索引靠后置过滤；查询配额超时自查（QueryContext）。</text>
+<circle id="tok" cx="-20" cy="-20" r="8" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/></svg>
+<svg id="eng2" viewBox="0 0 1000 180" role="img" xmlns="http://www.w3.org/2000/svg"><text x="40" y="26" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">相位总线：建索引 / 查询各一条 0°→720°</text><text x="960" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">切换模式时相位归零</text><rect id="seg0" x="40" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg0" x="89.1" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">写入</text><text id="sd0" x="89.1" y="96" font-size="10" fill="#6B695F" text-anchor="middle">0°</text><rect id="seg1" x="142.2" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg1" x="191.3" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd1" x="191.3" y="96" font-size="10" fill="#6B695F" text-anchor="middle">90°</text><rect id="seg2" x="244.4" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg2" x="293.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd2" x="293.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle">180°</text><rect id="seg3" x="346.7" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg3" x="395.8" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd3" x="395.8" y="96" font-size="10" fill="#6B695F" text-anchor="middle">270°</text><rect id="seg4" x="448.9" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg4" x="498" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd4" x="498" y="96" font-size="10" fill="#6B695F" text-anchor="middle">360°</text><rect id="seg5" x="551.1" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg5" x="600.2" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd5" x="600.2" y="96" font-size="10" fill="#6B695F" text-anchor="middle">450°</text><rect id="seg6" x="653.3" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg6" x="702.4" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd6" x="702.4" y="96" font-size="10" fill="#6B695F" text-anchor="middle">540°</text><rect id="seg7" x="755.6" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg7" x="804.7" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd7" x="804.7" y="96" font-size="10" fill="#6B695F" text-anchor="middle">630°</text><rect id="seg8" x="857.8" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg8" x="906.9" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">复盘</text><text id="sd8" x="906.9" y="96" font-size="10" fill="#6B695F" text-anchor="middle">680°</text><line id="subNow" x1="40" y1="44" x2="40" y2="126" stroke="#C46A0A" stroke-width="2"/><text x="500" y="152" font-size="11" fill="#6B695F" text-anchor="middle" font-weight="400">每格是一个可定格的关键时刻；分步时所有视图冻结到同一相位。</text></svg>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<button class="btn warn" id="scenBtn">切到查询</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 轮 / 6.4 秒</span>
+</div>
+
+<div class="readout">
+<span class="ro">相位 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">模式 <b id="roScen">建索引</b></span>
+<span class="ro">打开 SSTable <b id="roOpen">--</b></span>
+<span class="ro">读行 <b id="roRows">--</b></span>
+<span class="ro">结果 <b id="roRes">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格；橙色按钮切换「建索引 / 查询」两条线。</span>
+<span class="snav">
+<button class="btn" onclick="prevStep()">‹ 上一步</button>
+<button class="btn warn" onclick="nextStep()">下一步 ›</button>
+</span>
+</div>
+<div class="legend"><span><i></i>写路径</span><span><i class="g"></i>落盘 / flush</span><span><i class="b"></i>查询 / posting</span><span><i class="r"></i>裁剪 / 无索引对照</span></div>
+<p class="figcap">建索引 0°=写入、720°=复盘；查询同相位总线另走一轮——切换模式相位归零，两条线互不串台。<br>口径：apache/cassandra master（7.0-SNAPSHOT）；demo keyspace、RF=3、QUORUM=2；users 5 行、三本 SSTable 的 min/max 为教学示意，与正文第 11 章完全一致。</p>
+</div>
+</div>
+
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：先把它当黑盒</h2></div>
+<p class="sec-sub">同一句 WHERE name='阿福2'，有无索引的两个世界，表观差异只有三件事。</p>
+<div class="quote"><i>先把系统当黑盒：只看输入、输出和边界，不急着解释内部。</i></div>
+
+<p>黑盒视角三句话：<b>无索引时引擎直接拒绝</b>（name 定不了位，除非加 ALLOW FILTERING 全表扫）；<b>有索引时同一句毫秒返回</b>，且返回的还是最新版本（ts=1005 的阿福2）；<b>写入侧几乎无感</b>——每次 INSERT 多了一笔看不见的小记账，没有额外的索引维护作业在跑。</p>
+<div class="flow">
+<span class="node">SELECT … WHERE name='阿福2'（输入）</span><span class="arr">→</span>
+<span class="node box">SAI（黑盒）</span>
+<span class="outbranch">
+<span class="outline"><span class="arr">→</span><span class="node">有索引：裁文件 → 读 posting → 回表，返回 1 行</span></span>
+<span class="outline"><span class="arr">→</span><span class="node">无索引：拒绝或全表扫 300 万行</span></span>
+<span class="outline"><span class="arr">→</span><span class="node">写侧：每索引列 +1 笔内存账，flush +3 个小文件</span></span>
+</span>
+</div>
+<p>反直觉的点先记一个：索引文件不在「索引目录」里，就躺在 SSTable 身边，文件名带着宿主的名字（nb-11-big-SAI+aa+…）。删掉一本 SSTable，它的索引文件跟着消失——这就是「存储附着」四个字的全部含义。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：部件各管什么</h2></div>
+<p class="sec-sub">内存一份、盘上一份、查询一份。点下面的部件卡，动画里对应部分会亮起。</p>
+<div class="quote"><i>结构分解要 MECE：同一层只放同一粒度的部件。</i></div>
+<div class="figure"><svg viewBox="0 0 920 250" role="img" xmlns="http://www.w3.org/2000/svg"><text x="460" y="22" font-size="15" fill="#1F1E1A" text-anchor="middle" font-weight="600">SAI 三层五件套</text><text x="460" y="42" font-size="11.5" fill="#6B695F" text-anchor="middle" font-weight="400">写侧攒在内存、盘侧长在 SSTable 边上、查侧换成裁剪</text><rect x="20" y="64" width="280" height="130" rx="10" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/><text x="34" y="88" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">① 内存层（Memtable 期间）</text><text x="34" y="110" font-size="10.5" fill="#6B695F" text-anchor="start">MemtableIndexManager:44（每本 memtable 一份）</text><text x="34" y="128" font-size="10.5" fill="#3B3A34" text-anchor="start">TrieMemoryIndex:61 = InMemoryTrie&lt;PrimaryKeys&gt;</text><text x="34" y="146" font-size="10.5" fill="#3B3A34" text-anchor="start">大核可分片 ShardedMemtableIndex（≤256）</text><text x="34" y="168" font-size="10.5" fill="#6B695F" text-anchor="start">UpdateIndexer:1063 挂在写路径上</text><rect x="320" y="64" width="280" height="130" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="334" y="88" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">② 盘上层（随 SSTable 生命）</text><text x="334" y="110" font-size="10.5" fill="#6B695F" text-anchor="start">StorageAttachedIndexWriter:49（flush 观察者）</text><text x="334" y="128" font-size="10.5" fill="#3B3A34" text-anchor="start">共享层 RowToToken / PartitionKeyBlocks…</text><text x="334" y="146" font-size="10.5" fill="#3B3A34" text-anchor="start">列层 TermsData + PostingLists（-SAI+aa+…）</text><text x="334" y="168" font-size="10.5" fill="#6B695F" text-anchor="start">Group:258-289 听 SSTable 增删通知</text><rect x="620" y="64" width="280" height="130" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="634" y="88" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">③ 查询层（executeLocally 分岔）</text><text x="634" y="110" font-size="10.5" fill="#6B695F" text-anchor="start">ReadCommand:536-554 searcher 顶替 queryStorage</text><text x="634" y="128" font-size="10.5" fill="#3B3A34" text-anchor="start">View.match 按 min/max 裁 SSTable（View:68-74）</text><text x="634" y="146" font-size="10.5" fill="#3B3A34" text-anchor="start">posting → 回表 → FilterTree 复核</text><text x="634" y="168" font-size="10.5" fill="#6B695F" text-anchor="start">QueryContext:40 随身账本与秒表</text><path d="M300 128 L316 128" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#rG)"/><path d="M600 128 L616 128" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#rA)"/><rect x="20" y="204" width="880" height="40" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.2"/><text x="460" y="222" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">posting list（PostingsWriter:47-67）：rowId 升序 → 差分 → 128/块 FoR 定宽 + 全等块特例 + VLong 尾块 + 跳表</text><text x="460" y="238" font-size="10.5" fill="#6B695F" text-anchor="middle">advance(target) 直接跳块——多条件交集时小侧一断，大侧剩余 posting 全部免读</text></svg></div>
+<div class="partgroup"><div class="gname">写与落盘</div><div class="parts"><button class="part" data-part="mem"><b>1. 内存索引</b><span>每本 memtable 一份 Trie；写 rowId4 大壮 = 在 Trie 挂 PrimaryKeys{id88}。</span></button><button class="part" data-part="flush"><b>2. flush 观察者</b><span>先随数据记 RowMapping，complete() 再写 TermsData / PostingLists。</span></button><button class="part" data-part="files"><b>3. -SAI+aa 文件族</b><span>共享层列间共用；每索引列只多三个小文件，ColumnComplete 是封条。</span></button></div></div>
+<div class="partgroup"><div class="gname">查询与对照</div><div class="parts"><button class="part" data-part="views"><b>4. View 裁剪</b><span>min/max 来自建索引时的元数据；三本裁一本，不碰运气的概率。</span></button><button class="part" data-part="posting"><b>5. posting 与回表</b><span>posting [1] → 共享层反查主键 → 读原表 → FilterTree 复核。</span></button><button class="part" data-part="scan"><b>6. 无索引对照卡</b><span>同一查询全表扫的账：3 本全开、300 万行逐行筛。</span></button></div></div>
+<p class="hint">静态图与动画共用同一套编号和口径；把动画暂停，它就是一张可打印的结构图。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：一步一停看顺序</h2></div>
+<p class="sec-sub">两条线各八个关键时刻——建索引看「索引何时知道一行」，查询看「哪些书根本不用翻」。</p>
+<div class="quote"><i>动态分析看三件事：顺序、状态、触发条件。</i></div>
+
+<table class="grid">
+<tr><th>相位</th><th>建索引线（W）</th><th>查询线（Q）</th></tr>
+<tr><td>0°</td><td>写入 5 行：apply:438「memtables and indexes」</td><td>接单：内存索引落空，executeLocally 分岔</td></tr>
+<tr><td>90°</td><td>内存 Trie 挂 term：阿/福/2、大/壮 各挂 PrimaryKeys</td><td>View.match：S11 ✓，S12/S13 ✗（min/max 裁剪）</td></tr>
+<tr><td>180°</td><td class="act">flush 阶段一：数据落盘 + RowMapping 记账</td><td>TermsData Trie 定位 '阿福2' → posting 偏移</td></tr>
+<tr><td class="hot">270°</td><td class="act">flush 阶段二：complete() 写索引文件族 + fsync</td><td class="hot">posting = [rowId 1]，只此一条</td></tr>
+<tr><td>360°</td><td>第二本 memtable flush：SSTable-12 长同款文件族</td><td class="act">回表：rowId→id=47 → FilterTree → 返回 1 行</td></tr>
+<tr><td>450°</td><td class="act">压缩：S11+S12→S21，索引随行重写（通知机制）</td><td class="act">多条件交集：advance 互推，小侧到头即收工</td></tr>
+<tr><td class="hot">540°</td><td class="hot">建索引之初：打断压缩 → 强制 flush → 并行构建</td><td class="hot">对照卡：无索引 3 本全开 300 万行逐行筛</td></tr>
+<tr><td>630°</td><td>复盘：写进内存账、flush 长文件</td><td>复盘：查询先裁本、posting 再回表</td></tr>
+</table>
+<p>盯两张高亮行：W 线 270° 的「两阶段」解释了为什么索引和数据永远不脱节（同一本 SSTable、同一个事务里写完）；Q 线 450° 的交集是 SAI 多条件的底气——posting 有序可跳，交集才不必逐行。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件 × 阶段</h2></div>
+<p class="sec-sub">同一批部件在不同阶段接力——内存层只在 memtable 活着，盘上层活得和 SSTable 一样久。</p>
+<div class="quote"><i>把部件放回阶段里，才能看清谁在什么时候接力。</i></div>
+
+<table class="grid">
+<tr><th>阶段</th><th>内存层干什么</th><th>盘上层干什么</th><th>查询层干什么</th><th>RocksDB 对应（第 1 章）</th></tr>
+<tr><td>写入</td><td>Trie 挂 term（index:74）</td><td>——</td><td>——</td><td>④ 写 MemTable 跳表</td></tr>
+<tr><td>flush</td><td>迭代 term 交出去后废弃</td><td>两阶段写文件族（:49/:189）</td><td>——</td><td class="hot">⑤ BuildTable 内部重建索引块</td></tr>
+<tr><td>压缩</td><td>——</td><td>索引随 SSTable 重写（:258-289）</td><td>View 换血</td><td class="hot">⑥ 归并重写，索引内嵌</td></tr>
+<tr><td>查询</td><td>先问内存索引</td><td>min/max 裁 + posting + 回表</td><td>searcher 顶替 queryStorage</td><td>⑩ Version::Get 逐层问</td></tr>
+</table>
+<p>表里两格绿色是同构点：<b>flush/压缩时「索引跟着不可变文件走」两边都在做</b>，只是 RocksDB 把索引写在 SST 内部（服务键），SAI 写在旁边（服务值）。多出来的内存层是 SAI 特有——RocksDB 的 memtable 本身有序，无需二级。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：它依赖什么才能成立</h2></div>
+<p class="sec-sub">拆掉任意一个外部依赖，索引的行为都会变。</p>
+<div class="quote"><i>任何机制都有环境前提；拆掉外部依赖，它就不再成立。</i></div>
+<div class="envcards">
+<div class="env"><b>压缩线程池</b><span>索引构建以 compaction 面目出现（README:43）——压缩堆积时，新建索引的构建也排队。</span></div>
+<div class="env"><b>memtable 生灭通知</b><span>Group:277-288 听 renewed/switched/discarded，内存索引随 memtable 生灭，不泄漏。</span></div>
+<div class="env"><b>墓碑后置过滤</b><span>索引不记删除（Group:182）：命中行可能已被墓碑遮蔽，FilterTree 复核是最后一道闸。</span></div>
+<div class="env"><b>查询配额</b><span>QueryContext:86-93 到点抛 QueryCancelled——索引查询不许没完没了，运维抓超时看这里。</span></div>
+<div class="env"><b>流式传输 / 快照</b><span>索引文件随 SSTable 整体搬运、进快照（README:33-34）——bootstrap 不用在目标端重建索引。</span></div>
+<div class="env"><b>列型与选项</b><span>SUPPORTED_TYPES（:168-174）几乎全开；文本默认整词，normalize/case_sensitive 可调。</span></div>
+</div>
+<p class="figcap">边界：本页画的是单列等值查询 + 单机视角；IN / CONTAINS / 范围、集合列与 analyzed 文本在正文有文字交代，向量索引留给第 12 章。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">六个问题，检查你是否能在边界上做判断。</p>
+<div class="quote"><i>自测不是复述结论，而是检查你能否在边界上做判断。</i></div>
+<div id="quiz"></div>
+</section>
+
+
+<div class="summary">
+<h2>一页带走</h2>
+
+<p class="chant">写进内存账、flush 长文件；查询先裁本、posting 再回表。</p>
+<p>· 建索引线：apply:438 顺手带索引 → 内存 InMemoryTrie（TrieMemoryIndex:61，第 4 章同款）→ flush 两阶段（数据 + RowMapping → complete():189 写 -SAI+aa 文件族）→ 压缩随行重写（handleNotification:258-289）。</p>
+<p>· 查询线：executeLocally 分岔（ReadCommand:536-554）→ View.match 裁 SSTable（S11✓ S12/S13✗）→ posting [rowId 1] → 回表 id=47 → FilterTree 复核。对照：无索引 3 本全开、300 万行逐行筛。</p>
+<p>· posting list：升序 rowId 差分 + 128/块 FoR + 跳表；advance 让交集小侧到头、大侧免读。索引是本地结构，一致性仍走 QUORUM。RocksDB 的索引在 SST 内部服务「键在哪」——按值找行它得靠应用层自建反查表，那就是手工版的 SAI。</p>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+</div>
+
+<script>
+(function(){
+var PERIOD=6400,PHASE_MAX=720;
+var STW=[{"d":0,"t":"写入","x":"5 行进 users（UPDATE 型事务才挂 Indexer，indexerFor:644-659）。Keyspace.apply:438 的注释「…then updates memtables and indexes」——索引搭写路径的顺风车，CommitLog 只记数据，索引可重建。"},{"d":90,"t":"内存索引","x":"MemtableIndexManager.index:74 → TrieMemoryIndex（:61）＝InMemoryTrie<PrimaryKeys>，第 4 章 TrieMemtable 同款。「大/壮」路径挂 {id61,id88}、「阿/福2」挂 {id47}——term 只存一份，多个行挂同一叶子。删除不索引（Group:182）。"},{"d":180,"t":"flush 阶段一","x":"StorageAttachedIndexWriter（:49，implements SSTableFlushObserver）随 SSTable 逐行 nextRow:281：先写数据，同时 RowMapping:48 攒 rowId→主键——这份映射进共享层，所有索引列共用，几个索引也只记一份。"},{"d":270,"t":"flush 阶段二","x":"行写完，complete():189-224 逐列收尾：TrieMemoryIndex 交出有序 term 流 → 写 TermsData（Trie 字典）+ PostingLists，fsync 收尾，最后落 ColumnComplete 封条。nb-11-big-* 身边长出六个 -SAI+aa 文件。"},{"d":360,"t":"第二本","x":"新 memtable 再攒再 flush：SSTable-12 落盘，身边长同款索引文件族。每本 SSTable 的索引互不知晓——查询时靠 View 把它们拼成一个视图；这是「索引跟着 SSTable 走」的直接后果。"},{"d":450,"t":"压缩重写","x":"压缩把 S11+S12 归并成 S21：SSTableListChangedNotification（handleNotification:258-289）→ onSSTableChanged:318 把旧索引从视图换下、新 SSTable 的索引挂上；旧文件连同索引一起退役。memtable 三个通知（:277-288）同步清内存索引。"},{"d":540,"t":"建索引之初","x":"CREATE INDEX 时对存量数据怎么办？startInitialBuild:951-991：打断进行中的压缩（:962）→ 强制 flush（:969）→ 找出没索引的 SSTable 按大小分组、并行提交给压缩线程池（:991）。建完之前索引不可查。"},{"d":630,"t":"复盘","x":"口诀：写进内存账、flush 长文件。索引与数据永不脱节的秘密只有一个——它们在同一本 SSTable、同一个观察者事务里写完；没有独立的索引维护作业，也就没有「索引落后于数据」这个状态。"}];
+var STQ=[{"d":0,"t":"接单分岔","x":"SELECT * FROM users WHERE name='阿福2' 到达 node2。先问内存索引——落空（数据已 flush）。executeLocally（ReadCommand:536-554）：indexQueryPlan 非空 → searcher.search() 顶替 queryStorage() 成为数据来源。"},{"d":90,"t":"裁 SSTable","x":"View.match（View:68-74）：每本 SSTable 的列索引元数据记着 min/max term（SSTableIndex:109-122）。S11 [大壮..阿福2] 含目标 → 打开；S12 [大壮..北京]、S13 [阿福..阿福] 超区间 → 整本跳过。裁的是文件，不是行。"},{"d":180,"t":"定位 term","x":"打开的 S11 里：TermsData 的磁盘 Trie 沿字节路径走到 '阿福2'，叶子挂着该 term 的 posting 在 PostingLists 文件里的偏移——查词与取行号，两跳完成，不碰数据文件。"},{"d":270,"t":"读 posting","x":"按偏移读 posting = [rowId 1]，只此一条。posting 文件内部：rowId 升序、差分、128/块 FoR 定宽 + 跳表（PostingsWriter:47-67）——本例只有一条，热词才是压缩的主场（8000 行 ≈ 7KB）。"},{"d":360,"t":"回表复核","x":"rowId 1 经共享层 PartitionKeyBlocks 反查得主键 id=47 → 按主键读原表该行 → FilterTree 事后复核 name 确为 '阿福2'（墓碑场景这道闸兜底）→ 返回 1 行。300 万行 → 1 行。"},{"d":450,"t":"多条件交集","x":"name='阿福' AND age=31：两侧各出一个行号迭代器丢进 KeyRangeIntersectionIterator（QueryController:270-273）。name [0,3] 吐 3 时，age 侧 advance(3) 从 2 直接跳到 3——小侧到头，大侧剩余 posting 免读。"},{"d":540,"t":"无索引对照","x":"同一句查询没有索引：3 本全开（无 min/max 可裁）、300 万行逐行取 name 比对，每行都要走分区定位解行。第 6 章那句「5 亿行加 ALLOW FILTERING 也跑不动」的账，就是这条红色路径。"},{"d":630,"t":"复盘","x":"口诀：查询先裁本、posting 再回表。索引是本地结构：三个副本各自建各自的，跨副本一致性仍走 QUORUM 与读修复（第 7、10 章）；协调者只管对账，对「本地怎么找行」一无所知。"}];
+var STW_LABEL=[["W1 写入","apply:438 顺手带索引"],["W2 内存索引","index:74 → Trie"],["W3 flush 阶段一","数据 + RowMapping"],["W4 flush 阶段二","complete():189 写文件"],["W5 压缩搬运","索引随 SSTable 重写"]];
+var STQ_LABEL=[["Q1 接单分岔","searcher 顶替 queryStorage"],["Q2 裁 SSTable","View.match min/max"],["Q3 定位 term","TermsData Trie"],["Q4 读 posting","[rowId 1]"],["Q5 回表复核","FilterTree 兜底"]];
+var PARTS={"mem":["wMem","wTrie","wm1"],"flush":["wS11","ws11d","wFl1"],"files":["wS11","ws11b","wPost"],"views":["qViews","qv11","qvn"],"posting":["qPost","qp3"],"scan":["qScan","qs1","qs2"]};
+var CHIPS=[{"k":"scen","l":"模式"},{"k":"open","l":"打开 SSTable"},{"k":"rows","l":"读行"},{"k":"post","l":"posting"},{"k":"ctx","l":"QueryContext"}];
+var QUIZ=[{"q":"为什么 SAI 的索引文件叫「存储附着」？","opts":["因为索引存在内存里","每个 SSTable 身边挂自己那份索引文件，随宿主生成、随压缩重写、随删除消失","所有索引集中存在一张隐藏表里"],"a":1,"exp":"isSSTableAttached()=true、getBackingTable() 为空（StorageAttachedIndex.java:484-489）——与旧 2i 的本地隐藏表相对。文件名都带宿主：nb-11-big-SAI+aa+…。"},{"q":"flush 的「两阶段」为什么能保证索引和数据永不脱节？","opts":["靠后台任务定期对账","同一本 SSTable、同一个 flush 观察者事务里先写数据再写索引，写完才落 ColumnComplete 封条","索引写在 CommitLog 里"],"a":1,"exp":"StorageAttachedIndexWriter implements SSTableFlushObserver（:49）：阶段一随数据逐行记 RowMapping，阶段二 complete():189-224 写索引文件。没有独立维护作业，就没有「索引落后」状态。"},{"q":"查询 '阿福2' 时 min/max 裁剪裁掉的是什么？","opts":["posting 里的行","整本 SSTable——元数据说这本的 term 区间不含目标，数据文件根本不用打开","布隆过滤器"],"a":1,"exp":"View.match（View:68-74）用建索引时写下的 min/max（SSTableIndex:109-122）选 SSTableIndex。裁文件是第一刀，裁行（posting）是第二刀。"},{"q":"删除 id=47（写墓碑）后，name 索引里 '阿福2'→[1] 还在吗？","opts":["立即被清掉","还在——SAI 不索引删除；回表后 FilterTree 复核时墓碑按时间戳遮蔽，不返回","索引会标记为可疑"],"a":1,"exp":"Group:182 注释「SAI does not index deletions, as these are resolved during post-filtering」。索引命中 ≠ 行还活着，最后一道闸在事后过滤。"},{"q":"多条件求交集时 advance() 省的是什么？","opts":["磁盘空间","比较次数与 posting 读取——小侧吐 3 时大侧 advance(3) 直接跳块，小侧到头大侧剩余 posting 免读","网络往返"],"a":1,"exp":"posting 有序可跳（PostingList.java:71），KeyRangeIntersectionIterator（QueryController:270-273）两侧互推。热词 8000 行的 posting 不必逐个吐。"},{"q":"与 RocksDB 相比，SAI 多出的「内存层」为什么 RocksDB 不需要？","opts":["RocksDB 性能更好","RocksDB 的 memtable 本身就是有序结构（键可二分），无需二级；Cassandra 查的是非键列，memtable 里没有 name 的序","Cassandra 内存更便宜"],"a":1,"exp":"RocksDB 的索引服务「这个键在哪」，memtable/SST 天然按键有序；SAI 服务「哪些行的某列等于 X」——非键列在数据结构里无序，必须另挂一份 Trie。"}];
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var scenBtn=document.getElementById('scenBtn');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,STEP_DUR=650;
+var stepIdx=-1;
+var SCEN='W',STEPS=STW;
+var el={};
+document.querySelectorAll('#eng [id],#eng2 [id]').forEach(function(n){el[n.id]=n;});
+function setOp(id,v){var n=typeof id==='string'?el[id]:id;if(n)n.setAttribute('opacity',v.toFixed(2));}
+function setText(id,s){var n=el[id]||document.getElementById(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setAttr(id,k,v){var n=el[id];if(n)n.setAttribute(k,v);}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){return t*t*(3-2*t);}
+function lerp2(a,b,t){return a+(b-a)*t;}
+function band(id,a,b,lo,hi){setOp(id,(pr>=a&&pr<b)?(hi===undefined?1:hi):(lo===undefined?0.14:lo));}
+var pr=0;
+function applyScen(){
+ var L=SCEN==='W'?STW_LABEL:STQ_LABEL;
+ for(var i=0;i<5;i++){setText('stL'+i,L[i][0]);setText('stS'+i,L[i][1]);setText('sg'+(i+1),L[i][0].split(' ')[0]);}
+ setText('sg5',SCEN==='W'?'第二本':'交集');
+ setText('sg6',SCEN==='W'?'压缩':'对照');
+ setText('sg7',SCEN==='W'?'建索引':'复盘');
+ setText('engTitle',SCEN==='W'?'建索引：写 5 行 → 内存 Trie → flush 长出索引文件族':'查询：裁 SSTable → 读 posting [1] → 回表，右下角常驻无索引对照');
+ setText('engSub',SCEN==='W'?'node2 视角｜CREATE INDEX users_name_idx ON demo.users (name) USING \'sai\'｜数据沿用 id=47（阿福2）':'SELECT * FROM users WHERE name=\'阿福2\'｜三本 SSTable 只开一本，300 万行只读 1 行（示意）');
+ setOp('gW',SCEN==='W'?1:0);setOp('gQ',SCEN==='W'?0:1);
+ scenBtn.textContent=SCEN==='W'?'切到查询':'切到建索引';
+ setText('roScen',SCEN==='W'?'建索引':'查询');
+ setChip('scen',SCEN==='W'?'建索引':'查询',SCEN==='W');
+}
+function wState(){
+ if(pr<90)return{open:0,rows:0,res:'写 5 行进 Memtable…',post:'--'};
+ if(pr<180)return{open:0,rows:0,res:'内存 Trie 挂 term',post:'阿福{52,73} 大壮{61,88}'};
+ if(pr<270)return{open:0,rows:5,res:'阶段一：数据落盘+记账',post:'--'};
+ if(pr<360)return{open:0,rows:5,res:'阶段二：写 -SAI+aa 文件族',post:'阿福→[0,3] 大壮→[2,4]'};
+ if(pr<450)return{open:0,rows:0,res:'SSTable-12 长同款文件族',post:'rowId 各归各本'};
+ if(pr<540)return{open:0,rows:0,res:'S11+S12→S21，索引随行重写',post:'重写后合并'};
+ if(pr<630)return{open:0,rows:0,res:'建索引=打断压缩+flush+并行构建',post:'存量补建'};
+ return{open:0,rows:0,res:'口诀：写进内存账、flush 长文件',post:'三 term 三表'};
+}
+function qState(){
+ if(pr<90)return{open:0,rows:0,res:'内存索引落空',post:'--'};
+ if(pr<180)return{open:1,rows:0,res:'View.match：裁掉 S12/S13',post:'--'};
+ if(pr<270)return{open:1,rows:0,res:'Trie 定位 阿福2',post:'偏移到手'};
+ if(pr<360)return{open:1,rows:0,res:'读 posting',post:'[rowId 1]'};
+ if(pr<450)return{open:1,rows:1,res:'回表复核 → 返回 1 行',post:'[rowId 1] ✓'};
+ if(pr<540)return{open:1,rows:1,res:'交集：advance 互推免读',post:'[0,3]∩[0,2,3]'};
+ if(pr<630)return{open:3,rows:3000000,res:'无索引：300 万行逐行筛',post:'（无索引不可用）'};
+ return{open:1,rows:1,res:'口诀：查询先裁本、posting 再回表',post:'[rowId 1]'};
+}
+function renderScene(){
+ var st=SCEN==='W'?wState():qState();
+ band('st0',0,90);band('st1',90,180);band('st2',180,270);band('st3',270,360);band('st4',360,720);
+ if(SCEN==='W'){
+  band('wNodeD',90,720);band('wNodeA',90,720);
+  band('wm1',90,720);band('wm2',90,720);band('wm3',90,720);
+  band('wTrieN',90,720);band('wTrieN2',90,720);
+  band('ws11d',180,720);band('ws11a',270,720);band('ws11b',270,720);band('ws11c',270,720);band('ws11e',270,720);
+  band('wS12',360,720,0.15);band('wS12t',360,720,0.15);band('wS12s',360,720,0.15);band('wS12s2',360,720,0.15);
+  band('wPost',270,720,0.14);band('wp1',270,720,0.14);
+  band('wComp',450,720,0.14);band('wCompN',450,720,0.14);
+  band('wFl1',180,360,0.14);band('wFl2',180,360,0.14);
+  band('wBui',540,720,0.14);
+  for(var i=0;i<5;i++){band('wr'+i,0,180,0.14);}
+  setText('roOpen','—');setText('roRows','—');
+  setText('roRes',st.res.length>18?st.res.slice(0,18)+'…':st.res);
+  setChip('open','—（写侧）',false);
+  setChip('rows','—',false);
+  setChip('post',st.post,st.post!=='--');
+  setChip('ctx',pr>=270?'写盘无配额':'写路径',false);
+ }else{
+  band('qQ2',0,180);band('qQ3',0,180);
+  band('qvn',90,270);
+  band('qp3',270,720,0.14);band('qp4',270,720,0.14);
+  band('qb3',360,720,0.14);band('qb4',360,720,0.14);
+  band('qi1',450,540,0.14);band('qi2',450,540,0.14);band('qi3',450,540,0.14);band('qi4',450,540,0.14);
+  band('qs1',540,630,0.14);band('qs2',540,630,0.14);band('qs3',540,630,0.14);band('qs4',540,630,0.14);
+  var scanMode=pr>=540&&pr<630;
+  setOp('qScan',scanMode?1:0.2);
+  setOp('qBack',scanMode?0.2:1);
+  setOp('qPost',scanMode?0.35:1);
+  setText('roOpen',st.open+' / 3');
+  setText('roRows',st.rows>=1000000?(st.rows/1000000)+'M':st.rows);
+  setText('roRes',st.res.length>18?st.res.slice(0,18)+'…':st.res);
+  setChip('open',st.open+' 本',st.open===1);
+  setChip('rows',st.rows>=1000000?(st.rows/1000000)+' 万×100':st.rows+' 行',st.rows<=1&&st.rows>0);
+  setChip('post',st.post,st.post!=='--');
+  setChip('ctx',pr<630?'计时中 sstablesHit=1':'配额内',true);
+ }
+}
+function setChip(k,v,on){var n=document.querySelector('#stateChips .chip[data-k="'+k+'"]');if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',!!on);n.classList.toggle('off',!on);}
+function tokPath(){
+ if(SCEN==='W'){
+  if(pr<90)return [lerp2(214,238,pr/90),216];
+  if(pr<180)return [lerp2(432,456,(pr-90)/90),216];
+  if(pr<270)return [lerp2(700,738,(pr-180)/90),216];
+  if(pr<360)return null;
+  if(pr<450)return [lerp2(845,905,(pr-360)/90),216];
+  return null;
+ }else{
+  if(pr<90)return [lerp2(228,252,pr/90),194];
+  if(pr<180)return [lerp2(482,506,(pr-90)/90),194];
+  if(pr<270)return null;
+  if(pr<360)return [lerp2(736,760,(pr-270)/90),194];
+  return null;
+ }
+}
+function renderSub(th){
+ var p=norm(th); var si=0;
+ for(var i=0;i<STEPS.length;i++){if(p>=STEPS[i].d)si=i;}
+ for(var i=0;i<9;i++){var on=(i===si)||(i===8&&si>=STEPS.length-1);setOp('seg'+i,on?1:0.35);}
+ var x=40+(p/PHASE_MAX)*920;
+ setAttr('subNow','x1',x.toFixed(1)); setAttr('subNow','x2',x.toFixed(1));
+}
+function render(th){
+ pr=norm(th);
+ setText('roPhase',Math.round(pr)+'°');
+ var si=0;for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)si=i;}
+ if(mode==='step'&&stepIdx>=0)si=stepIdx;
+ setText('roStep',STEPS[si]?STEPS[si].t:'—');
+ var tp=tokPath();
+ if(tp){setAttr('tok','cx',tp[0].toFixed(1));setAttr('tok','cy',tp[1].toFixed(1));setOp('tok',1);}
+ else{setOp('tok',0);}
+ renderScene();
+ if(typeof renderSub==='function')renderSub(th,pr,si);
+}
+function buildStepbar(){
+ stepBar.innerHTML='';
+ for(var s=0;s<STEPS.length;s++){(function(n){
+  var b=document.createElement('button');b.className='stepnode';
+  b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+  b.onclick=function(){goStep(n);};stepBar.appendChild(b);
+ })(s);}
+}
+function tick(now){
+ var dt=Math.min(50,now-last);last=now;
+ if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+ if(mode==='step'&&stepTo!==null){
+  stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);
+  var p=stepElapsed/STEP_DUR;var e=smooth(p);
+  phase=stepFrom+(stepTo-stepFrom)*e;
+  if(p>=1){phase=((stepTo%PERIOD)+PERIOD)%PERIOD;stepTo=null;}
+ }
+ render(phase/PERIOD*PHASE_MAX);
+ requestAnimationFrame(tick);
+}
+function setAuto(on){
+ mode='auto';run=on;stepTo=null;btn.textContent=on?'暂停':'播放';
+ if(on){stepIdx=-1;document.querySelectorAll('.stepnode').forEach(function(d){d.classList.remove('on');});
+ stepT.textContent='自动运转模式';stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格；橙色按钮切换「建索引 / 查询」两条线。';}
+}
+window.goStep=function(i){
+ stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+ var target=STEPS[stepIdx].d/PHASE_MAX*PERIOD;var delta=target-phase;
+ if(reduced||Math.abs(delta)>PERIOD/3){phase=target;stepTo=null;render(target/PERIOD*PHASE_MAX+0.01);}
+ else{stepFrom=phase;stepTo=phase+delta;stepElapsed=0;render(phase/PERIOD*PHASE_MAX+0.01);}
+ btn.textContent='继续自动运转';
+ document.querySelectorAll('.stepnode').forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+ stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+ stepX.textContent=STEPS[stepIdx].x;
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+btn.textContent=run?'暂停':'播放';
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+scenBtn.onclick=function(){SCEN=SCEN==='W'?'Q':'W';STEPS=SCEN==='W'?STW:STQ;phase=0;stepIdx=-1;applyScen();buildStepbar();setAuto(true);render(0.01);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+buildStepbar();
+applyScen();
+CHIPS.forEach(function(c){var sp=document.createElement('span');sp.className='chip';sp.setAttribute('data-k',c.k);sp.innerHTML=c.l+' <b>--</b>';document.getElementById('stateChips').appendChild(sp);});
+document.querySelectorAll('.part').forEach(function(b){
+  b.onclick=function(){
+    var ids=PARTS[b.getAttribute('data-part')]||[];
+    ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+    document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+    setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+  };
+});
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+  var d=document.createElement('div');d.className='q';
+  var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+  it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+  h+='<div class="exp">'+it.exp+'</div>';d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+  var b=e.target.closest('.opt');if(!b)return;var box2=b.parentElement;if(box2.classList.contains('done'))return;
+  box2.classList.add('done');
+  var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+  box2.querySelectorAll('.opt').forEach(function(x,n){x.classList.add(n===QUIZ[qi].a?'right':'wrong');});
+});
+var BASE=(location.pathname.split('/cassandra-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/cassandra/lab';
+document.getElementById('lnkArt').href=BASE+'/cassandra/index/01-sai';
+
+requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

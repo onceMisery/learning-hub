@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 700" width="1000" height="700" font-family="Microsoft YaHei, sans-serif">
+<defs>
+<marker id="sA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="sB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="sG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="sR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<rect x="0" y="0" width="1000" height="700" fill="#ffffff"/>
+<text x="500" y="34" font-size="20" fill="#1F1E1A" text-anchor="middle" font-weight="600">修复与反熵：Merkle 树、Hint 与读修复</text>
+<text x="500" y="56" font-size="12" fill="#6B695F" text-anchor="middle" font-weight="400">node4 回归后的增量 repair：4 个 range 各建一棵 8 叶 Merkle 树 → R1~R3 根哈希一致 → R4 下钻 3 步锁定叶子 L8 → StreamPlan(REPAIR) 流式补 27 行</text>
+<text x="976" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">橙色：repair 流程</text>
+<text x="976" y="42" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">蓝色：建树与比对</text>
+<text x="976" y="58" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色：一致 / 补齐</text>
+<text x="976" y="74" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">红色：差异 / 风险</text>
+
+<!-- ============ 泳道一：为什么修 + 三层防线 ============ -->
+<rect x="28" y="86" width="944" height="150" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.3"/>
+<text x="44" y="108" font-size="13" fill="#C46A0A" text-anchor="start" font-weight="600">现场与三层防线：node4 卡死 14:00（phi=8.0@14:00:18~20）→ 16:00 回归，hint 重放 1,973 / 2,000 行，仍差 27 行</text>
+<rect x="44" y="120" width="286" height="100" rx="8" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.2"/>
+<text x="58" y="140" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">第 1 层 hinted handoff（分钟级）</text>
+<text x="58" y="158" font-size="10" fill="#3B3A34" text-anchor="start">写时垫付欠条；3h max_hint_window</text>
+<text x="58" y="174" font-size="10" fill="#3B3A34" text-anchor="start">（yaml:80）；持有节点重启丢 27 行</text>
+<text x="58" y="192" font-size="10" fill="#E24B4A" text-anchor="start" font-weight="600">尽力而为，不是保证</text>
+<text x="58" y="210" font-size="10" fill="#6B695F" text-anchor="start">管「刚发生的」</text>
+<rect x="342" y="120" width="286" height="100" rx="8" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.2"/>
+<text x="356" y="140" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">第 2 层 read repair（小时~天级）</text>
+<text x="356" y="158" font-size="10" fill="#3B3A34" text-anchor="start">QUORUM 读 1 全量 + 其余 MD5 digest</text>
+<text x="356" y="174" font-size="10" fill="#3B3A34" text-anchor="start">不一致 → BlockingReadRepair 补写</text>
+<text x="356" y="192" font-size="10" fill="#6B695F" text-anchor="start">（表默认 BLOCKING，TableParams:460）</text>
+<text x="356" y="210" font-size="10" fill="#6B695F" text-anchor="start">只救热数据；id=47 一致靠它</text>
+<rect x="640" y="120" width="316" height="100" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="654" y="140" font-size="12" fill="#854F0B" text-anchor="start" font-weight="600">第 3 层 anti-entropy repair（兜底，本章）</text>
+<text x="654" y="158" font-size="10" fill="#3B3A34" text-anchor="start">主动定期对账：覆盖全量数据、</text>
+<text x="654" y="174" font-size="10" fill="#3B3A34" text-anchor="start">处理墓碑单边过期的删除分叉</text>
+<text x="654" y="192" font-size="10" fill="#C46A0A" text-anchor="start" font-weight="600">nodetool repair / Auto Repair 调度</text>
+<text x="654" y="210" font-size="10" fill="#6B695F" text-anchor="start">16:10 运维在 node2 上敲下 -inc</text>
+
+<!-- ============ 泳道二：Merkle 树 ============ -->
+<rect x="28" y="246" width="944" height="196" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.3"/>
+<text x="44" y="268" font-size="13" fill="#2F6FA8" text-anchor="start" font-weight="600">R4 的 Merkle 树比对（utils/MerkleTree.java:205-239 difference）：根不等 → 取 midpoint 二分下钻，3 次比较锁定差异叶子</text>
+<rect x="44" y="280" width="196" height="52" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="142" y="300" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">node2 根哈希 R4</text>
+<text x="142" y="320" font-size="11" fill="#2F6FA8" text-anchor="middle" font-weight="600">0x3f…a1</text>
+<text x="252" y="310" font-size="16" fill="#E24B4A" text-anchor="middle" font-weight="700">≠</text>
+<rect x="268" y="280" width="196" height="52" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="366" y="300" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">node4 根哈希 R4</text>
+<text x="366" y="320" font-size="11" fill="#E24B4A" text-anchor="middle" font-weight="600">0x92…77</text>
+<path d="M510 306 L534 306" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#sB)"/>
+<rect x="538" y="280" width="418" height="52" rx="8" fill="#ffffff" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="552" y="299" font-size="10.5" fill="#3B3A34" text-anchor="start">下钻：R✗ → B✗（A✓ 左半 6.25 万行出局）→ N78✗（N56✓）→ L8✗（L7✓）</text>
+<text x="552" y="316" font-size="10.5" fill="#2F6FA8" text-anchor="start" font-weight="600">差异 range = L8 对应子段（25 万行的 1/8）</text>
+<text x="552" y="328" font-size="9.5" fill="#6B695F" text-anchor="start">R1/R2/R3 三棵树根哈希两两一致 → 0 个 SyncTask，一个字节不传</text>
+<g>
+<line x1="821" y1="374" x2="753" y2="374" stroke="#B4B2A9" stroke-width="1.1"/>
+<line x1="655" y1="380" x2="624" y2="401" stroke="#B4B2A9" stroke-width="1.1"/>
+<line x1="749" y1="380" x2="780" y2="401" stroke="#E24B4A" stroke-width="1.4"/>
+<text x="572" y="358" font-size="9" fill="#6B695F" text-anchor="middle">根的左孩子</text>
+<text x="832" y="358" font-size="9" fill="#6B695F" text-anchor="middle">根的右孩子</text>
+<circle cx="572" cy="374" r="11" fill="#EAF3DE" stroke="#639922" stroke-width="1.4"/><text x="572" y="378" font-size="9.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">A✓</text>
+<circle cx="832" cy="374" r="11" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.6"/><text x="832" y="378" font-size="9.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">B✗</text>
+<circle cx="662" cy="374" r="11" fill="#EAF3DE" stroke="#639922" stroke-width="1.4"/><text x="662" y="378" font-size="9.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">N56✓</text>
+<circle cx="742" cy="374" r="11" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.6"/><text x="742" y="378" font-size="9.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">N78✗</text>
+<circle cx="617" cy="410" r="11" fill="#EAF3DE" stroke="#639922" stroke-width="1.4"/><text x="617" y="414" font-size="9" fill="#1F1E1A" text-anchor="middle" font-weight="600">L7✓</text>
+<circle cx="787" cy="410" r="11" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.6"/><text x="787" y="414" font-size="9" fill="#1F1E1A" text-anchor="middle" font-weight="600">L8✗</text>
+<text x="812" y="414" font-size="9.5" fill="#E24B4A" text-anchor="start" font-weight="600">差异子段 → 27 行</text>
+<text x="548" y="348" font-size="9.5" fill="#6B695F" text-anchor="start">下钻路径（B 的两个孩子在下方展开；A 的孩子省略）：</text>
+<text x="548" y="432" font-size="9.5" fill="#6B695F" text-anchor="start">叶子=行哈希 XOR 上卷（Validator.add:171）</text>
+</g>
+<rect x="44" y="344" width="470" height="88" rx="8" fill="#ffffff" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="58" y="364" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">树怎么来：一次「只读压缩」（ValidationManager:102-150）</text>
+<text x="58" y="382" font-size="10" fill="#3B3A34" text-anchor="start">归并读 memtable+SSTable 但不写结果，只喂哈希（Validator.add:171）</text>
+<text x="58" y="398" font-size="10" fill="#3B3A34" text-anchor="start">叶子数 = ceil(log2 分区数)；采样分叶（prepare:119）防「一格塞 90%」</text>
+<text x="58" y="414" font-size="10" fill="#3B3A34" text-anchor="start">内存预算 repair_session_space = 堆 1/16 ÷ RF；深度封顶 20</text>
+<text x="58" y="428" font-size="9.5" fill="#6B695F" text-anchor="start">树本身极小（8 叶 ≈ 300B），贵在建树的扫描，不传树</text>
+
+<!-- ============ 泳道三：repair 七步 ============ -->
+<rect x="28" y="452" width="944" height="146" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.3"/>
+<text x="44" y="474" font-size="13" fill="#C46A0A" text-anchor="start" font-weight="600">repair 七步（repair/RepairCoordinator.java:98 起）：16:10:00 接单 → 16:12:11 记账，全程 2 分 11 秒</text>
+<rect x="44" y="486" width="150" height="72" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/>
+<text x="58" y="506" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="600">① 接单 16:10:00</text>
+<text x="58" y="522" font-size="9.5" fill="#3B3A34" text-anchor="start">nodetool repair -inc demo users</text>
+<text x="58" y="536" font-size="9.5" fill="#6B695F" text-anchor="start">RepairCoordinator</text>
+<text x="58" y="550" font-size="9.5" fill="#6B695F" text-anchor="start">IncrementalRepairTask:31</text>
+<path d="M194 522 L206 522" fill="none" stroke="#C46A0A" stroke-width="1.5" marker-end="url(#sA)"/>
+<rect x="210" y="486" width="150" height="72" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/>
+<text x="224" y="506" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="600">② 广播准备 :02</text>
+<text x="224" y="522" font-size="9.5" fill="#3B3A34" text-anchor="start">prepareForRepair:700 发</text>
+<text x="224" y="536" font-size="9.5" fill="#3B3A34" text-anchor="start">PrepareMessage+session id</text>
+<text x="224" y="550" font-size="9.5" fill="#6B695F" text-anchor="start">全量先拍快照（RepairJob:224）</text>
+<path d="M360 522 L372 522" fill="none" stroke="#C46A0A" stroke-width="1.5" marker-end="url(#sA)"/>
+<rect x="376" y="486" width="150" height="72" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="390" y="506" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="600">③ 建树 :02~:40</text>
+<text x="390" y="522" font-size="9.5" fill="#3B3A34" text-anchor="start">三副本各建 4 range 树</text>
+<text x="390" y="536" font-size="9.5" fill="#3B3A34" text-anchor="start">调度器限流树数（:257）</text>
+<text x="390" y="550" font-size="9.5" fill="#6B695F" text-anchor="start">Validator 逐分区 XOR</text>
+<path d="M526 522 L538 522" fill="none" stroke="#C46A0A" stroke-width="1.5" marker-end="url(#sA)"/>
+<rect x="542" y="486" width="150" height="72" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="556" y="506" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="600">④ 交树 :40</text>
+<text x="556" y="522" font-size="9.5" fill="#3B3A34" text-anchor="start">序列化回发起节点</text>
+<text x="556" y="536" font-size="9.5" fill="#3B3A34" text-anchor="start">（Validator.run:256-271）</text>
+<text x="556" y="550" font-size="9.5" fill="#6B695F" text-anchor="start">百 KB 级，网络可忽略</text>
+<path d="M692 522 L704 522" fill="none" stroke="#C46A0A" stroke-width="1.5" marker-end="url(#sA)"/>
+<rect x="708" y="486" width="248" height="72" rx="8" fill="#ffffff" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="722" y="506" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="600">⑤ 比对 :40~:41（差异稀疏时几乎免费）</text>
+<text x="722" y="522" font-size="9.5" fill="#3B3A34" text-anchor="start">三棵树两两 difference（RepairJob:385-397）</text>
+<text x="722" y="536" font-size="9.5" fill="#639922" text-anchor="start" font-weight="600">R1/R2/R3 → 0 任务；R4(node2↔node4) → L8</text>
+<text x="722" y="550" font-size="9.5" fill="#6B695F" text-anchor="start">node5 与两边一致；两远端差异由它们直传</text>
+<path d="M830 558 L830 572" fill="none" stroke="#C46A0A" stroke-width="1.5" marker-end="url(#sA)"/>
+<rect x="44" y="566" width="396" height="26" rx="7" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/>
+<text x="58" y="583" font-size="10" fill="#1F1E1A" text-anchor="start" font-weight="600">⑥ 流式补齐 16:11:05：LocalSyncTask:82 建 StreamPlan(REPAIR)，node2 → node4 传 27 行（ts 原样带过去）</text>
+<rect x="452" y="566" width="504" height="26" rx="7" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/>
+<text x="466" y="583" font-size="10" fill="#1F1E1A" text-anchor="start" font-weight="600">⑦ 记账 16:12:11：node4 新 SSTable 标 pendingRepair；repair_history 写 SUCCESS（30 天 TTL）；增量收尾归「已修复」组</text>
+
+<!-- ============ 底部：gc_grace 不等式 ============ -->
+<rect x="28" y="608" width="944" height="58" rx="8" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="44" y="630" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">生死约定：max_hint_window（3h）&lt; repair 间隔 &lt; gc_grace（10 天 = 864000s，TableParams:446）——墓碑被清（CompactionController:249-261 修复状态不齐即不清）之前必须送达所有副本，否则僵尸复活。</text>
+<text x="44" y="652" font-size="11" fill="#6B695F" text-anchor="start">Auto Repair（autorepair/ 包，FULL/INCREMENTAL/PREVIEW_REPAIRED 三类调度）让不等式自动成立；新节点 bootstrap 完即触发增量修复（与第 14 章联动）。preview（-prv）只走到第 ⑤ 步：先看会流多少，再决定动不动手。</text>
+<text x="28" y="688" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">数据来源：utils/MerkleTree.java:205-239 · repair/Validator.java:171-220 · repair/RepairJob.java:385-437 · repair/LocalSyncTask.java:82-86（apache/cassandra master，7.0-SNAPSHOT）</text>
+</svg>

@@ -1,0 +1,143 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 700" width="1000" height="700" role="img" aria-label="一条分析 SQL 的进来与出去：五个站点与两层集群">
+<defs>
+<marker id="aW" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aM" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#6B695F" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<style>
+text{font-family:"Microsoft YaHei","PingFang SC",Arial,sans-serif}
+.th{font-size:15px;fill:#1F1E1A;font-weight:500}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:11.5px;fill:#3B3A34}
+.tn{font-size:12.5px;fill:#1F1E1A;font-weight:500}
+.tag{font-size:10px;fill:#6B695F}
+</style>
+<rect x="0" y="0" width="1000" height="700" fill="#ffffff"/>
+
+
+<text x="500" y="28" font-size="18" fill="#1F1E1A" text-anchor="middle" font-weight="600">一条分析 SQL 的五个站点</text>
+<text x="500" y="48" font-size="11.5" fill="#6B695F" text-anchor="middle">文本 → AST → QueryTree → QueryPlan → Pipeline → 结果；下方是它真正碰到的存储与集群</text>
+<text x="976" y="24" font-size="10.5" fill="#6B695F" text-anchor="end">橙色：请求流</text>
+<text x="976" y="39" font-size="10.5" fill="#2F6FA8" text-anchor="end">蓝色：内存/计划</text>
+<text x="976" y="54" font-size="10.5" fill="#639922" text-anchor="end">绿色：磁盘/副本</text>
+
+<g class="stage" id="s1"><rect x="20" y="80" width="150" height="104" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="34" y="104" font-size="13" fill="#1F1E1A" font-weight="600">SQL 文本</text>
+<text x="34" y="123" font-size="10.5" fill="#6B695F">SELECT region,</text>
+<text x="34" y="138" font-size="10.5" fill="#6B695F">  COUNT(*), SUM(amount)</text>
+<text x="34" y="153" font-size="10.5" fill="#6B695F">FROM shop.orders</text>
+<text x="34" y="168" font-size="10.5" fill="#6B695F">WHERE event_date=...</text></g>
+
+<g class="stage" id="s2"><rect x="200" y="80" width="140" height="104" rx="10" fill="#fff" stroke="#D3D1C7" stroke-width="1.2"/>
+<text x="214" y="104" font-size="13" fill="#1F1E1A" font-weight="600">① Parser</text>
+<text x="214" y="123" font-size="10.5" fill="#6B695F">Lexer → Token</text>
+<text x="214" y="138" font-size="10.5" fill="#6B695F">递归下降</text>
+<text x="214" y="153" font-size="10.5" fill="#6B695F">ParserSelect...</text>
+<text x="214" y="168" font-size="10.5" fill="#C46A0A">产物：AST</text></g>
+
+<g class="stage" id="s3"><rect x="370" y="80" width="140" height="104" rx="10" fill="#fff" stroke="#D3D1C7" stroke-width="1.2"/>
+<text x="384" y="104" font-size="13" fill="#1F1E1A" font-weight="600">② Analyzer</text>
+<text x="384" y="123" font-size="10.5" fill="#6B695F">绑定表/列/别名</text>
+<text x="384" y="138" font-size="10.5" fill="#6B695F">类型推断</text>
+<text x="384" y="153" font-size="10.5" fill="#6B695F">QueryTree pass</text>
+<text x="384" y="168" font-size="10.5" fill="#2F6FA8">产物：QueryTree</text></g>
+
+<g class="stage" id="s4"><rect x="540" y="80" width="140" height="104" rx="10" fill="#fff" stroke="#D3D1C7" stroke-width="1.2"/>
+<text x="554" y="104" font-size="13" fill="#1F1E1A" font-weight="600">③ Planner</text>
+<text x="554" y="123" font-size="10.5" fill="#6B695F">Read / Filter /</text>
+<text x="554" y="138" font-size="10.5" fill="#6B695F">Aggregate / Sort</text>
+<text x="554" y="153" font-size="10.5" fill="#6B695F">优化器改写</text>
+<text x="554" y="168" font-size="10.5" fill="#2F6FA8">产物：QueryPlan</text></g>
+
+<g class="stage" id="s5"><rect x="710" y="80" width="140" height="104" rx="10" fill="#fff" stroke="#D3D1C7" stroke-width="1.2"/>
+<text x="724" y="104" font-size="13" fill="#1F1E1A" font-weight="600">④ Pipeline</text>
+<text x="724" y="123" font-size="10.5" fill="#6B695F">Processor + Port</text>
+<text x="724" y="138" font-size="10.5" fill="#6B695F">多线程任务驱动</text>
+<text x="724" y="153" font-size="10.5" fill="#6B695F">Chunk 列向量</text>
+<text x="724" y="168" font-size="10.5" fill="#2F6FA8">产物：结果流</text></g>
+
+<rect x="878" y="80" width="102" height="104" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="929" y="106" font-size="13" fill="#1F1E1A" text-anchor="middle" font-weight="600">结果</text>
+<text x="929" y="126" font-size="10.5" fill="#6B695F" text-anchor="middle">region / orders</text>
+<text x="929" y="141" font-size="10.5" fill="#6B695F" text-anchor="middle">/ gmv</text>
+<text x="929" y="162" font-size="10.5" fill="#639922" text-anchor="middle">5 行</text>
+
+<path d="M170 132 L196 132" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/>
+<path d="M340 132 L366 132" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/>
+<path d="M510 132 L536 132" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/>
+<path d="M680 132 L706 132" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/>
+<path d="M850 132 L874 132" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/>
+
+<text x="20" y="212" font-size="12" fill="#C46A0A" font-weight="600">存储：MergeTree 的 part（读的时候只碰需要的列与 granule）</text>
+<rect x="20" y="224" width="220" height="76" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/>
+<text x="34" y="246" font-size="12.5" fill="#1F1E1A" font-weight="600">partition 202610</text>
+<text x="34" y="264" font-size="10.5" fill="#6B695F">目录级切分；分区裁剪先砍掉其他月</text>
+<text x="34" y="280" font-size="10.5" fill="#639922">event_date = '2026-10-01'</text>
+
+<rect x="270" y="224" width="220" height="76" rx="8" fill="#fff" stroke="#639922" stroke-width="1.2"/>
+<text x="284" y="246" font-size="12.5" fill="#1F1E1A" font-weight="600">part 202610_1_1_0</text>
+<text x="284" y="264" font-size="10.5" fill="#6B695F">一次写入/合并产生的不可变目录</text>
+<text x="284" y="280" font-size="10.5" fill="#6B695F">columns.txt / count.txt / checksums</text>
+
+<rect x="520" y="224" width="220" height="76" rx="8" fill="#fff" stroke="#639922" stroke-width="1.2"/>
+<text x="534" y="246" font-size="12.5" fill="#1F1E1A" font-weight="600">granule 8192 行</text>
+<text x="534" y="264" font-size="10.5" fill="#6B695F">索引/读取的最小单位；primary.idx 一条</text>
+<text x="534" y="280" font-size="10.5" fill="#6B695F">本例候选 granule：120/977</text>
+
+<rect x="770" y="224" width="210" height="76" rx="8" fill="#fff" stroke="#639922" stroke-width="1.2"/>
+<text x="784" y="246" font-size="12.5" fill="#1F1E1A" font-weight="600">列文件 .bin + .mrk3</text>
+<text x="784" y="264" font-size="10.5" fill="#6B695F">只读 region/status/amount/date</text>
+<text x="784" y="280" font-size="10.5" fill="#639922">其余 56 列不发生 I/O</text>
+
+<text x="20" y="330" font-size="12" fill="#2F6FA8" font-weight="600">集群：副本与分片（单机之外的另外两层）</text>
+<rect x="20" y="342" width="180" height="54" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="34" y="364" font-size="12.5" fill="#1F1E1A" font-weight="600">Distributed 表</text>
+<text x="34" y="382" font-size="10.5" fill="#6B695F">路由 / 分发 / 合并，不存数据</text>
+
+<rect x="230" y="342" width="230" height="54" rx="8" fill="#fff" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="244" y="364" font-size="12.5" fill="#1F1E1A" font-weight="600">shard 1 / 2 / 3</text>
+<text x="244" y="382" font-size="10.5" fill="#6B695F">每片两副本：A/B、C/D、E/F</text>
+
+<rect x="490" y="342" width="230" height="54" rx="8" fill="#fff" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="504" y="364" font-size="12.5" fill="#1F1E1A" font-weight="600">ReplicatedMergeTree</text>
+<text x="504" y="382" font-size="10.5" fill="#6B695F">同分片副本：/log + part 拉取</text>
+
+<rect x="750" y="342" width="230" height="54" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/>
+<text x="764" y="364" font-size="12.5" fill="#1F1E1A" font-weight="600">ClickHouse Keeper</text>
+<text x="764" y="382" font-size="10.5" fill="#6B695F">Raft / 会话 / watch / quorum</text>
+
+
+
+<line x1="20" y1="452" x2="980" y2="452" stroke="#ECEAE2" stroke-width="1.2" stroke-dasharray="5 4"/>
+<g transform="translate(0,460)">
+
+<rect x="18" y="14" width="964" height="182" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/>
+<text x="34" y="38" font-size="13" fill="#1F1E1A" font-weight="600">同一个 part：mark 指向压缩块，压缩块里才是列值</text>
+<rect x="34" y="54" width="150" height="58" rx="6" fill="#fff" stroke="#639922" stroke-width="1.1"/>
+<text x="109" y="76" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">primary.idx</text>
+<text x="109" y="94" font-size="10" fill="#6B695F" text-anchor="middle">每 granule 一条键值</text>
+<rect x="204" y="54" width="150" height="58" rx="6" fill="#fff" stroke="#639922" stroke-width="1.1"/>
+<text x="279" y="76" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">region.mrk3</text>
+<text x="279" y="94" font-size="10" fill="#6B695F" text-anchor="middle">压缩偏移 + 解压内偏移</text>
+<rect x="374" y="54" width="200" height="58" rx="6" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1"/>
+<text x="474" y="76" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">region.bin</text>
+<text x="474" y="94" font-size="10" fill="#6B695F" text-anchor="middle">压缩块 1 | 压缩块 2 | ...</text>
+<rect x="594" y="54" width="170" height="58" rx="6" fill="#fff" stroke="#2F6FA8" stroke-width="1.1"/>
+<text x="679" y="76" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">解压 + 解码</text>
+<text x="679" y="94" font-size="10" fill="#6B695F" text-anchor="middle">只还原需要的 granule</text>
+<rect x="784" y="54" width="180" height="58" rx="6" fill="#EAF3DE" stroke="#639922" stroke-width="1.1"/>
+<text x="874" y="76" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">列向量 Chunk</text>
+<text x="874" y="94" font-size="10" fill="#6B695F" text-anchor="middle">交给过滤/聚合算子</text>
+<path d="M184 83 L200 83" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/>
+<path d="M354 83 L370 83" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/>
+<path d="M574 83 L590 83" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/>
+<path d="M764 83 L780 83" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/>
+<text x="34" y="140" font-size="11" fill="#3B3A34">读法：先用 primary.idx 决定「读哪个 granule」，再用 .mrk3 找到「从哪个字节读」，最后只解压一个压缩块。</text>
+<text x="34" y="160" font-size="11" fill="#3B3A34">本例：977 个 granule 中只读 120 个；4 列之外的其他列完全不打开。</text>
+<text x="34" y="180" font-size="10" fill="#6B695F">口径：index_granularity=8192（MergeTreeSettings.cpp:74）；mark 结构见 src/Formats/MarkInCompressedFile.h:17；数值为演示值。</text>
+
+</g>
+<text x="20" y="688" font-size="10" fill="#6B695F">口径：ClickHouse 26.11.1.1-testing 源码快照（2026-10-25）；图中行数、线程数、part 数为演示值。</text>
+</svg>

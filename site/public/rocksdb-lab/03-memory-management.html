@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>内存管理：每一块内存都要有人记账 · RocksDB 互动原理实验室 第 12 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#fff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:960px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#fff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:38px 0 22px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:710px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#fff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:500;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:11.5px;fill:#3B3A34}
+.tn{font-size:12.5px;font-weight:500;fill:#1F1E1A}
+.tag{font-size:10px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:68px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+section{padding:34px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .arr{color:#C46A0A;font-weight:600}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.figcap b{color:#3B3A34;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:13.5px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 9px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#scene [opacity],#scene2 [opacity]{transition:opacity .22s ease}
+#eng .hl,#eng2 .hl{stroke:#D96C06 !important;stroke-width:2.2 !important}
+.subview{margin:8px 0 4px;background:#fff;border:1px dashed #D3D1C7;border-radius:10px;padding:8px 10px}
+.subview .viewtitle{font-size:12px;font-weight:600;color:#854F0B;margin-bottom:4px}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+@media (prefers-reduced-motion: reduce){#scene [opacity],#scene2 [opacity]{transition:none}}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：内存管理：每一块内存都要有人记账</a>
+  <span class="idx">第 12 / 12 章</span>
+</div>
+<div class="page">
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · 内存管理</div>
+<h1>内存都有账：三本账本、两道闸门、一格 256KB</h1>
+<p>埋点服务 RSS 涨到 32GB 被 OOM killer 干掉：8GB 缓存 + 64MB×4×12 列族×2 实例 ≈ 14GB，还有 18GB 对不上。差别不在漏配参数，而在三户人吃内存、每户都要单独限、单独报账。这页把三本账摊开：Arena 只批发、WBM 分级限流、CacheReservationManager 用 256KB 占位条目把所有内存塞进同一本账。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span><span class="mnode">② 静态分解</span><span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span><span class="mnode">⑤ 环境场景</span><span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 614" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>三本账与 OOM 防线</title>
+<defs>
+<marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="g" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="r" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<text class="th" x="500" y="22" text-anchor="middle">三本账：Arena 批发 → WBM 水位 → 软限排 flush → 硬限停写 → cache 占位记账 → 驱逐自救</text>
+<text class="ts" x="500" y="40" text-anchor="middle">主图 = Arena / WBM 水位 / 停顿与恢复 / 占位记账 / 驱逐链；副图 = 写入风暴时间线与三本账</text>
+<text class="tag" x="958" y="22" text-anchor="end">琥珀点 = 当前记账 / 检查位置</text>
+<text class="tag" x="958" y="38" text-anchor="end">红 = 停顿 / 报错 · 绿 = 销账 / 恢复</text>
+<g id="scene">
+<g class="stage" id="st0"><circle cx="58" cy="66" r="13"/><text x="58" y="70" text-anchor="middle">1</text><text x="58" y="94" text-anchor="middle">Arena 批发</text></g>
+<line x1="74" y1="66" x2="166" y2="66" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st1"><circle cx="182" cy="66" r="13"/><text x="182" y="70" text-anchor="middle">2</text><text x="182" y="94" text-anchor="middle">WBM 记账</text></g>
+<line x1="198" y1="66" x2="290" y2="66" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st2"><circle cx="306" cy="66" r="13"/><text x="306" y="70" text-anchor="middle">3</text><text x="306" y="94" text-anchor="middle">用量爬升</text></g>
+<line x1="322" y1="66" x2="414" y2="66" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st3"><circle cx="430" cy="66" r="13"/><text x="430" y="70" text-anchor="middle">4</text><text x="430" y="94" text-anchor="middle">软限排 flush</text></g>
+<line x1="446" y1="66" x2="538" y2="66" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st4"><circle cx="554" cy="66" r="13"/><text x="554" y="70" text-anchor="middle">5</text><text x="554" y="94" text-anchor="middle">硬限停写</text></g>
+<line x1="570" y1="66" x2="662" y2="66" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st5"><circle cx="678" cy="66" r="13"/><text x="678" y="70" text-anchor="middle">6</text><text x="678" y="94" text-anchor="middle">flush 销账</text></g>
+<line x1="694" y1="66" x2="786" y2="66" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st6"><circle cx="802" cy="66" r="13"/><text x="802" y="70" text-anchor="middle">7</text><text x="802" y="94" text-anchor="middle">cache 记账</text></g>
+<line x1="818" y1="66" x2="910" y2="66" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st7"><circle cx="926" cy="66" r="13"/><text x="926" y="70" text-anchor="middle">8</text><text x="926" y="94" text-anchor="middle">驱逐自救</text></g>
+
+<rect x="40" y="112" width="290" height="182" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/>
+<text class="tn" x="52" y="132">Arena：不零买，只批发</text>
+<rect id="arRetail" x="52" y="142" width="266" height="32" rx="6" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/>
+<text class="tb" x="185" y="162" text-anchor="middle">零售：100 条 × 220B ≈ 22KB（键+值+8B 序号+跳表开销）</text>
+<line x1="185" y1="176" x2="185" y2="188" stroke="#C46A0A" stroke-width="1.3" marker-end="url(#a)"/>
+<rect id="arInline" x="52" y="190" width="124" height="40" rx="6" fill="#F5F4EF" stroke="#B4B2A9" stroke-width="1.1"/>
+<text class="tag" x="114" y="206" text-anchor="middle">内联块 2KB 起步</text>
+<text class="tag" x="114" y="222" text-anchor="middle">用完就批发</text>
+<rect id="arBlock" x="184" y="190" width="134" height="40" rx="6" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.3"/>
+<text class="tb" x="251" y="206" text-anchor="middle">批发块 1MB</text>
+<text class="tag" x="251" y="222" text-anchor="middle">min(64MB/8,1MB) 对齐 4KB</text>
+<text class="tag" x="52" y="248">这 100 条实际吃 2KB+1MB ≈ 1MB；报给 WBM 的也是 1MB</text>
+<text class="tag" x="52" y="264">零售记账 22KB，批发记账 1MB——OOM 时信后者</text>
+<text class="tag" x="52" y="280">超大请求（&gt;块 1/4）单走 malloc；按 malloc_usable_size 报账</text>
+
+<rect x="350" y="112" width="290" height="182" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/>
+<text class="tn" x="362" y="132">WBM 水位：128MB 软 / 硬限</text>
+<rect x="362" y="146" width="266" height="26" rx="5" fill="#FFFFFF" stroke="#D3D1C7"/>
+<rect id="gaugeFill" x="362" y="146" width="120" height="26" rx="5" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1"/>
+<line x1="595" y1="140" x2="595" y2="178" stroke="#C46A0A" stroke-width="1.6" stroke-dasharray="4 3"/>
+<text class="tag" x="595" y="136" text-anchor="middle">112MB = 7/8（软限）</text>
+<line x1="628" y1="140" x2="628" y2="178" stroke="#E24B4A" stroke-width="1.8"/>
+<text class="tag" x="628" y="192" text-anchor="end" fill="#A33A39">128MB 硬限</text>
+<rect id="gaugeCur" x="362" y="146" width="0" height="26" fill="none"/>
+<circle id="gaugeDot" cx="482" cy="159" r="5" fill="#EF9F27" stroke="#D97E06" stroke-width="1.2"/>
+<text class="tag" x="362" y="214">三层预算：write_buffer_size（单 memtable，64MB）</text>
+<text class="tag" x="362" y="230">→ db_write_buffer_size（全库，默认 0=关）</text>
+<text class="tag" x="362" y="246">→ 共享 WBM（跨库合并记账，多实例终极方案）</text>
+<text class="tag" x="362" y="264">不配总额时：12 列族 = 12 份独立预算，没人管总和</text>
+<text class="tag" x="362" y="282">WAL 隐性预算随 memtable 参数翻倍（max_total_wal_size）</text>
+
+<rect x="660" y="112" width="300" height="182" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/>
+<text class="tn" x="672" y="132">停顿与恢复：软限赶工、硬限兜底</text>
+<rect id="softBox" x="672" y="142" width="276" height="52" rx="7" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/>
+<text class="tb" x="810" y="162" text-anchor="middle">软限 ShouldFlush：活跃 &gt; 7/8 × 预算</text>
+<text class="tag" x="810" y="180" text-anchor="middle">触发 flush 排队，写不阻塞——后台开始赶工</text>
+<rect id="hardBox" x="672" y="202" width="276" height="52" rx="7" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/>
+<text class="tb" x="810" y="222" text-anchor="middle">硬限 ShouldStall：总量 ≥ 预算（allow_stall=true）</text>
+<text class="tag" x="810" y="240" text-anchor="middle">写线程挂起，STALL_MICROS 开始计时</text>
+<text class="tag" x="672" y="272">flush 落盘 → FreeMem → 降到 128MB 以下 → 唤醒停写线程</text>
+<text class="tag" x="672" y="288">没开 allow_stall：硬限不生效，预算失去硬保证，OOM 风险自负</text>
+
+<rect x="40" y="314" width="450" height="200" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/>
+<text class="tn" x="52" y="332">CacheReservationManager：256KB 一格的占位记账</text>
+<g id="resGrid">
+<rect x="52" y="344" width="28" height="22" rx="3" fill="#FFF6E8" stroke="#EF9F27"/><text class="tag" x="66" y="359" text-anchor="middle">1</text>
+<rect x="84" y="344" width="28" height="22" rx="3" fill="#FFF6E8" stroke="#EF9F27"/><text class="tag" x="98" y="359" text-anchor="middle">2</text>
+<rect x="116" y="344" width="28" height="22" rx="3" fill="#FFF6E8" stroke="#EF9F27"/><text class="tag" x="130" y="359" text-anchor="middle">3</text>
+<rect x="148" y="344" width="28" height="22" rx="3" fill="#FFF6E8" stroke="#EF9F27"/><text class="tag" x="162" y="359" text-anchor="middle">4</text>
+<rect x="180" y="344" width="28" height="22" rx="3" fill="#F5F4EF" stroke="#B4B2A9"/><text class="tag" x="194" y="359" text-anchor="middle">…</text>
+<rect x="212" y="344" width="60" height="22" rx="3" fill="#F5F4EF" stroke="#B4B2A9"/><text class="tag" x="242" y="359" text-anchor="middle">N</text>
+</g>
+<text class="tag" x="290" y="359">每 256KB 内存 = 一条真占位条目</text><text class="tag" x="290" y="375">（有键、有 charge、进 LRU）</text>
+<rect id="resHyst" x="52" y="380" width="426" height="56" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/>
+<text class="tag" x="64" y="400">滞回（delayed_decrease）：用量回落不马上撤——降到已预留量 3/4 以下才释放</text>
+<text class="tag" x="64" y="418">96↔112MB 抖动时占位纹丝不动：多占 16MB 额度，换 LRU 安稳</text>
+<text class="tag" x="64" y="436">在用的不止 WBM：table reader / filter 构建 / blob cache / 压缩字典构建全在这记账</text>
+<rect id="resIdx" x="52" y="444" width="426" height="56" rx="7" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/>
+<text class="tag" x="64" y="464">例：新开一个 SST，table reader 要 25MB → 换算 100 条占位逐条 Insert</text>
+<text class="tag" x="64" y="482">cache 满 → 每插一条驱逐 256KB data block——index 的内存挤的是同一个缓存</text>
+<text class="tag" x="64" y="498">窗口：GetTotalReservedCacheSize() 与按角色的 cache entry stats</text>
+
+<rect x="510" y="314" width="450" height="200" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/>
+<text class="tn" x="522" y="332">驱逐链与 strict：超支找谁算账</text>
+<rect id="chainA" x="522" y="344" width="426" height="40" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/>
+<text class="tb" x="735" y="362" text-anchor="middle">memtable 涨 1MB → 4 条占位进 cache → data block 少 1MB 可用</text>
+<text class="tag" x="735" y="378" text-anchor="middle">超支的代价自动转嫁为命中率下降，而不是静默超内存</text>
+<rect id="chainB" x="522" y="394" width="426" height="40" rx="7" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.2"/>
+<text class="tb" x="735" y="412" text-anchor="middle">strict=true 且全是 pinned 腾不出 → MakeCacheReservation 报 MemoryLimit</text>
+<text class="tag" x="735" y="428" text-anchor="middle">打开这个 SST 直接失败（错误消息点名 kBlockBasedTableReader）</text>
+<rect id="chainC" x="522" y="444" width="426" height="56" rx="7" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/>
+<text class="tb" x="735" y="464" text-anchor="middle">信号链：BLOCK_CACHE_DATA_HITS 下跌 → STALL_MICROS 上升</text>
+<text class="tag" x="735" y="482" text-anchor="middle">→ 该降 WBM 预算或提 flush 速度了。命中率是写入部门越权的告警器</text>
+<text class="tag" x="735" y="498" text-anchor="middle">三本账最后汇成一个口径：block cache 的 capacity</text>
+</g>
+<circle id="tok" cx="185" cy="162" r="7" fill="#EF9F27" stroke="#D97E06" stroke-width="1.4"/>
+</svg>
+
+<div class="subview">
+<div class="viewtitle">第二视图 · 写入风暴时间线（40MB/s、WBM 预算 128MB 挂 cache、cache 512MB）与三本账对照（同一相位）</div>
+<svg id="eng2" viewBox="0 0 1000 232" role="img" xmlns="http://www.w3.org/2000/svg">
+<g id="scene2">
+<rect id="s0" x="40" y="24" width="200" height="60" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/>
+<text class="tb" x="140" y="44" text-anchor="middle">T+0s memtable 涨</text>
+<text class="tag" x="140" y="62" text-anchor="middle">ReserveMem → 占位逐格进 cache</text>
+<line x1="242" y1="54" x2="260" y2="54" stroke="#C46A0A" stroke-width="1.3" marker-end="url(#a)"/>
+<rect id="s1" x="262" y="24" width="200" height="60" rx="7" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/>
+<text class="tb" x="362" y="44" text-anchor="middle">T+3s 过软限 112MB</text>
+<text class="tag" x="362" y="62" text-anchor="middle">flush 排队，但写入还在涨</text>
+<line x1="464" y1="54" x2="482" y2="54" stroke="#C46A0A" stroke-width="1.3" marker-end="url(#a)"/>
+<rect id="s2" x="484" y="24" width="220" height="60" rx="7" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/>
+<text class="tb" x="594" y="44" text-anchor="middle">T+6s 硬限触发</text>
+<text class="tag" x="594" y="62" text-anchor="middle">写线程 stall（若 allow_stall）；没开则继续冲</text>
+<line x1="706" y1="54" x2="724" y2="54" stroke="#639922" stroke-width="1.4" marker-end="url(#g)"/>
+<rect id="s3" x="726" y="24" width="234" height="60" rx="7" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text class="tb" x="843" y="44" text-anchor="middle">T+8s flush 完成</text>
+<text class="tag" x="843" y="62" text-anchor="middle">FreeMem → 占位撤掉 → data block 回填</text>
+<text class="tn" x="40" y="118">三本账对照</text>
+<rect x="40" y="130" width="920" height="66" rx="8" fill="#FFFFFF" stroke="#D3D1C7"/>
+<text class="tag" x="56" y="150">Arena+AllocTracker：memtable 每一笔批发 · 报实际分配字节 · 汇入 WBM 水位</text>
+<text class="tag" x="56" y="168">WriteBufferManager：memtable 总额 · 软限 flush → 硬限 stall · ShouldFlush / ShouldStall 分级</text>
+<text class="tag" x="56" y="186">CacheReservationManager：index/filter/WBM 等 · 256KB 占位 · 超支驱逐自己的缓存；strict 下报 MemoryLimit</text>
+<text class="tag" x="40" y="218">读法：主图第 ④⑤⑥ 步对应时间线 T+3/T+6/T+8；源码口径见下方图注。</text>
+</g>
+<circle id="tok2" cx="140" cy="54" r="6" fill="#639922" stroke="#4C7A1A" stroke-width="1.4"/>
+</svg>
+</div>
+
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.5" max="2" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm">默认 ≈ 6 秒 / 轮</span>
+</div>
+<div class="readout">
+<span class="ro">进度 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">读数 <b id="roKey">--</b></span>
+<span class="ro">memtable 用量 <b id="roMem">--</b></span>
+<span class="ro">闸门 <b id="roStall">--</b></span>
+<span class="ro">占位 <b id="roRes">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav"><button class="btn" onclick="prevStep()">‹ 上一步</button><button class="btn warn" onclick="nextStep()">下一步 ›</button></span>
+</div>
+<p class="figcap">进度 0° = 写入分配，720° = 驱逐自救落定。演示时刻：预算 128MB、软限 112MB、100 条 × 220B、块 1MB、占位 256KB/格、SST reader 25MB，均为文章演示值；橙点 = 当前记账 / 检查位置。<br>口径：RocksDB 11.13.0；Arena arena.h:33、103-110 / arena.cc:63-68、152-163、块大小 column_family.cc:242-249、WBM 分级 write_buffer_manager.h:107、144-185、停写 db_impl_write.cc:2986-3019、占位与滞回 cache_reservation_manager.h:184-206。</p>
+</div>
+</div>
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：RSS 32GB，14GB 对不上账</h2></div>
+<p class="sec-sub">先不拆机制，只看 OOM 现场里各笔账的样子。</p>
+<div class="quote">「观察一个系统，先分清它的静态结构、动态过程和外部依赖。」</div>
+<p>把内存管理想成一家公司跑预算：Arena 是采购部（批发不零买）；WriteBufferManager 是写入部门的部门预算（超了先加班 flush，再超就冻结招聘——停写）；CacheReservationManager 是全公司唯一的费用中心（读缓存、索引、过滤器、甚至写入部门的超支都记同一本账，超支就裁人——驱逐）。</p>
+<div class="flow">
+<span class="node">写入</span><span class="arr">→</span><span class="node box">Arena 批发</span><span class="arr">→</span><span class="node">WBM 水位</span><span class="arr">→</span><span class="node">软限 flush / 硬限 stall</span><span class="arr">→</span><span class="node">占位条目进 cache</span><span class="arr">→</span><span class="node">超支驱逐 data block</span>
+</div>
+<p>一句话本质：<b>三户人吃内存（memtable 族、block cache 族、table reader/WAL/临时缓冲），每户单独限、单独报账</b>。对不上账的 18GB 多半藏在第三户：SST reader 打开后索引常驻，默认不在缓存口径里。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：批发部、预算表、费用中心</h2></div>
+<p class="sec-sub">点部件卡片，动画里对应的结构会亮起。</p>
+<div class="quote">「分解要 MECE：同一层粒度一致，不重不漏。」</div>
+<div class="partgroup"><div class="gname">第一本账：Arena</div><div class="parts">
+<button class="part" data-part="arena"><b>批发块</b><span>内联 2KB 起步；块 = min(write_buffer_size/8, 1MB) 对齐 4KB；报账按 malloc_usable_size。</span></button>
+<button class="part" data-part="retail"><b>零售 vs 批发口径</b><span>100 条 220B 零售 22KB、批发 1MB——OOM 时信批发量；超大请求单走 malloc。</span></button>
+<button class="part" data-part="conc"><b>ConcurrentArena</b><span>每核 128KB 小配额免锁切，用尽才回主 Arena 进锁补货；空 memtable 很便宜（不预占批发块）。</span></button>
+</div></div>
+<div class="partgroup"><div class="gname">第二本账：WBM</div><div class="parts">
+<button class="part" data-part="wbm"><b>三层预算</b><span>write_buffer_size（单 memtable）→ db_write_buffer_size（全库）→ 共享 WBM（跨库）。</span></button>
+<button class="part" data-part="soft"><b>软限 ShouldFlush</b><span>活跃用量 &gt; 7/8 × 预算 → flush 排队，写不阻塞。</span></button>
+<button class="part" data-part="hard"><b>硬限 ShouldStall</b><span>总量 ≥ 预算且 allow_stall=true → 写队列挂起；flush 腾空间后唤醒。</span></button>
+</div></div>
+<div class="partgroup"><div class="gname">第三本账：CacheReservationManager</div><div class="parts">
+<button class="part" data-part="grid"><b>256KB 占位条目</b><span>每 256KB 内存一条真条目顶进 block cache：有键、有 charge、进 LRU。</span></button>
+<button class="part" data-part="hyst"><b>3/4 滞回</b><span>降到已预留量 3/4 以下才撤——抖动区间占位纹丝不动，多占一点换 LRU 安稳。</span></button>
+<button class="part" data-part="strict"><b>strict 分支</b><span>占位插满且全是 pinned → MakeCacheReservation 报 MemoryLimit，打开 SST 直接失败。</span></button>
+</div></div>
+<p class="hint">记账值是批发口径：Arena 报批发量、占位取整到 256KB、滞回少撤多占——看账别只盯「已用字节数」，RSS 也不等于记账值（malloc 未归还页照样计入 RSS）。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：一次写入风暴的 8 个相位</h2></div>
+<p class="sec-sub">第一遍看橙点从批发走到驱逐；第二遍对照副图时间线 T+0 到 T+8。</p>
+<div class="quote">「动态分析看的是时间轴上的顺序、状态变化和因果链。」</div>
+<table class="grid">
+<tr><th>相位</th><th>阶段</th><th>关键动作</th><th>读数</th></tr>
+<tr><td>0–90°</td><td>Arena 批发</td><td>100 条 × 220B → 内联 2KB 满 → 批发 1MB 块</td><td>实吃 ≈1MB</td></tr>
+<tr><td>90–180°</td><td>WBM 记账</td><td>AllocTracker 每批一块就 ReserveMem 上报</td><td>水位 +1MB</td></tr>
+<tr><td>180–270°</td><td>用量爬升</td><td>40MB/s 持续写；12 列族各写各的、无人管总和</td><td>爬向 112MB</td></tr>
+<tr><td>270–360°</td><td>软限</td><td class="hot">活跃 &gt; 112MB（7/8）→ flush 排队，写不停</td><td class="hot">软限触发</td></tr>
+<tr><td>360–450°</td><td>硬限</td><td class="hot">130MB ≥ 128MB 且 allow_stall → 写线程挂起</td><td class="hot">STALL 计时</td></tr>
+<tr><td>450–540°</td><td>flush 销账</td><td>落盘 → FreeMem → 降到线下 → MaybeEndWriteStall 唤醒</td><td>回落 &lt;128MB</td></tr>
+<tr><td>540–630°</td><td>cache 记账</td><td>25MB reader = 100 条占位逐格 Insert 进 cache</td><td>占位 25MB</td></tr>
+<tr><td>630–720°</td><td>驱逐自救</td><td class="hot">每插一条挤 256KB data block；strict 满则 MemoryLimit</td><td class="hot">挤 data block</td></tr>
+</table>
+<p>相位零点：0° = 写入分配；720° = 驱逐自救落定。值得分步细看的两处：第 ⑤ 步「预算 128MB、已用 130MB」的三步演示（软限早已排队→硬限挂起→flush 唤醒）；第 ⑧ 步的转嫁逻辑——memtable 超支的代价变成命中率下降，总量承诺仍然成立。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件 × 阶段</h2></div>
+<p class="sec-sub">竖看是一次写入风暴，横看是一本账的完整职责。</p>
+<div class="quote">「把部件放回阶段里，才能看清谁在什么时候接力。」</div>
+<table class="grid">
+<tr><th>部件</th><th>分配</th><th>记账</th><th>软限</th><th>硬限</th><th>销账</th><th>占位/驱逐</th></tr>
+<tr><td>Arena / ConcurrentArena</td><td class="hot">批发 1MB</td><td class="act">报批发量</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>AllocTracker</td><td>—</td><td class="hot">每块上报</td><td>—</td><td>—</td><td class="act">FreeMem</td><td>—</td></tr>
+<tr><td>WriteBufferManager</td><td>—</td><td class="act">维护水位</td><td class="hot">ShouldFlush</td><td class="hot">ShouldStall</td><td class="act">唤醒</td><td class="act">挂 cache 时转占位</td></tr>
+<tr><td>写队列（WriteThread）</td><td>—</td><td>—</td><td class="act">照常走</td><td class="hot">挂起</td><td class="act">恢复</td><td>—</td></tr>
+<tr><td>CacheReservationManager</td><td>—</td><td>—</td><td>—</td><td>—</td><td class="act">3/4 滞回撤</td><td class="hot">256KB 一格 / 驱逐</td></tr>
+<tr><td>block cache（capacity）</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td class="hot">被挤 data block / MemoryLimit</td></tr>
+</table>
+<p><b>涌现属性：</b>「全库内存有单一预算口」不属于任何单个部件——WBM 愿意把账记过来、占位条目愿意当真条目、cache 愿意驱逐自己的 data block，三者合起来才成立。配齐之后 capacity 就是全库内存的总闸，OOM 的排查从「猜哪个参数」变成「查一本账」。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：账本之外还有什么</h2></div>
+<p class="sec-sub">拆掉任何一个外部依赖或默认值，前面看到的行为都会变。</p>
+<div class="quote">「环境属性 = 外在关系 + 依赖 + 失效后果。」</div>
+<div class="envcards">
+<div class="env"><b>WAL 的隐性预算</b><span>max_total_wal_size 缺省按所有列族 write_buffer_size × max_write_buffer_number × 4 动态算——memtable 参数调大它跟着翻倍。</span></div>
+<div class="env"><b>列族数量</b><span>不配 db_write_buffer_size 时 12 个列族 = 12 份独立预算：64MB×4×12 的上限没人管总和。</span></div>
+<div class="env"><b>多实例同机</b><span>各 DB 独立记账就是 OOM 连坐；共享 WriteBufferManager（allow_stall=true）是第一闸门。</span></div>
+<div class="env"><b>core dump</b><span>8GB 缓存一崩 dump 就 8GB+：JemallocNodumpAllocator 把缓存内存标 MADV_DONTDUMP。</span></div>
+<div class="env"><b>分层缓存的口径</b><span>TieredCache 把 WBM 记账按比例拆到主缓存与压缩层——三本账在分层里仍是一本总账。</span></div>
+<div class="env"><b>RSS ≠ 记账</b><span>glibc 未归还的空闲页照样计入 RSS；记账超限 ≠ RSS 立刻回落。看趋势，别看瞬时值。</span></div>
+</div>
+<p class="figcap">边界：本页是全轨故事的收束——写入攒内存（Arena/WBM/WAL）→ 压实控放大 → 读取靠缓存扛 → 全程由账本看住。最小预算清单：write_buffer_size×列族数 ≤ memtable 总预算；全库配 db_write_buffer_size 或共享 WBM；capacity 覆盖数据块+index/filter 预留+WBM 记账。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">能说清「三本账各管什么、超支各找谁」，才算真的懂内存管理。</p>
+<div class="quote">「用自己的话能讲清楚，才算真的懂。」</div>
+<div id="quiz"></div>
+</section>
+
+<div class="summary">
+<h2>一页带走</h2>
+<p class="chant">不记账的内存终会 OOM：批发报批发、占位进缓存、超支必有代价。</p>
+<p>· 内存三大户：memtable 族、block cache 族、table reader/WAL/临时缓冲——第三户默认不在缓存口径里，最易失控。</p>
+<p>· Arena 只批发：块 = min(write_buffer_size/8, 1MB) 对齐 4KB，报账按 malloc_usable_size；100 条 220B 实吃 1MB——OOM 时信批发量。</p>
+<p>· WBM 分级：7/8 软限排 flush（写不停）、总量 ≥ 预算且 allow_stall 硬限挂写队列；三层预算从单 memtable 到跨库共享。</p>
+<p>· CacheReservationManager：每 256KB 一条真占位条目进 block cache，超支挤的是 data block；3/4 滞回少折腾 LRU；strict 满则 MemoryLimit。</p>
+<p>· 三本账汇成一个口径：block cache 的 capacity——配够容量、WBM 挂账、reader 记账打开，全库内存就有了单一预算口。</p>
+</div>
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+<script>
+var STEPS=[
+{d:0,t:"① Arena 批发",x:"写入 100 条 200B 的记录：每条 key+值+8B 序号+跳表开销 ≈ 220B，零售 22KB。Arena 的动作：内联 2KB 块装满 → 直接批发一块 min(64MB/8, 1MB)=1MB（对齐 4KB）——进程实吃 ≈1MB，剩下 978KB 留给后续。超大请求（>块 1/4）不进块、单独 malloc，免得撑出碎片。",k:"实吃 ≈1MB"},
+{d:90,t:"② WBM 记账",x:"memtable 出生时挂一个 AllocTracker：Arena 每批发一块就 Allocate → WBM::ReserveMem 上报 1MB。注意口径：不是零售的 22KB，是批发的 1MB——OOM 排查时信后者。ConcurrentArena 每核 128KB 小配额让写路径几乎无锁，配额用尽才回主 Arena 进锁补货。",k:"水位 +1MB"},
+{d:180,t:"③ 用量爬升",x:"40MB/s 持续写入，水位一路爬。要害在预算结构：不配 db_write_buffer_size（默认 0=关）时，12 个列族 = 12 份独立预算，64MB×4×12 的理论上限没人管「总和」；WAL 的隐性预算还跟着 memtable 参数翻倍（max_total_wal_size 动态公式）。",k:"爬向 112MB"},
+{d:270,t:"④ 软限：排 flush",x:"活跃用量越过 112MB（7/8 × 128MB）→ ShouldFlush 触发：flush 排队，写不阻塞——后台开始赶工，flush 谁先挨刀由 WriteBufferFlushPolicy 定（最老 / 最大 / 跨库能释放最多的）。此刻写入还在涨：flush 速度 < 写入速度，账继续涨。",k:"软限触发"},
+{d:360,t:"⑤ 硬限：停写",x:"130MB ≥ 128MB 且 allow_stall=true → ShouldStall：写线程在 WriteBufferManagerStallWrites 挂起，后续写线程排在同一条队列后面，STALL_MICROS 开始计时。没开 allow_stall 这一步不发生——预算失去硬保证，写入继续冲，OOM 风险自负。",k:"STALL 计时"},
+{d:450,t:"⑥ flush 销账",x:"flush 落盘：SST 写成、immutable memtable 销毁 → AllocTracker::FreeMem → 用量降到 128MB 以下 → MaybeEndWriteStall 唤醒写队列，写入恢复。一轮完整的「软限赶工 → 硬限兜底 → 销账唤醒」闭环走完——代价是这一段的写延迟。",k:"回落 <128MB"},
+{d:540,t:"⑦ cache 记账",x:"换个户头：新开一个 SST，table reader 要 25MB（索引+常驻元数据）——默认这笔不在缓存口径里；打开记账后 MakeCacheReservation(25MB) 把它换算成 100 条 256KB 占位条目，逐条 Insert 进 block cache。占位是真条目：有键、有 charge、进 LRU。WBM 挂 cache 后 memtable 的账也走这条路。",k:"占位 25MB"},
+{d:630,t:"⑧ 驱逐自救",x:"cache 512MB 已用 500MB：每插一条占位，LRU 驱逐 256KB data block——index/filter 的内存挤的是同一个缓存，总量承诺 512MB 仍然成立；信号链是 BLOCK_CACHE_DATA_HITS 下跌 → STALL_MICROS 上升。strict=true 且全是 pinned 腾不出：MakeCacheReservation 直接报 MemoryLimit，打开这个 SST 失败。",k:"挤 data block"}];
+var CHIPS=[{k:"arena",l:"Arena"},{k:"wbm",l:"WBM"},{k:"stall",l:"闸门"},{k:"res",l:"占位"},{k:"victim",l:"被挤者"}];
+var PARTS={"arena":["arBlock","arInline"],"retail":["arRetail"],"conc":["arBlock"],"wbm":["gaugeFill","gaugeDot"],"soft":["softBox"],"hard":["hardBox"],"grid":["resGrid"],"hyst":["resHyst"],"strict":["chainB","resIdx"],"chain":["chainA","chainC"],"tl":["s0","s1","s2","s3"]};
+var QUIZ=[
+{q:"写入 100 条 200B 的记录（key+值各 100B），进程实际吃多少内存？",opts:["约 22KB，就是数据本身","约 1MB——Arena 按块批发，第一块就是 min(write_buffer_size/8,1MB)","约 100KB"],a:1,exp:"零售记账 22KB、批发记账 1MB，OOM 时信后者：AllocTracker 在每次 AllocateNewBlock 时上报的就是批发量。剩下的 978KB 留给后续写入。"},
+{q:"WBM 预算 128MB，软限线在哪、触发什么？",opts:["128MB，立刻停写","112MB（7/8）——ShouldFlush 触发 flush 排队，写不阻塞","64MB，切换 memtable"],a:1,exp:"软限的目的是让后台赶工追上写入；真正拦住写入的是硬限：总量 ≥ 预算且 allow_stall=true 才挂起写队列。"},
+{q:"「预算 128MB、已用 130MB、allow_stall=false」会发生什么？",opts:["写线程挂起","什么都不拦——硬限不生效，写入继续冲，预算失去硬保证","自动扩容到 256MB"],a:1,exp:"allow_stall 是硬限的开关。没开它，WBM 只剩软限的 flush 排队；flush 追不上时内存继续涨，OOM 风险自负——这是共享 WBM 部署必开 allow_stall 的原因。"},
+{q:"WBM 挂到 block cache 记账后，memtable 用量涨 1MB，缓存里发生什么？",opts:["什么都不发生，只是数字变化","多 4 条 256KB 占位条目，data block 可用空间等量减少——被挤的是 data block","缓存自动扩容 1MB"],a:1,exp:"占位条目是真条目：有键、有 charge、进 LRU。memtable 超支的代价自动转嫁为命中率下降（BLOCK_CACHE_DATA_HITS 下跌），而不是静默超内存。"},
+{q:"滞回（delayed_decrease）的 3/4 规则是为了什么？",opts:["省 CPU","防止用量抖动导致占位条目反复插拔折腾 LRU——96↔112MB 区间抖动时占位纹丝不动","提高命中率"],a:1,exp:"降到已预留量的 3/4 以下才释放。代价是多占一点额度（例中多占 16MB），换来 LRU 安稳——又一笔「批发式」的取舍。"},
+{q:"strict_capacity_limit=true 且占位记满、缓存全是 pinned，新开 SST 会怎样？",opts:["等一会再试","MakeCacheReservation 返回 MemoryLimit，打开这个 SST 直接失败（错误消息点名 kBlockBasedTableReader）","静默跳过记账"],a:1,exp:"strict 的语义就是「插不进就该报错而不是悄悄超支」。默认 false 是宁超一点内存也不让读路径失败；把缓存当总账本用时才开 true。"}];
+var WP=[[0,251,206],[76,251,206],[92,482,159],[176,482,159],[182,482,159],[262,482,159],[268,810,162],[352,810,162],[358,810,226],[442,810,226],[448,810,240],[532,810,240],[538,194,359],[638,194,359],[644,735,362],[720,735,362]];
+var WP2=[[0,140,54],[88,140,54],[92,362,54],[176,362,54],[182,594,54],[262,594,54],[268,843,54],[352,843,54],[358,843,54],[452,843,54],[458,594,54],[542,594,54],[548,140,54],[638,140,54],[644,140,54],[720,140,54]];
+var PERIOD=6000,basePeriod=PERIOD,PHASE_MAX=720,STEP_DUR=600;
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,stepIdx=-1,dots=[],ticking=false,chipEls={};
+function $(id){return document.getElementById(id);}
+function setText(id,s){var n=$(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setOp(id,v){var n=$(id);if(n)n.setAttribute('opacity',Math.max(0,Math.min(1,v)).toFixed(2));}
+function setAttr(id,k,v){var n=$(id);if(n)n.setAttribute(k,v);}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){t=clamp(t,0,1);return t*t*(3-2*t);}
+function ramp(th,a,b){return clamp((th-a)/((b-a)||1),0,1);}
+function win(pr,a,b){return clamp(ramp(pr,a,a+6)*(1-ramp(pr,b-6,b)),0,1);}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function lerpPts(pts,th){
+  if(th<=pts[0][0])return[pts[0][1],pts[0][2]];
+  for(var i=0;i<pts.length-1;i++){if(th<pts[i+1][0]){var t=smooth((th-pts[i][0])/(pts[i+1][0]-pts[i][0]));return[pts[i][1]+(pts[i+1][1]-pts[i][1])*t,pts[i][2]+(pts[i+1][2]-pts[i][2])*t];}}
+  return[pts[pts.length-1][1],pts[pts.length-1][2]];
+}
+function setChip(k,v){var n=chipEls[k];if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',/^(已|完成|批发|触发|STALL|占位|回填)/.test(v));n.classList.toggle('off',/^(待命|—|无)/.test(v));}
+function stageIdx(pr){var s=0;for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)s=i;}return s;}
+function pageRender(pr,si){
+  setOp('arRetail',win(pr,0,90)+0.3);
+  setOp('arInline',win(pr,0,90)+0.3);
+  setOp('arBlock',win(pr,20,110)+0.3);
+  setOp('gaugeFill',0.3+0.7*clamp(pr/400,0,1));
+  setOp('gaugeDot',win(pr,90,620)+0.3);
+  setOp('softBox',win(pr,270,365)+0.3);
+  setOp('hardBox',win(pr,360,460)+0.3);
+  setOp('resGrid',win(pr,540,635)+0.3);
+  setOp('resHyst',win(pr,540,640)+0.3);
+  setOp('resIdx',win(pr,540,640)+0.3);
+  setOp('chainA',win(pr,630,720)+0.3);
+  setOp('chainB',win(pr,630,720)+0.3);
+  setOp('chainC',win(pr,630,720)+0.3);
+  setOp('s0',win(pr,90,270)+0.3);
+  setOp('s1',win(pr,270,365)+0.3);
+  setOp('s2',win(pr,360,460)+0.3);
+  setOp('s3',win(pr,450,545)+0.3);
+  var level=pr<180?(pr<90?'1MB':'1MB + 爬升'):(pr<270?'爬向 112MB':(pr<360?'112~128MB':(pr<450?'130MB（硬限）':(pr<540?'<128MB（销账）':'cache 侧'))));
+  setText('roMem',level);
+  setText('roStall',pr<270?'无':(pr<360?'软限：flush 排队':(pr<450?'硬限：STALL 计时':(pr<540?'销账唤醒':'—'))));
+  setText('roRes',pr<540?'—':(pr<630?'25MB（100 格）':'滞回守护中'));
+  setChip('arena',pr<90?'待命':'已批发 1MB');
+  setChip('wbm',pr<90?'待命':(pr<270?'记账中':'水位监控'));
+  setChip('stall',pr<270?'待命':(pr<360?'软限触发':(pr<450?'STALL 计时':(pr<540?'销账唤醒':'无'))));
+  setChip('res',pr<540?'待命':'占位 25MB');
+  setChip('victim',pr<630?'待命':'data block 256KB/条');
+}
+function render(th){
+  var pr=norm(th);
+  setText('roPhase',Math.round(pr)+'°');
+  var si=stageIdx(pr);if(mode==='step'&&stepIdx>=0)si=stepIdx;
+  setText('roStep',STEPS[si]?STEPS[si].t:'—');
+  setText('roKey',STEPS[si]?STEPS[si].k:'—');
+  pageRender(pr,si);
+  var p=lerpPts(WP,pr);setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));
+  var q=lerpPts(WP2,pr);setAttr('tok2','cx',q[0].toFixed(1));setAttr('tok2','cy',q[1].toFixed(1));
+}
+function tick(now){
+  ticking=false;
+  var dt=Math.min(50,now-last);last=now;
+  if(run&&mode==='auto')phase=(phase+dt/PERIOD*PHASE_MAX)%PHASE_MAX;
+  if(mode==='step'&&stepTo!==null){
+    stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);var p=stepElapsed/STEP_DUR,e=smooth(p);
+    phase=stepFrom+(stepTo-stepFrom)*e;if(p>=1){phase=stepTo;stepTo=null;}
+  }
+  render(phase);
+  if(run||stepTo!==null){ticking=true;requestAnimationFrame(tick);}
+}
+function wake(){if(ticking)return;ticking=true;last=performance.now();requestAnimationFrame(tick);}
+function setAuto(on){
+  mode='auto';run=on;stepTo=null;var b=$('engBtn');if(b)b.textContent=on?'暂停':'播放';
+  if(on){stepIdx=-1;dots.forEach(function(d){d.classList.remove('on');});
+  setText('stepT','自动运转模式');setText('stepX','点下方步骤点可切换到分步演示，随你点击定格。');wake();}
+}
+window.goStep=function(i){
+  stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+  var target=STEPS[stepIdx].d;
+  if(reduced||Math.abs(target-norm(phase))>180){phase=target;stepTo=null;}
+  else{stepFrom=phase;stepTo=target;stepElapsed=0;}
+  render(phase);wake();
+  var b=$('engBtn');if(b)b.textContent='继续自动运转';
+  dots.forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+  setText('stepT','第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t);
+  setText('stepX',STEPS[stepIdx].x);
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+CHIPS.forEach(function(c){var box=$('stateChips');var s=document.createElement('span');s.className='chip';s.innerHTML=c.l+' <b>--</b>';box.appendChild(s);chipEls[c.k]=s;});
+var stepBar=$('stepBar');
+STEPS.forEach(function(s,n){var b=document.createElement('button');b.className='stepnode';b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+s.t+'</span>';b.onclick=function(){goStep(n);};stepBar.appendChild(b);dots.push(b);});
+var engBtn=$('engBtn');engBtn.textContent=run?'暂停':'播放';
+engBtn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+var spd=$('engSpd');
+if(spd){spd.oninput=function(){speed=parseFloat(spd.value);$('engSpdV').textContent=speed+'×';PERIOD=basePeriod/speed;};}
+document.querySelectorAll('.part').forEach(function(btn){btn.onclick=function(){var ids=(PARTS[btn.dataset.part]||[]);document.querySelectorAll('#eng .hl,#eng2 .hl').forEach(function(n){n.classList.remove('hl');});ids.forEach(function(id){var n=$(id);if(n)n.classList.add('hl');});};});
+var quizBox=$('quiz');QUIZ.forEach(function(q,n){var d=document.createElement('div');d.className='q';var html='<div class="qt">'+(n+1)+'. '+q.q+'</div>';q.opts.forEach(function(o,j){html+='<button class="opt" data-q="'+n+'" data-o="'+j+'">'+o+'</button>';});html+='<div class="exp"><b>答案：</b>'+q.opts[q.a]+'<br>'+q.exp+'</div>';d.innerHTML=html;quizBox.appendChild(d);});
+quizBox.querySelectorAll('.opt').forEach(function(b){b.onclick=function(){var q=QUIZ[+b.dataset.q];var box=b.closest('.q');if(box.classList.contains('done'))return;box.classList.add('done');b.classList.add(+b.dataset.o===q.a?'right':'wrong');box.querySelectorAll('.opt').forEach(function(o){if(+o.dataset.o===q.a)o.classList.add('right');});};});
+if(reduced){run=false;phase=0;render(0);engBtn.textContent='播放';}else{wake();}
+</script>
+</body>
+</html>

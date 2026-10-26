@@ -1,0 +1,147 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 710" width="1000" height="710" font-family="Microsoft YaHei, sans-serif">
+<defs>
+<marker id="vA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="vB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="vG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="vR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<rect x="0" y="0" width="1000" height="710" fill="#ffffff"/>
+<text x="500" y="34" font-size="20" fill="#1F1E1A" text-anchor="middle" font-weight="600">向量搜索与 ANN：JVector 的近邻搜索</text>
+<text x="500" y="56" font-size="12" fill="#6B695F" text-anchor="middle" font-weight="400">8 个二维点的近邻图：入口 P1 → 贪心跳邻居 → Top-3（P6/P5/P4）；下面两条线看向量索引怎么嵌进第 11 章的纪律</text>
+<text x="976" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">橙色：写入 / 建图</text>
+<text x="976" y="42" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">蓝色：贪心 / 查询路径</text>
+<text x="976" y="58" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色：真 Top-3 / 落盘</text>
+<text x="976" y="74" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">红色：近似丢的 / 限制</text>
+
+<!-- ============ 左：8 点近邻图 ============ -->
+<rect x="28" y="88" width="404" height="272" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.3"/>
+<text x="42" y="110" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">① 8 个点建成一张近邻图（M=2~3，示意）</text>
+<text x="42" y="126" font-size="10" fill="#6B695F" text-anchor="start">坐标 = embedding 列的值；边是建图时采样连的（M 默认 16，IndexWriterConfig:41）</text>
+<line x1="80" y1="300" x2="410" y2="300" stroke="#D3D1C7" stroke-width="1"/>
+<line x1="80" y1="150" x2="410" y2="150" stroke="#ECEAE2" stroke-width="1" stroke-dasharray="3 3"/>
+<line x1="80" y1="225" x2="410" y2="225" stroke="#ECEAE2" stroke-width="1" stroke-dasharray="3 3"/>
+<line x1="245" y1="140" x2="245" y2="305" stroke="#ECEAE2" stroke-width="1" stroke-dasharray="3 3"/>
+<line x1="162" y1="140" x2="162" y2="305" stroke="#ECEAE2" stroke-width="1" stroke-dasharray="3 3"/>
+<line x1="327" y1="140" x2="327" y2="305" stroke="#ECEAE2" stroke-width="1" stroke-dasharray="3 3"/>
+<!-- 边（灰） -->
+<line x1="94" y1="122" x2="145" y2="144" stroke="#B4B2A9" stroke-width="1.1"/>
+<line x1="94" y1="122" x2="179" y2="111" stroke="#B4B2A9" stroke-width="1.1"/>
+<line x1="145" y1="144" x2="179" y2="111" stroke="#B4B2A9" stroke-width="1.1"/>
+<line x1="145" y1="144" x2="213" y2="199" stroke="#B4B2A9" stroke-width="1.1"/>
+<line x1="179" y1="111" x2="264" y2="155" stroke="#B4B2A9" stroke-width="1.1"/>
+<line x1="213" y1="199" x2="264" y2="155" stroke="#B4B2A9" stroke-width="1.1"/>
+<line x1="213" y1="199" x2="298" y2="210" stroke="#B4B2A9" stroke-width="1.1"/>
+<line x1="264" y1="155" x2="298" y2="210" stroke="#B4B2A9" stroke-width="1.1"/>
+<line x1="264" y1="155" x2="366" y2="133" stroke="#B4B2A9" stroke-width="1.1"/>
+<line x1="298" y1="210" x2="332" y2="276" stroke="#B4B2A9" stroke-width="1.1"/>
+<line x1="332" y1="276" x2="366" y2="133" stroke="#B4B2A9" stroke-width="1.1"/>
+<!-- 贪心路径（蓝） -->
+<path d="M94 122 L145 144" fill="none" stroke="#2F6FA8" stroke-width="2.2" marker-end="url(#vB)"/>
+<path d="M145 144 L213 199" fill="none" stroke="#2F6FA8" stroke-width="2.2" marker-end="url(#vB)"/>
+<path d="M213 199 L298 210" fill="none" stroke="#2F6FA8" stroke-width="2.2" marker-end="url(#vB)"/>
+<!-- 节点 -->
+<circle cx="94" cy="122" r="12" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.8"/>
+<text x="94" y="126" font-size="9.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">P1</text>
+<text x="94" y="104" font-size="9.5" fill="#C46A0A" text-anchor="middle" font-weight="600">入口E</text>
+<circle cx="145" cy="144" r="12" fill="#ffffff" stroke="#3B3A34" stroke-width="1.5"/>
+<text x="145" y="148" font-size="9.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">P2</text>
+<circle cx="179" cy="111" r="12" fill="#ffffff" stroke="#3B3A34" stroke-width="1.5"/>
+<text x="179" y="115" font-size="9.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">P3</text>
+<circle cx="213" cy="199" r="14" fill="#EAF3DE" stroke="#639922" stroke-width="2"/>
+<text x="213" y="203" font-size="9.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">P4</text>
+<circle cx="264" cy="155" r="14" fill="#EAF3DE" stroke="#639922" stroke-width="2"/>
+<text x="264" y="159" font-size="9.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">P5</text>
+<circle cx="298" cy="210" r="14" fill="#EAF3DE" stroke="#639922" stroke-width="2.4"/>
+<text x="298" y="214" font-size="9.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">P6</text>
+<circle cx="332" cy="276" r="12" fill="#ffffff" stroke="#3B3A34" stroke-width="1.5"/>
+<text x="332" y="280" font-size="9.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">P7</text>
+<circle cx="366" cy="133" r="12" fill="#ffffff" stroke="#3B3A34" stroke-width="1.5"/>
+<text x="366" y="137" font-size="9.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">P8</text>
+<!-- 查询点 q -->
+<path d="M298 166 L303 179 L317 179 L306 188 L310 201 L298 193 L286 201 L290 188 L279 179 L293 179 Z" fill="#EF9F27" stroke="#D97E06" stroke-width="1.4"/>
+<text x="322" y="176" font-size="10.5" fill="#854F0B" text-anchor="middle" font-weight="600">q=(0.70,0.55)</text>
+<text x="298" y="238" font-size="10" fill="#639922" text-anchor="middle" font-weight="600">真 Top-3：P6(0.05) P5(0.22) P4(0.25)</text>
+<text x="42" y="340" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">图例：橙心=入口 P1｜★=查询 q｜绿圈=真 Top-3｜蓝箭头=贪心跳转 P1→P2→P4→P6（d 递减：0.69→0.52→0.25→0.05）</text>
+<text x="42" y="356" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">边的采样性：若 P2↔P4 这条边不存在（建图顺序的运气），贪心卡在 P2，Top-3 recall 从 3/3 掉到 1/3——这就是「近似」丢的东西</text>
+
+<!-- ============ 右：手算卡 ============ -->
+<rect x="446" y="88" width="526" height="272" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.3"/>
+<text x="460" y="110" font-size="13" fill="#2F6FA8" text-anchor="start" font-weight="600">② 手算：贪心查找 Top-3 的每一步（SELECT … ORDER BY embedding ANN OF [0.70,0.55] LIMIT 3）</text>
+<rect x="460" y="122" width="248" height="222" rx="8" fill="#ffffff" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="474" y="144" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">真距离表 d(q, ·)（全扫才能拿到的答案）</text>
+<text x="474" y="164" font-size="10.5" fill="#639922" text-anchor="start" font-weight="600">P6 = 0.05　　P5 ≈ 0.22　　P4 = 0.25</text>
+<text x="474" y="182" font-size="10.5" fill="#3B3A34" text-anchor="start">P8 ≈ 0.36　　P7 ≈ 0.36</text>
+<text x="474" y="200" font-size="10.5" fill="#3B3A34" text-anchor="start">P2 ≈ 0.52　　P3 ≈ 0.53　　P1 ≈ 0.69</text>
+<text x="474" y="226" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">贪心轨迹（只看邻居，不看全表）</text>
+<text x="474" y="246" font-size="10.5" fill="#2F6FA8" text-anchor="start" font-weight="600">P1(0.69) → P2(0.52) → P4(0.25) → P6(0.05) 停</text>
+<text x="474" y="264" font-size="10.5" fill="#3B3A34" text-anchor="start">P6 的邻居 0.25/0.22/0.36 无一更近 → 局部最优</text>
+<text x="474" y="288" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">本例收账</text>
+<text x="474" y="308" font-size="10.5" fill="#3B3A34" text-anchor="start">访问 5 点 / 算 12 次距离（全扫 8 次，真实表 100 万次）</text>
+<text x="474" y="326" font-size="10.5" fill="#639922" text-anchor="start" font-weight="600">Top-3 = P6/P5/P4，recall 3/3（本例运气好）</text>
+<rect x="718" y="122" width="240" height="222" rx="8" fill="#ffffff" stroke="#E24B4A" stroke-width="1.2"/>
+<text x="732" y="144" font-size="11.5" fill="#E24B4A" text-anchor="start" font-weight="600">为什么可以不精确：两笔账</text>
+<text x="732" y="166" font-size="10.5" fill="#3B3A34" text-anchor="start">精确扫：100 万 × 512 维 ≈ 10.4 亿次</text>
+<text x="732" y="182" font-size="10.5" fill="#3B3A34" text-anchor="start">浮点运算/查询 + 摸 2GB 向量；</text>
+<text x="732" y="198" font-size="10.5" fill="#3B3A34" text-anchor="start">图搜：访问 1%~5% 节点，recall 95%+</text>
+<text x="732" y="222" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="600">recall 损耗的两个来源</text>
+<text x="732" y="242" font-size="10.5" fill="#3B3A34" text-anchor="start">① 边的采样性：邻居是建图时挑的，</text>
+<text x="732" y="258" font-size="10.5" fill="#3B3A34" text-anchor="start">　不保证「最近 16 个」的全集；</text>
+<text x="732" y="274" font-size="10.5" fill="#3B3A34" text-anchor="start">② PQ 有损压缩：短码粗算会排错名次</text>
+<text x="732" y="290" font-size="10.5" fill="#3B3A34" text-anchor="start">　（512 维 2KB → 短码 ~32B，约 64×）</text>
+<text x="732" y="314" font-size="10.5" fill="#6B695F" text-anchor="start">候选放大补偿：LIMIT 3 时 LATENCY 问图</text>
+<text x="732" y="330" font-size="10.5" fill="#6B695F" text-anchor="start">要 10 个、RECALL 要 19 个再收敛（OptimizeFor）</text>
+
+<!-- ============ 中：写入与落盘 ============ -->
+<rect x="28" y="372" width="944" height="120" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.3"/>
+<text x="42" y="394" font-size="13" fill="#C46A0A" text-anchor="start" font-weight="600">写入与落盘：结构全新（图），纪律照旧（第 11 章三步）</text>
+<rect x="42" y="406" width="280" height="72" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="56" y="426" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">③ INSERT 向量 → 内存图</text>
+<text x="56" y="444" font-size="10" fill="#6B695F" text-anchor="start">VectorMemoryIndex.add:90 → OnHeapGraph.add:102</text>
+<text x="56" y="460" font-size="10" fill="#6B695F" text-anchor="start">当场插节点连边（JVector GraphIndexBuilder）</text>
+<text x="56" y="474" font-size="10" fill="#6B695F" text-anchor="start">memtable 切换时预建（Manager:55-59）</text>
+<path d="M322 442 L340 442" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#vA)"/>
+<rect x="344" y="406" width="288" height="72" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="358" y="426" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">④ flush：segment 图文件落盘</text>
+<text x="358" y="444" font-size="10" fill="#6B695F" text-anchor="start">OnDiskGraphIndex.write（OnHeapGraph:378）</text>
+<text x="358" y="460" font-size="10" fill="#6B695F" text-anchor="start">+ CompressedVectors（PQ，&lt;1024 行跳过 :78）</text>
+<text x="358" y="474" font-size="10" fill="#6B695F" text-anchor="start">文件名同款 -SAI+aa+users_vec_idx+…</text>
+<path d="M632 442 L650 442" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#vA)"/>
+<rect x="654" y="406" width="302" height="72" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="668" y="426" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">⑤ 压缩：两图合并重建</text>
+<text x="668" y="444" font-size="10" fill="#6B695F" text-anchor="start">图不能拼接只能重建（比普通列贵）</text>
+<text x="668" y="460" font-size="10" fill="#6B695F" text-anchor="start">换：数据集中后邻居选择余地更大、图更好</text>
+<text x="668" y="474" font-size="10" fill="#6B695F" text-anchor="start">posting 桥不变：VectorPostings 向量→主键</text>
+
+<!-- ============ 下：查询时间线 ============ -->
+<rect x="28" y="504" width="944" height="124" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.3"/>
+<text x="42" y="526" font-size="13" fill="#2F6FA8" text-anchor="start" font-weight="600">查询时间线：ORDER BY … ANN OF … LIMIT k 的一趟（isTopK 分岔，Searcher:133-152）</text>
+<rect x="42" y="538" width="168" height="76" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="56" y="558" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">⑥ 语法与校验</text>
+<text x="56" y="576" font-size="10" fill="#6B695F" text-anchor="start">Parser.g:545 ANN OF</text>
+<text x="56" y="592" font-size="10" fill="#6B695F" text-anchor="start">LIMIT ≤ 1000（validate:578）</text>
+<text x="56" y="608" font-size="10" fill="#E24B4A" text-anchor="start">CL 只许 ONE/LOCAL_ONE</text>
+<path d="M210 576 L226 576" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#vB)"/>
+<rect x="230" y="538" width="220" height="76" rx="8" fill="#ffffff" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="244" y="558" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">⑦ 候选放大 topKFor</text>
+<text x="244" y="576" font-size="10" fill="#6B695F" text-anchor="start">LATENCY：f(1)=5.0 → LIMIT 3 要 10 个</text>
+<text x="244" y="592" font-size="10" fill="#6B695F" text-anchor="start">RECALL：f(1)=10.0 → LIMIT 3 要 19 个</text>
+<text x="244" y="608" font-size="10" fill="#6B695F" text-anchor="start">（OptimizeFor:34-35 两条公式）</text>
+<path d="M450 576 L466 576" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#vB)"/>
+<rect x="470" y="538" width="220" height="76" rx="8" fill="#ffffff" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="484" y="558" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">⑧ 图搜或暴力（分岔）</text>
+<text x="484" y="576" font-size="10" fill="#6B695F" text-anchor="start">DiskAnn.search:96 贪心跳邻居</text>
+<text x="484" y="592" font-size="10" fill="#6B695F" text-anchor="start">行太少 → 暴力扫（:163-178/:356）</text>
+<text x="484" y="608" font-size="10" fill="#6B695F" text-anchor="start">带范围 → ordinal 位集圈行再搜</text>
+<path d="M690 576 L706 576" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#vB)"/>
+<rect x="710" y="538" width="246" height="76" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="724" y="558" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">⑨ 分数归并收敛 → 返回</text>
+<text x="724" y="576" font-size="10" fill="#6B695F" text-anchor="start">ordinal→rowId→主键（ordinalsMap/postings）</text>
+<text x="724" y="592" font-size="10" fill="#6B695F" text-anchor="start">VectorTopKProcessor:93-126 分数队列</text>
+<text x="724" y="608" font-size="10" fill="#639922" text-anchor="start" font-weight="600">10（或 19）→ 3，按主键序吐给上层</text>
+
+<!-- ============ 底部总结 ============ -->
+<rect x="28" y="638" width="944" height="40" rx="8" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="44" y="656" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">一张图的一句话：全序索引帮不上距离空间——近邻图用「采样连边 + 贪心跳转」换掉 10 亿次浮点；而 flush、压缩、posting 回表这些纪律，全是第 11 章的旧规矩。</text>
+<text x="44" y="672" font-size="11" fill="#6B695F" text-anchor="start">对照 RocksDB：它只管 byte-wise 全序，向量检索要靠 Faiss+RocksDB 拼装（图是图、账本是账）；Cassandra 把距离空间收编为一种列型 + 一种 SAI。</text>
+<text x="28" y="700" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">数据来源：index/sai/disk/v1/segment/VectorIndexSegmentSearcher.java:112-127、356-368 · index/sai/disk/v1/vector/OnHeapGraph.java:78、378、415-427 · index/sai/disk/v1/vector/OptimizeFor.java:34-35 · index/sai/memory/VectorMemoryIndex.java:72-107（apache/cassandra master，7.0-SNAPSHOT；图索引本体来自外部库 io.github.jbellis:jvector）</text>
+</svg>

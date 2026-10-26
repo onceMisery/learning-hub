@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SSTable 与压缩 · Cassandra 互动原理实验室 第 3 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:960px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:720px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:600;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:12px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:600;fill:#1F1E1A}
+.tag{font-size:10.5px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:66px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+.modebar{display:flex;align-items:center;gap:8px;margin:6px 4px 0;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.modebar .mlabel{font-weight:600;color:#3B3A34}
+.modebtn{padding:5px 12px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:12.5px;cursor:pointer;font-family:inherit}
+.modebtn:hover{border-color:#888780}
+.modebtn.on{background:#FFF6E8;border-color:#EF9F27;color:#854F0B;font-weight:600}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .outbranch{display:inline-flex;flex-direction:column;align-items:flex-start;gap:6px}
+.flow .outline{display:inline-flex;align-items:center;gap:8px}
+.flow .flownote{font-size:12px;color:#6B695F;font-weight:600;margin-right:4px}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 10px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+#eng [opacity]{transition:opacity .28s ease}
+#eng2 [opacity]{transition:opacity .28s ease}
+@media (prefers-reduced-motion: reduce){#eng [opacity],#eng2 [opacity]{transition:none}}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:8px 4px 0;font-size:12px;color:#6B695F}
+.legend i{display:inline-block;width:18px;height:0;border-top:2px solid #C46A0A;vertical-align:middle;margin-right:5px}
+.legend i.g{border-color:#639922}
+.legend i.r{border-color:#E24B4A}
+.legend i.dash{border-top-style:dashed}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：SSTable 与压缩：磁盘上的不可变账本</a>
+  <span class="idx">第 3 / 15 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · SSTABLE &amp; COMPACTION</div>
+<h1>磁盘上的不可变账本与后台并账</h1>
+<p>Memtable 满 → flush 出一本不可变 SSTable → 多本账被压缩归并、旧版本被丢弃 → 墓碑要等 gc_grace 过线才能真正退场。id=47 的 4 份痕迹走完整个收敛，STCS 与 LCS 两种并账图纸可切换。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span>
+<span class="mnode">② 静态分解</span>
+<span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span>
+<span class="mnode">⑤ 环境场景</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 560" role="img" xmlns="http://www.w3.org/2000/svg"><title>SSTable 与压缩</title><defs><marker id="flw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="flwG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="flwR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker></defs><text class="th" x="500" y="22" text-anchor="middle">写完封账、后台并账：id=47 的 4 份痕迹怎么收敛</text><text class="ts" x="500" y="40" text-anchor="middle">绿色是盘上账本，橙色是写入与触发，红色是墓碑；STCS 凑批与 LCS 层级两张图纸可切换</text><text x="990" y="22" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">橙色：写入 / 触发</text><text x="990" y="38" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色：SSTable / 归并</text><text x="990" y="54" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">红色：墓碑 / 删除</text><g id="memBox"><rect x="28" y="58" width="190" height="96" rx="9" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="123" y="80" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">Memtable（users 表）</text><text id="mt1" x="123" y="102" font-size="10" fill="#3B3A34" text-anchor="middle" font-weight="400">id=47 age=32（ts=3002）</text><text id="mt2" x="123" y="122" font-size="10" fill="#E24B4A" text-anchor="middle" font-weight="400">id=47 删除墓碑（ts=4008）</text><text x="123" y="142" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">满则封账 flush（第 2 章的交接点）</text></g><path id="flushArrow" d="M218 106 L254 106" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><g id="shelf"><rect x="262" y="46" width="710" height="118" rx="9" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/><text x="274" y="64" font-size="11" fill="#6B695F" text-anchor="start" font-weight="600">盘上的账本架（SSTable · 写完一个字节都不改）</text></g><g id="b1"><rect x="276" y="72" width="164" height="80" rx="7" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/><text x="286" y="90" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="600">SSTable-00001</text><text x="286" y="107" font-size="9.5" fill="#3B3A34" text-anchor="start" font-weight="400">47 阿福@1001</text><text x="286" y="123" font-size="9.5" fill="#3B3A34" text-anchor="start" font-weight="400">47 阿福2@1005</text><text x="286" y="139" font-size="9.5" fill="#3B3A34" text-anchor="start" font-weight="400">48 大壮@2001</text></g><g id="b2"><rect x="452" y="72" width="164" height="80" rx="7" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/><text x="462" y="90" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="600">SSTable-00002</text><text x="462" y="107" font-size="9.5" fill="#3B3A34" text-anchor="start" font-weight="400">47 age=32@3002</text><text x="462" y="123" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">（第 2 章之后的新账）</text></g><g id="b3"><rect x="628" y="72" width="164" height="80" rx="7" fill="#FFF6E8" stroke="#E24B4A" stroke-width="1.3"/><text x="638" y="90" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="600">SSTable-00003</text><text x="638" y="107" font-size="9.5" fill="#E24B4A" text-anchor="start" font-weight="400">47× 墓碑@4008</text><text x="638" y="123" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">（删除也是一笔写入）</text></g><g id="b4"><rect x="804" y="72" width="156" height="80" rx="7" fill="#EAF3DE" stroke="#639922" stroke-width="1.3" stroke-dasharray="6 4"/><text x="814" y="90" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="600">SSTable-00004</text><text x="814" y="107" font-size="9.5" fill="#E24B4A" text-anchor="start" font-weight="400">47× 墓碑@4008</text><text x="814" y="123" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">（归并产出，其余已清）</text></g><text id="flushNote" x="28" y="184" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">每次 flush = 印一本新书；勘误从不改旧书，只印新版（文件名里的 id 越大账越新，Descriptor.java:56）。</text><text x="28" y="208" font-size="13" fill="#639922" text-anchor="start" font-weight="600">压缩归并：CompactionManager 派活，CompactionIterator 逐键裁决（④⑤）</text><g id="mergeBox"><rect x="28" y="216" width="690" height="116" rx="9" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="40" y="238" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">输入（只读旧账）</text><text id="in1" x="40" y="260" font-size="10" fill="#3B3A34" text-anchor="start" font-weight="400">00001：47@1001、47@1005、48@2001 …</text><text id="in2" x="40" y="280" font-size="10" fill="#3B3A34" text-anchor="start" font-weight="400">00002：47@3002 …</text><text id="in3" x="40" y="300" font-size="10" fill="#E24B4A" text-anchor="start" font-weight="400">00003：47× 墓碑@4008 …</text><text x="430" y="238" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">逐键裁决规则</text><text id="rule1" x="430" y="260" font-size="10" fill="#3B3A34" text-anchor="start" font-weight="400">同一 cell：时间戳新的压过旧的</text><text id="rule2" x="430" y="280" font-size="10" fill="#3B3A34" text-anchor="start" font-weight="400">47@1001 / 1005 / 3002 被压住 → 丢弃</text><text id="rule3" x="430" y="300" font-size="10" fill="#E24B4A" text-anchor="start" font-weight="400">墓碑@4008：gc_grace 未过 → 只能搬不能清</text></g><path id="mergeArrow" d="M718 274 L748 274" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flwG)"/><g id="outBox"><rect x="752" y="216" width="220" height="116" rx="9" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="862" y="238" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">⑥ 原子替换换账</text><text x="862" y="258" font-size="10" fill="#3B3A34" text-anchor="middle" font-weight="400">SSTable-00004 上岗</text><text x="862" y="276" font-size="10" fill="#3B3A34" text-anchor="middle" font-weight="400">id=47 只剩墓碑 1 份</text><text x="862" y="294" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">00001~00003 整本退役回收</text><text x="862" y="312" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">换账瞬间读路径才切换</text></g><text x="28" y="356" font-size="13" fill="#6B695F" text-anchor="start" font-weight="600">两张并账图纸（可切换）：策略决定「几本账凑一次、并成什么形状」</text><g id="stcsCard"><rect x="28" y="364" width="300" height="84" rx="9" fill="#FBFAF6" stroke="#C46A0A" stroke-width="1.4"/><text x="40" y="386" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">STCS（出厂默认）</text><text x="40" y="406" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">min/max_threshold = 4 / 32（CompactionParams.java:82-83）</text><text x="40" y="422" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">相似 = 大小同处 0.5~1.5 倍带（50MB 起批）</text><text x="40" y="438" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">写放大低、读放大高：同键散在多本账里</text></g><g id="lcsCard"><rect x="340" y="364" width="300" height="84" rx="9" fill="#FBFAF6" stroke="#2F6FA8" stroke-width="1.4"/><text x="352" y="386" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">LCS</text><text x="352" y="406" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">sstable_size_in_mb = 160、fanout_size = 10</text><text x="352" y="422" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">L1+ 层内不重叠：点查每层至多问 1 本</text><text x="352" y="438" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">L0 攒超 32 本触发保护性 STCS（LeveledManifest.java:63）</text></g><g id="otherCard"><rect x="652" y="364" width="320" height="84" rx="9" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.2"/><text x="664" y="386" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">另有两种图纸</text><text x="664" y="406" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">TWCS：按时间窗（默认 1 天），TTL 整本过期直接丢</text><text x="664" y="422" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">UCS（5.0+，CEP-26）：N/L/T 统一参数自动选形状</text><text x="664" y="438" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">选账 = 在读放大与写放大之间分配</text></g><text x="28" y="472" font-size="12.5" fill="#E24B4A" text-anchor="start" font-weight="600">墓碑的物理清除要过 gc_grace（默认 864000s = 10 天，TableParams.java:446）</text><line x1="60" y1="496" x2="950" y2="496" stroke="#3B3A34" stroke-width="1.5" marker-end="url(#flw)"/><g id="gcDel"><circle cx="150" cy="496" r="5" fill="#E24B4A"/><text x="150" y="486" font-size="10" fill="#E24B4A" text-anchor="middle" font-weight="600">10-25 14:00 删除@4008</text></g><rect id="gcBand" x="150" y="484" width="620" height="24" fill="#FFF6E8" stroke="#E24B4A" stroke-width="1"/><text x="460" y="501" font-size="10" fill="#E24B4A" text-anchor="middle" font-weight="400">gc_grace 十天窗口：压缩只搬运墓碑，不清除</text><g id="gcPurge"><circle cx="820" cy="496" r="5" fill="#639922"/><text x="820" y="478" font-size="10" fill="#639922" text-anchor="middle" font-weight="600">11-04 14:01 gcBefore 过线</text></g><text x="60" y="522" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">gcBefore = now − 864000s（ColumnFamilyStore.java:2071）；还需归并输入覆盖全部更老数据（CompactionController.java:249-261）</text><text x="60" y="538" font-size="10" fill="#639922" text-anchor="start" font-weight="400">过线 + 无遮挡 → 墓碑清除，id=47 盘上痕迹收敛为 0 份（图中绿色终点）</text><text x="28" y="554" font-size="9.5" fill="#B4B2A9" text-anchor="start" font-weight="400">源码：db/compaction/CompactionManager.java:248 · CompactionIterator.java:148 · CompactionController.java:249-261 · schema/CompactionParams.java:82-83（7.0-SNAPSHOT）</text><circle id="tok" cx="-20" cy="-20" r="8" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/></svg>
+<svg id="eng2" viewBox="0 0 1000 180" role="img" xmlns="http://www.w3.org/2000/svg"><text x="40" y="26" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">相位总线：自动与分步共用同一进度</text><text x="960" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">0° → 720°</text><rect id="seg0" x="40" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="89.1" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">写入</text><text x="89.1" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">0°</text><rect id="seg1" x="142.2" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="191.3" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">写墓碑</text><text x="191.3" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">80°</text><rect id="seg2" x="244.4" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="293.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">flush #2</text><text x="293.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">160°</text><rect id="seg3" x="346.7" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="395.8" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">flush #3</text><text x="395.8" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">240°</text><rect id="seg4" x="448.9" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="498" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">策略评估</text><text x="498" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">320°</text><rect id="seg5" x="551.1" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="600.2" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">归并裁决</text><text x="600.2" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">400°</text><rect id="seg6" x="653.3" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="702.4" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">换账</text><text x="702.4" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">480°</text><rect id="seg7" x="755.6" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="804.7" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">gc 窗口</text><text x="804.7" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">560°</text><rect id="seg8" x="857.8" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="906.9" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">墓碑退场</text><text x="906.9" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">640°</text><line id="subNow" x1="40" y1="44" x2="40" y2="126" stroke="#C46A0A" stroke-width="2"/><text x="500" y="152" font-size="11" fill="#6B695F" text-anchor="middle" font-weight="400">每格是一个可定格的关键时刻；分步时所有视图冻结到同一相位。</text></svg>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 轮 / 6.6 秒</span>
+</div>
+
+<div class="modebar">
+<span class="mlabel">并账图纸：</span>
+<button class="modebtn on" id="mStcs">STCS（默认 4/32）</button>
+<button class="modebtn" id="mLcs">LCS（160MB 分层）</button>
+<span id="stratHint">STCS：3 本相似账先攒着，凑满 min_threshold=4 才并（演示假定第 4 本已来齐）。</span>
+</div>
+
+<div class="readout">
+<span class="ro">相位 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">盘上账本 <b id="roBooks">--</b></span>
+<span class="ro">id=47 痕迹 <b id="roTrace">--</b></span>
+<span class="ro">墓碑 <b id="roTomb">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav">
+<button class="btn" onclick="prevStep()">‹ 上一步</button>
+<button class="btn warn" onclick="nextStep()">下一步 ›</button>
+</span>
+</div>
+<div class="legend"><span><i></i>写入 / 触发</span><span><i class="g"></i>SSTable / 归并 / 换账</span><span><i class="r"></i>墓碑 / 删除</span><span><i class="dash"></i>未来才出现的新账</span></div>
+<p class="figcap">进度 0° = id=47 的第三版写入 Memtable，720° = 墓碑过线退场、id=47 盘上收敛为 0 份；分步定格的是关键时刻，不代表真实耗时。<br>口径：apache/cassandra master（7.0-SNAPSHOT）；出厂默认 STCS min/max_threshold=4/32、gc_grace_seconds=864000（10 天）；演示把「凑满第 4 本」并入归并步骤。</p>
+</div>
+</div>
+
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：先把它当黑盒</h2></div>
+<p class="sec-sub">不急着拆类，只看它对外表现出什么。</p>
+<div class="quote"><i>先把系统当黑盒：只看输入、输出和边界，不急着解释内部。</i></div>
+
+<p>站在使用者的角度，这一层对外的表现是三句话：<b>写永远快</b>——落盘是后台的事；<b>读偶尔变慢</b>——账本越攒越多、点查要问的本数在涨；<b>删除不立刻腾空间</b>——盘上个头纹丝不动，要等很久才缩。三件事指向同一个后台角色：压缩（compaction，是并账，不是文件压缩）。</p>
+<div class="flow">
+<span class="node">Memtable 满</span><span class="arr">→</span>
+<span class="node box">flush 出一本不可变 SSTable</span>
+<span class="outbranch">
+<span class="outline"><span class="arr">→</span><span class="node">账本架上越攒越多</span><span class="arr">→</span><span class="node">压缩归并收敛</span></span>
+<span class="outline"><span class="arr">↳</span><span class="node">墓碑另等 gc_grace 过线</span></span>
+</span>
+</div>
+<p>黑盒承诺：写路径永远不等旧账；同一行数据的多个版本由压缩负责收敛；删除在逻辑上立即生效（读时被墓碑压住），物理上晚十天。它不承诺「磁盘占用恒等于数据量」——合并期间新旧账并存，空间一度翻倍是正常形态。</p>
+<p>先记住一个反直觉的点：<b>SSTable 写完之后一个字节都不会再改</b>。下一节拆开看这本账的组成。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：部件各管什么</h2></div>
+<p class="sec-sub">先把结构钉住，再让时间进来。点下面的部件卡，动画里对应部分会亮起。</p>
+<div class="quote"><i>结构分解要 MECE：同一层只放同一粒度的部件。</i></div>
+<div class="figure"><svg viewBox="0 0 920 250" role="img" xmlns="http://www.w3.org/2000/svg"><text x="460" y="22" font-size="15" fill="#1F1E1A" text-anchor="middle" font-weight="600">一本账、一架账、一条并账流水线</text><text x="460" y="42" font-size="11.5" fill="#6B695F" text-anchor="middle" font-weight="400">账本是组文件，账本架越攒越多，压缩负责收敛，墓碑另有时间表</text><rect x="20" y="62" width="280" height="100" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="34" y="86" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">① 一本 SSTable = 一组组件文件</text><text x="34" y="106" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">Data.db 正文 · Index.db 页码表</text><text x="34" y="122" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">Summary.db 堆内书签（1/128 抽样）</text><text x="34" y="138" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">Filter.db 布隆名单 · TOC.txt 目录</text><text x="34" y="154" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">SSTableFormat.java:158-170</text><rect x="330" y="62" width="280" height="100" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="344" y="86" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">② 账本架（不可变集合）</text><text x="344" y="106" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">flush 一次多一本；id 越大账越新</text><text x="344" y="122" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">写完一个字节都不改</text><text x="344" y="138" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">读时从新到旧逐本问</text><text x="344" y="154" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">Descriptor.java:56</text><rect x="640" y="62" width="260" height="100" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="654" y="86" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">③ 压缩流水线</text><text x="654" y="106" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">CompactionManager 派活（:248）</text><text x="654" y="122" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">CompactionIterator 归并裁决</text><text x="654" y="138" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">新账上岗 · 旧账退役</text><text x="654" y="154" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">CompactionIterator.java:148</text><path d="M300 112 L326 112" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><path d="M610 112 L636 112" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><rect x="20" y="180" width="880" height="52" rx="10" fill="#FFF6E8" stroke="#E24B4A" stroke-width="1.2"/><text x="460" y="202" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">④ 墓碑 DeletionTime：markedForDeleteAt（压旧版本）+ localDeletionTime（何时可清）</text><text x="460" y="222" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">清除双条件：gc_grace（默认 864000s）过线 + 归并输入覆盖全部更老数据（CompactionController.java:249-261）</text></svg></div>
+<div class="partgroup"><div class="gname">账本与写入</div><div class="parts"><button class="part" data-part="mem"><b>1. Memtable</b><span>age=32 与删除墓碑先进这里；满则封账 flush。</span></button><button class="part" data-part="shelf"><b>2. 账本架</b><span>00001~00003：同一行数据的痕迹散在各本账里。</span></button></div></div><div class="partgroup"><div class="gname">并账流水线</div><div class="parts"><button class="part" data-part="merge"><b>3. 归并裁决</b><span>逐键比时间戳：旧版本丢弃，墓碑按 gc_grace 决定去留。</span></button><button class="part" data-part="out"><b>4. 换账</b><span>原子替换：新账上岗、旧账退役，读路径瞬间切换。</span></button></div></div><div class="partgroup"><div class="gname">图纸与时间表</div><div class="parts"><button class="part" data-part="stcs"><b>5. STCS 图纸</b><span>凑满 4 本相似大小才并（min/max=4/32）。</span></button><button class="part" data-part="lcs"><b>6. LCS 图纸</b><span>160MB 分层、层内不重叠，每层点查至多 1 本。</span></button><button class="part" data-part="gc"><b>7. gc_grace 时间轴</b><span>十天窗口：给失联副本归队时间，防止已删数据复活。</span></button></div></div>
+<p class="hint">静态图与动画共用同一套编号和口径；把动画暂停，它就是一张可打印的结构图。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：一步一停看顺序</h2></div>
+<p class="sec-sub">重点不是记住箭头，而是记住每一步「谁在等谁」。</p>
+<div class="quote"><i>动态分析看三件事：顺序、状态、触发条件。</i></div>
+
+<table class="grid">
+<tr><th>相位</th><th>谁在等谁</th><th>失败会怎样</th></tr>
+<tr><td>写入 / 写墓碑</td><td>写线程等 Memtable 接客</td><td>内存胀满 → flush 跟不上，见第 2 章</td></tr>
+<tr><td>flush #2 / #3</td><td>flush 线程等 SSTable 写完</td><td>写一半崩溃 → 半成品作废，重誊即可</td></tr>
+<tr><td class="hot">策略评估</td><td>CompactionManager 等策略挑输入</td><td>STCS 凑不满就继续攒，不阻塞任何读写</td></tr>
+<tr><td class="hot">归并裁决</td><td>归并线程读旧账写新文件</td><td>中途失败 → 新文件作废，旧账无损</td></tr>
+<tr><td>换账</td><td>原子替换（瞬间）</td><td>替换前读旧账、替换后读新账，答案一致</td></tr>
+<tr><td>gc 窗口</td><td>压缩等 gc_grace 过线</td><td>副本未归队 → 墓碑继续保留，宁多勿失</td></tr>
+<tr><td>墓碑退场</td><td>等归并输入覆盖全部旧数据</td><td>有更老数据未带上 → 只能继续搬运</td></tr>
+</table>
+<p>这张表里最值得盯的是两行高亮：「策略评估」决定账本架的形状——STCS 按大小凑批、LCS 按层级归并；「gc 窗口」是 Cassandra 独有的等待——RocksDB 的墓碑沉到底层就能丢，这里还要等失联副本归队。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件 × 阶段</h2></div>
+<p class="sec-sub">同一部件在不同阶段扮演不同角色，这张矩阵是排障时的索引。</p>
+<div class="quote"><i>把部件放回阶段里，才能看清谁在什么时候接力。</i></div>
+
+<table class="grid">
+<tr><th>部件</th><th>写入</th><th>归并</th><th>gc 窗口内</th><th>gc 过线后</th></tr>
+<tr><td>Memtable</td><td>唯一写入口</td><td>不参与</td><td>不参与</td><td>不参与</td></tr>
+<tr><td>旧 SSTable</td><td>flush 的产物</td><td>只读输入</td><td>已退役</td><td>已退役</td></tr>
+<tr><td>id=47 旧版本</td><td>并存不覆盖</td><td class="hot">被墓碑压住 → 丢弃</td><td>——</td><td>——</td></tr>
+<tr><td>墓碑</td><td>普通写入</td><td class="hot">搬进新账</td><td>继续保留</td><td class="hot">清除，痕迹归零</td></tr>
+<tr><td>策略图纸</td><td>——</td><td>挑输入定形状</td><td>——</td><td>——</td></tr>
+</table>
+<p>注意墓碑的三段人生：写入时它是普通数据、归并时它是「当权的版本」、窗口期它是「只能搬不能清的客人」。同一份记录在三个阶段被三种眼光看待——排障时先问「这个墓碑几岁了」，再判断为什么空间还不缩。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：它依赖什么才能成立</h2></div>
+<p class="sec-sub">拆掉任意一个外部依赖，前面看到的行为都会变。</p>
+<div class="quote"><i>任何机制都有环境前提；拆掉外部依赖，它就不再成立。</i></div>
+<div class="envcards">
+<div class="env"><b>compaction 策略</b><span>默认 STCS 4/32（CompactionParams.java:99-102）；读多换 LCS、时序换 TWCS、跟官方推荐走 UCS。</span></div>
+<div class="env"><b>gc_grace_seconds</b><span>864000s=10 天（TableParams.java:446）；删得多的表可调小，但先想清楚副本失联窗口。</span></div>
+<div class="env"><b>副本与修复</b><span>gc_grace 存在的理由：hint 补送与修复要把墓碑送到失联副本（第 13 章）。</span></div>
+<div class="env"><b>磁盘余量</b><span>归并期间新旧账并存，STCS 大账合并的空间翻倍最猛；预留 40%~50% 余量。</span></div>
+<div class="env"><b>tombstone_warn_threshold</b><span>1000（Config.java:636）；单次查询扫过即告警，提醒删除模式已经伤到读。</span></div>
+</div>
+<p class="figcap">边界：本页画的是单节点视角；墓碑要送达全部副本才算删除真正落齐，跨副本的部分见第 7、13 章。演示里 STCS 的「凑满第 4 本」并入了归并步骤。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">六个问题，检查你是否能在边界上做判断。</p>
+<div class="quote"><i>自测不是复述结论，而是检查你能否在边界上做判断。</i></div>
+<div id="quiz"></div>
+</section>
+
+
+<div class="summary">
+<h2>一页带走</h2>
+
+<p class="chant">写完封账不改，后台凑批并账；墓碑先等十天，过线才能退场。</p>
+<p>· SSTable 是一组组件文件（Data/Index/Summary/Filter/TOC…），文件名里的 id 越大账越新；写完一个字节都不改。</p>
+<p>· 压缩 = CompactionManager 派活 + 策略挑输入 + CompactionIterator 归并：旧版本丢弃、读写全程不阻塞、原子替换换账。</p>
+<p>· 默认 STCS 4/32 凑批；LCS 160MB 分层、层内不重叠；墓碑清除要过 gc_grace（10 天）+ 无更老数据遮挡两道闸。</p>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+</div>
+
+<script>
+(function(){
+var PERIOD=6600,PHASE_MAX=720;
+var STEPS=[{"d":0,"t":"写入","x":"UPDATE id=47 age=32（ts=3002）进 Memtable——删除之前，第三版先落内存。"},{"d":80,"t":"写墓碑","x":"DELETE id=47（ts=4008）也是普通写入：墓碑先进 Memtable，逻辑删除立即生效。"},{"d":160,"t":"flush #2","x":"内存账满 → 整本写成 SSTable-00002；盘上 2 本账，id=47 痕迹 3 份。"},{"d":240,"t":"flush #3","x":"再一次 flush → SSTable-00003；盘上 3 本账，id=47 痕迹 4 份，读要问 3 本。"},{"d":320,"t":"策略评估","x":"STCS：3 本 < min_threshold=4，凑批再等等；LCS：L0 直接发起 L0→L1 归并。"},{"d":400,"t":"归并裁决","x":"CompactionIterator 逐键归并：47@1001/1005/3002 被 4008 的墓碑压住 → 丢弃。"},{"d":480,"t":"换账","x":"原子替换：SSTable-00004 上岗（只剩墓碑），00001~00003 整本退役。"},{"d":560,"t":"gc 窗口","x":"十天之内压缩只搬运墓碑：gcBefore 未过线，等失联副本归队，防旧数据复活。"},{"d":640,"t":"墓碑退场","x":"11-04 14:01 过线且归并输入覆盖全部旧数据 → 墓碑清除，id=47 收敛 0 份。"}];
+var STEP5={"stcs":"STCS：3 本相似账 < min_threshold=4，先攒着不并（演示假定第 4 本已来齐）；STCS 写放大低、读放大高。","lcs":"LCS：flush 落 L0，直接发起 L0→L1 归并；L1+ 层内不重叠，点查每层至多问 1 本（160MB/本）。"};
+var PARTS={"mem":["memBox","mt1","mt2"],"flush":["flushArrow"],"b1":["b1"],"b2":["b2"],"b3":["b3"],"b4":["b4"],"shelf":["shelf","b1","b2","b3"],"merge":["mergeBox","in1","in2","in3","rule1","rule2","rule3"],"out":["outBox"],"stcs":["stcsCard"],"lcs":["lcsCard"],"gc":["gcDel","gcBand","gcPurge"]};
+var CHIPS=[{"k":"strat","l":"图纸"},{"k":"merge","l":"归并"},{"k":"tomb","l":"墓碑"},{"k":"gc","l":"gc_grace"}];
+var QUIZ=[{"q":"SSTable 写完之后，谁会去改它的一个字节？","opts":["压缩会原地重写旧账","谁都不会：一切修改发生在新账本里","读路径会顺手修正旧数据"],"a":1,"exp":"不可变是第一纪律：更新/删除都追加到新文件，压缩也是写全新 SSTable 后原子替换。中途崩溃最多留半成品，作废重誊即可。"},{"q":"出厂默认的压缩策略与凑批阈值是？","opts":["LCS，160MB 分层","STCS，min/max_threshold = 4 / 32","TWCS，按天分窗"],"a":1,"exp":"CompactionParams.java:82-83 定义 4/32，:99-102 默认拼装 SizeTieredCompactionStrategy；LCS/TWCS/UCS 都要显式改表配置。"},{"q":"id=47 的墓碑@4008 写于 10-25 14:00。10-28 的一次压缩会把它清掉吗？","opts":["会，墓碑已经压住了所有旧版本","不会，gc_grace 10 天还没过线","取决于 SSTable 大小"],"a":1,"exp":"清除双条件之一是 gcBefore = now − 864000s 要晚于 localDeletionTime；第 3 天远未过线，压缩只能把墓碑原样搬进新账。"},{"q":"gc_grace 这 10 天到底在等什么？","opts":["等 Memtable flush","等失联副本归队接收墓碑，防止已删数据被修复复活","等布隆过滤器重建"],"a":1,"exp":"node5 这类副本可能没收到 DELETE；若墓碑提前被清，hint/修复会把旧数据当活数据复制出去（僵尸）。10 天是给 hint 与修复的窗口。"},{"q":"LCS 为什么点查「每层至多问 1 本」？","opts":["因为它合并得更频繁","L1+ 层内键范围互不重叠，布隆/范围判定后至多一本命中","因为它的 SSTable 更小"],"a":1,"exp":"L0→L1 起每层键范围不重叠（官方文档 lcs.adoc:14）；STCS 没有这个保证，同键可散在多本大小各异的账里。"},{"q":"归并进行到一半时，一次点查会看到什么？","opts":["读到归并了一半的新账","只读旧账；原子替换后才切到新账，两次答案一致","读请求被压缩阻塞，等换账完成"],"a":1,"exp":"压缩读旧账、写新文件，换账是一瞬间的事；读路径要么在旧集合要么在新集合，永远不会看到中间状态。"}];
+var WP=[[0,123,106],[140,123,106],[180,534,112],[230,534,112],[260,710,112],[320,710,112],[380,400,274],[450,400,274],[470,862,274],[540,862,274],[580,400,492],[630,820,492],[720,820,492]];
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var mStcs=document.getElementById('mStcs'),mLcs=document.getElementById('mLcs'),stratHint=document.getElementById('stratHint');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,STEP_DUR=650;
+var stepIdx=-1,strat='stcs';
+var el={};
+document.querySelectorAll('#eng [id],#eng2 [id]').forEach(function(n){el[n.id]=n;});
+function setOp(id,v){var n=typeof id==='string'?el[id]:id;if(n)n.setAttribute('opacity',v.toFixed(2));}
+function setText(id,s){var n=el[id]||document.getElementById(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setAttr(id,k,v){var n=el[id];if(n)n.setAttribute(k,v);}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){return t*t*(3-2*t);}
+function posOn(wp,th){
+  if(!wp||wp.length<2)return null;
+  var p=norm(th);var i=0;while(i<wp.length-2&&p>wp[i+1][0])i++;
+  var a=wp[i],b=wp[i+1];var t=(p-a[0])/((b[0]-a[0])||1);t=clamp(t,0,1);
+  return [a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+}
+function band(id,a,b,lo,hi){setOp(id,(pr>=a&&pr<b)?(hi===undefined?1:hi):(lo===undefined?0.2:lo));}
+var pr=0;
+function setChip(k,v,on){var n=document.querySelector('#stateChips .chip[data-k="'+k+'"]');if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',!!on);n.classList.toggle('off',!on);}
+
+function renderScene(){
+  band('memBox',0,240,0.5,1);
+  setOp('mt1',pr>=0?1:0.2);
+  setOp('mt2',pr<80?0.15:(pr<240?1:0.3));
+  setOp('b1',pr<480?1:0.35);
+  setOp('b2',pr<160?0.15:(pr<480?1:0.35));
+  setOp('b3',pr<240?0.15:(pr<480?1:0.35));
+  setOp('b4',pr<480?0.12:1);
+  setOp('flushNote',0.8);
+  band('mergeBox',400,480,0.3,1);band('mergeArrow',400,480,0.15,1);
+  setOp('in1',pr>=400?1:0.35);setOp('in2',pr>=400?1:0.35);setOp('in3',pr>=400?1:0.35);
+  setOp('rule1',pr>=400?0.9:0.35);setOp('rule2',pr>=400?1:0.2);setOp('rule3',pr>=400?1:0.35);
+  band('outBox',480,640,0.3,1);
+  setOp('flushArrow',pr>=140&&pr<240?1:0.35);
+  setOp('stcsCard',strat==='stcs'?1:0.4);
+  setOp('lcsCard',strat==='lcs'?1:0.4);
+  setOp('otherCard',0.75);
+  band('gcDel',560,720,0.3,1);band('gcBand',560,720,0.35,1);band('gcPurge',640,720,0.25,1);
+  var books='1 本';
+  if(pr>=480)books='1 本（00004）';
+  else if(pr>=400)books='4 本（3 旧 + 1 在写）';
+  else if(pr>=240)books='3 本';
+  else if(pr>=160)books='2 本';
+  setText('roBooks',books);
+  var trace='2 份';
+  if(pr>=640)trace='0 份';
+  else if(pr>=480)trace='1 份（只剩墓碑）';
+  else if(pr>=240)trace='4 份（散 3 本账）';
+  else if(pr>=160)trace='3 份';
+  setText('roTrace',trace);
+  var tomb='未出现';
+  if(pr>=640)tomb='已清除';
+  else if(pr>=560)tomb='保留（窗口内）';
+  else if(pr>=480)tomb='在 00004';
+  else if(pr>=240)tomb='在 00003';
+  else if(pr>=80)tomb='内存中';
+  setText('roTomb',tomb);
+  setChip('strat',strat==='stcs'?'STCS':'LCS',true);
+  setChip('merge',pr>=400&&pr<480?'进行中':pr>=480?'已完成':'未开始',pr>=400);
+  setChip('tomb',tomb.slice(0,5),pr>=480&&pr<640);
+  setChip('gc',pr>=640?'已过线':pr>=560?'倒计时':'未开始',pr>=640);
+}
+
+function renderSub(th){
+  var p=norm(th); var si=0;
+  for(var i=0;i<STEPS.length;i++){if(p>=STEPS[i].d)si=i;}
+  for(var i=0;i<STEPS.length;i++){setOp('seg'+i,i===si?1:0.35);}
+  var x=40+(p/PHASE_MAX)*920;
+  setAttr('subNow','x1',x.toFixed(1)); setAttr('subNow','x2',x.toFixed(1));
+}
+
+function render(th){
+  pr=norm(th);
+  setText('roPhase',Math.round(pr)+'°');
+  var si=0;for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)si=i;}
+  if(mode==='step'&&stepIdx>=0)si=stepIdx;
+  setText('roStep',STEPS[si]?STEPS[si].t:'—');
+  var p=posOn(WP,th);
+  if(p){setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));setOp('tok',1);}else{setOp('tok',0);}
+  renderScene();
+  if(typeof renderSub==='function')renderSub(th,pr,si);
+}
+function tick(now){
+  var dt=Math.min(50,now-last);last=now;
+  if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+  if(mode==='step'&&stepTo!==null){
+    stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);
+    var p=stepElapsed/STEP_DUR;var e=smooth(p);
+    phase=stepFrom+(stepTo-stepFrom)*e;
+    if(p>=1){phase=((stepTo%PERIOD)+PERIOD)%PERIOD;stepTo=null;}
+  }
+  render(phase/PERIOD*PHASE_MAX);
+  requestAnimationFrame(tick);
+}
+function setAuto(on){
+  mode='auto';run=on;stepTo=null;btn.textContent=on?'暂停':'播放';
+  if(on){stepIdx=-1;document.querySelectorAll('.stepnode').forEach(function(d){d.classList.remove('on');});
+  stepT.textContent='自动运转模式';stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格。';}
+}
+window.goStep=function(i){
+  stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+  var target=STEPS[stepIdx].d/PHASE_MAX*PERIOD;var delta=target-phase;
+  if(reduced||Math.abs(delta)>PERIOD/3){phase=target;stepTo=null;render(target/PERIOD*PHASE_MAX+0.01);}
+  else{stepFrom=phase;stepTo=phase+delta;stepElapsed=0;render(phase/PERIOD*PHASE_MAX+0.01);}
+  btn.textContent='继续自动运转';
+  document.querySelectorAll('.stepnode').forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+  stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+  stepX.textContent=(stepIdx===4)?STEP5[strat]:STEPS[stepIdx].x;
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+function setStrat(s){
+  strat=s;
+  mStcs.classList.toggle('on',s==='stcs');mLcs.classList.toggle('on',s==='lcs');
+  stratHint.textContent=(s==='stcs')?'STCS：3 本相似账先攒着，凑满 min_threshold=4 才并（演示假定第 4 本已来齐）。':'LCS：flush 落 L0 即可发起 L0→L1 归并；层内不重叠，点查每层至多 1 本。';
+  if(mode==='step'&&stepIdx===4)stepX.textContent=STEP5[s];
+  render(phase/PERIOD*PHASE_MAX+0.01);
+}
+mStcs.onclick=function(){setStrat('stcs');};
+mLcs.onclick=function(){setStrat('lcs');};
+btn.textContent=run?'暂停':'播放';
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+for(var s=0;s<STEPS.length;s++){(function(n){
+  var b=document.createElement('button');b.className='stepnode';
+  b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+  b.onclick=function(){goStep(n);};stepBar.appendChild(b);
+})(s);}
+CHIPS.forEach(function(c){var sp=document.createElement('span');sp.className='chip';sp.setAttribute('data-k',c.k);sp.innerHTML=c.l+' <b>--</b>';document.getElementById('stateChips').appendChild(sp);});
+document.querySelectorAll('.part').forEach(function(b){
+  b.onclick=function(){
+    var ids=PARTS[b.getAttribute('data-part')]||[];
+    ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+    document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+    setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+  };
+});
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+  var d=document.createElement('div');d.className='q';
+  var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+  it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+  h+='<div class="exp">'+it.exp+'</div>';d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+  var b=e.target.closest('.opt');if(!b)return;var box2=b.parentElement;if(box2.classList.contains('done'))return;
+  box2.classList.add('done');
+  var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+  box2.querySelectorAll('.opt').forEach(function(x,n){x.classList.add(n===QUIZ[qi].a?'right':'wrong');});
+});
+var BASE=(location.pathname.split('/cassandra-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/cassandra/lab';
+document.getElementById('lnkArt').href=BASE+'/cassandra/engine/02-sstable-compaction';
+
+requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

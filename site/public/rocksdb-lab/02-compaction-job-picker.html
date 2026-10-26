@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>压实任务与选择器：谁该搬、谁来搬、怎么搬 · RocksDB 互动原理实验室 第 6 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#fff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:960px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#fff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:38px 0 22px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:710px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#fff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:500;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:11.5px;fill:#3B3A34}
+.tn{font-size:12.5px;font-weight:500;fill:#1F1E1A}
+.tag{font-size:10px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:68px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+section{padding:34px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .arr{color:#C46A0A;font-weight:600}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.figcap b{color:#3B3A34;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:13.5px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 9px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#scene [opacity]{transition:opacity .22s ease}
+#eng .hl{stroke:#D96C06 !important;stroke-width:2.2 !important}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+@media (prefers-reduced-motion: reduce){#scene [opacity]{transition:none}}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：压实任务与选择器：谁该搬、谁来搬、怎么搬</a>
+  <span class="idx">第 6 / 12 章</span>
+</div>
+<div class="page">
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · 压实任务</div>
+<h1>谁该搬、谁来搬、怎么搬：一条绿色捷径的误会</h1>
+<p>手动 CompactRange 压一个 12GB 的 CF，日志里十几条完成记录好几条只花几毫秒、写了 0 字节——值班同学怀疑压实没干活。这几毫秒恰恰是引擎在省钱：Picker 判定「根本不用搬数据」，两行账就完事。这页把一次压实任务拆成四条泳道，跟着琥珀点走完全程。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span><span class="mnode">② 静态分解</span><span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span><span class="mnode">⑤ 环境场景</span><span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 640" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>一次压实任务的生命周期：四条泳道与绿色捷径</title><defs><marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="g" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="r" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker></defs><text class="th" x="500" y="22" text-anchor="middle">一次压实任务的生命周期：Picker 排单 → Job 搬运 → Iterator 打包 → MANIFEST 记账</text><text class="ts" x="500" y="40" text-anchor="middle">主图 = 四条泳道；琥珀点 = 任务当前位置 · 绿色虚线 = trivial move 捷径（分支）</text><text class="tag" x="958" y="22" text-anchor="end">灰暗泳道 = 本相位不在场的角色</text><text class="tag" x="958" y="38" text-anchor="end">红 = 丢弃 / 拦下 · 绿 = 留下 / 完成</text>
+<g id="scene">
+<g id="laneP"><rect x="40" y="52" width="920" height="150" rx="10" fill="#FBFAF6" stroke="#ECEAE2"/><text class="tn" x="52" y="72">Picker 泳道 · 谁该搬（每轮问一句「有没有活干」）</text>
+<rect id="bScore" x="52" y="84" width="150" height="52" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/><text class="tb" x="127" y="104" text-anchor="middle">① 打分选层</text><text class="tag" x="127" y="120" text-anchor="middle">score 最高且 ≥1</text><line x1="204" y1="110" x2="216" y2="110" stroke="#C46A0A" stroke-width="1.4" marker-end="url(#a)"/>
+<rect id="bPri" x="218" y="84" width="148" height="52" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/><text class="tb" x="292" y="104" text-anchor="middle">② CompactionPri</text><text class="tag" x="292" y="120" text-anchor="middle">重叠最少先压</text><line x1="368" y1="110" x2="380" y2="110" stroke="#C46A0A" stroke-width="1.4" marker-end="url(#a)"/>
+<rect id="bCut" x="382" y="84" width="176" height="52" rx="7" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/><text class="tb" x="470" y="104" text-anchor="middle">③ 扩干净切口</text><text class="tag" x="470" y="120" text-anchor="middle">半键重叠全带上</text><line x1="560" y1="110" x2="572" y2="110" stroke="#C46A0A" stroke-width="1.4" marker-end="url(#a)"/>
+<rect id="bGate" x="574" y="84" width="140" height="52" rx="7" fill="#FFFFFF" stroke="#E24B4A" stroke-width="1.2" stroke-dasharray="4 3"/><text class="tb" x="644" y="104" text-anchor="middle">并发闸</text><text class="tag" x="644" y="120" text-anchor="middle">范围相撞 → 放弃</text><line x1="716" y1="110" x2="728" y2="110" stroke="#C46A0A" stroke-width="1.4" marker-end="url(#a)"/>
+<rect id="bTm" x="730" y="84" width="214" height="52" rx="7" fill="#FFFFFF" stroke="#639922" stroke-width="1.2"/><text class="tb" x="837" y="104" text-anchor="middle">④ trivial move 判定</text><text class="tag" x="837" y="120" text-anchor="middle">五条件全过 → 绿捷径</text>
+<text id="tmLedger" class="tag" x="730" y="150" fill="#4C7A1A" opacity="0">DeleteFile(L2, f9) ＋ AddFile(L3, f9)</text>
+<text class="tag" x="52" y="150">L0 特殊：一次拉齐所有范围撞上的 L0 文件；输出层重叠文件与 grandparents 由 SetupOtherInputs 一并纳入</text>
+<text class="tag" x="52" y="166">f5[aaa~kkk] 与 f6[kkk~zzz] 相邻同键：挑 f6 必须带上 f5，否则 kkk 的旧版本没被合并、键序还可能压坏</text></g>
+<path id="tmPath" d="M 944 110 L 962 110 L 962 530 L 810 530" fill="none" stroke="#639922" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#g)" opacity="0"/>
+<text id="tmPathT" class="tag" x="560" y="566" fill="#4C7A1A" opacity="0">绿色捷径：IsTrivialMove 全过 → 跳过搬运，直接 LogAndApply · 20MB 零字节搬运，几毫秒</text>
+<g id="laneJ" opacity="0.3"><rect x="40" y="212" width="920" height="112" rx="10" fill="#FBFAF6" stroke="#ECEAE2"/><text class="tn" x="52" y="232">Job 泳道 · 怎么搬（Prepare → Run：切分 + 并行）</text>
+<rect id="bSub" x="52" y="244" width="240" height="52" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/><text class="tb" x="172" y="264" text-anchor="middle">⑤ subcompaction 切分</text><text class="tag" x="172" y="280" text-anchor="middle">128 锚点 · 总量 1/N 下刀</text>
+<line x1="294" y1="270" x2="326" y2="270" stroke="#C46A0A" stroke-width="1.4" marker-end="url(#a)"/><line x1="294" y1="262" x2="326" y2="252" stroke="#C46A0A" stroke-width="1.1" marker-end="url(#a)"/><line x1="294" y1="278" x2="326" y2="288" stroke="#C46A0A" stroke-width="1.1" marker-end="url(#a)"/>
+<rect id="seg0" x="330" y="244" width="148" height="44" rx="7" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1"/><text class="tb" x="404" y="262" text-anchor="middle">段 0 [~b1)</text><text class="tag" x="404" y="278" text-anchor="middle">并行跑</text><rect id="seg1" x="494" y="244" width="148" height="44" rx="7" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1"/><text class="tb" x="568" y="262" text-anchor="middle">段 1 [b1~b2)</text><text class="tag" x="568" y="278" text-anchor="middle">并行跑</text><rect id="seg2" x="658" y="244" width="148" height="44" rx="7" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1"/><text class="tb" x="732" y="262" text-anchor="middle">段 2 [b2~)]</text><text class="tag" x="732" y="278" text-anchor="middle">并行跑</text>
+<rect x="822" y="244" width="126" height="44" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1" stroke-dasharray="4 3"/><text class="tag" x="885" y="262" text-anchor="middle">边界 = user key</text><text class="tag" x="885" y="278" text-anchor="middle">同键永远同段</text>
+<text class="tag" x="330" y="310">三段多线程并行（max_subcompactions 默认 1，此处示意切成 3 段演示并行）；每段自己叠 MergingIterator + CompactionIterator</text></g>
+<g id="laneI" opacity="0.3"><rect x="40" y="334" width="920" height="128" rx="10" fill="#FBFAF6" stroke="#ECEAE2"/><text class="tn" x="52" y="354">CompactionIterator 泳道 · 快照分带合并（同一 key 的版本，按「最早能看见它的快照」落带）</text>
+<rect id="v5" x="52" y="366" width="112" height="26" rx="5" fill="#EAF3DE" stroke="#639922" stroke-width="1.1"/><text class="tag" x="108" y="383" text-anchor="middle">seq=5 · Put C</text><rect id="v4" x="52" y="398" width="112" height="26" rx="5" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.1"/><text class="tag" x="108" y="415" text-anchor="middle">seq=4 · Put B</text><rect id="v2" x="52" y="430" width="112" height="26" rx="5" fill="#EAF3DE" stroke="#639922" stroke-width="1.1"/><text class="tag" x="108" y="447" text-anchor="middle">seq=2 · Put A</text>
+<line x1="166" y1="379" x2="296" y2="392" stroke="#639922" stroke-width="1.2" marker-end="url(#g)"/><line x1="166" y1="411" x2="296" y2="400" stroke="#E24B4A" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#r)"/><line x1="166" y1="443" x2="296" y2="446" stroke="#639922" stroke-width="1.2" marker-end="url(#g)"/>
+<rect x="300" y="364" width="250" height="62" rx="7" fill="#FFFFFF" stroke="#B4B2A9" stroke-width="1.1"/><text class="tb" x="425" y="382" text-anchor="middle">带 8（最早可见快照 s2=8）</text><text class="tag" x="425" y="400" text-anchor="middle">留 C（seq=5）· 丢 B（seq=4）</text><text class="tag" x="425" y="416" text-anchor="middle">同带只留最新 → 规则 A</text>
+<rect x="300" y="430" width="250" height="28" rx="7" fill="#FFFFFF" stroke="#B4B2A9" stroke-width="1.1"/><text class="tag" x="425" y="448" text-anchor="middle">带 3（s1=3）→ 必须留 A（seq=2）</text>
+<g id="tombNote"><text class="tb" x="576" y="382">墓碑三道判据：</text><text class="tag" x="576" y="398">① 早于最早快照 + 更深层无此键 → 推干净，丢</text><text class="tag" x="576" y="414">② 输出层即最底层且更老带无引用 → 丢（bottommost）</text><text class="tag" x="576" y="430">③ 否则原样写进输出，继续下沉（kKeepDel）</text><text class="tag" x="576" y="450">Merge 键在此一次性结清；丢弃计数 = COMPACTION_KEY_DROP_*</text></g></g>
+<g id="laneO" opacity="0.3"><rect x="40" y="472" width="920" height="148" rx="10" fill="#FBFAF6" stroke="#ECEAE2"/><text class="tn" x="52" y="492">安装泳道 · Output → 自检 → VersionEdit → 原子换账本</text>
+<rect id="bOut" x="52" y="504" width="178" height="52" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/><text class="tb" x="141" y="524" text-anchor="middle">⑥ 输出新 SST</text><text class="tag" x="141" y="540" text-anchor="middle">64MB 或祖父母边界切</text><line x1="232" y1="530" x2="244" y2="530" stroke="#C46A0A" stroke-width="1.4" marker-end="url(#a)"/>
+<rect id="bVer" x="246" y="504" width="158" height="52" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/><text class="tb" x="325" y="524" text-anchor="middle">verify_output</text><text class="tag" x="325" y="540" text-anchor="middle">回读校验和与键序</text><line x1="406" y1="530" x2="418" y2="530" stroke="#C46A0A" stroke-width="1.4" marker-end="url(#a)"/>
+<rect id="bEdit" x="420" y="504" width="200" height="52" rx="7" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/><text class="tb" x="520" y="524" text-anchor="middle">⑦ VersionEdit</text><text class="tag" x="520" y="540" text-anchor="middle">删全部输入 + 加全部输出</text><line x1="622" y1="530" x2="634" y2="530" stroke="#C46A0A" stroke-width="1.4" marker-end="url(#a)"/>
+<rect id="bApply" x="636" y="504" width="168" height="52" rx="7" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/><text class="tb" x="720" y="524" text-anchor="middle">LogAndApply</text><text class="tag" x="720" y="540" text-anchor="middle">一次持锁换 Version</text><line x1="806" y1="530" x2="818" y2="530" stroke="#C46A0A" stroke-width="1.4" marker-end="url(#a)"/>
+<rect id="bGc" x="820" y="504" width="128" height="52" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/><text class="tb" x="884" y="524" text-anchor="middle">引用归零</text><text class="tag" x="884" y="540" text-anchor="middle">后台删旧 SST</text>
+<text class="tag" x="52" y="586">读侧拿到新 SuperVersion 才看见新文件；失败则输出全弃、旧 Version 纹丝不动——不存在「看见一半」的中间态。</text></g>
+</g>
+<circle id="tok" cx="127" cy="110" r="7" fill="#EF9F27" stroke="#D97E06" stroke-width="1.4"/>
+</svg>
+
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.5" max="2" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm">默认 ≈ 6 秒 / 轮</span>
+</div>
+<div class="readout">
+<span class="ro">进度 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">读数 <b id="roKey">--</b></span>
+<span class="ro">输入文件 <b id="roIn">--</b></span>
+<span class="ro">输出文件 <b id="roOut">--</b></span>
+<span class="ro">丢弃版本 <b id="roDrop">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav"><button class="btn" onclick="prevStep()">‹ 上一步</button><button class="btn warn" onclick="nextStep()">下一步 ›</button></span>
+</div>
+<p class="figcap">进度 0° = Picker 接到「有没有活干」，720° = 新 Version 原子生效、旧文件待删。第 2 步高亮绿色捷径分支（若五条件全过 → 跳过搬运直接 LogAndApply）；本页演示任务五条件未全过，走主路。文件数与丢弃数为演示任务读数。<br>口径：RocksDB 11.13.0；IsTrivialMove 五条件、ExpandInputsToCleanCut、128 锚点切分、快照分带算例（seq=5/4/2 · 快照 s1=3、s2=8）、max_subcompactions=1、target_file_size=64MB；真实收尾日志样例见正文第五节。</p>
+</div>
+</div>
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：日志里的「0 字节压实」</h2></div>
+<p class="sec-sub">先不拆流水线，只看它对外表现出什么。</p>
+<div class="quote">「观察一个系统，先分清它的静态结构、动态过程和外部依赖。」</div>
+<p>十几条 compaction 完成记录里，好几条只花几毫秒、写了 0 字节，事件是 <code>event: "trivial_move"</code>。这不是没干活——是 Picker 判定出「不用搬数据」：只改 MANIFEST 两行账。把一次压实想成一场搬家公司的工作流：<b>Picker 是排单员，CompactionJob 是搬运队，CompactionIterator 是打包员，MANIFEST 是物业台账</b>——搬家完成后一次改好，绝不改一半。</p>
+<div class="flow">
+<span class="node">谁该搬：Picker 排单</span><span class="arr">→</span><span class="node box">绿色捷径：trivial move（分支）</span><span class="arr">→</span><span class="node">怎么搬：切分 + 快照分带归并</span><span class="arr">→</span><span class="node box">谁来搬：后台线程池</span><span class="arr">→</span><span class="node">原子安装：VersionEdit</span>
+</div>
+<p>策略层（上一章）决定「哪层该压」；这一章隔着三个问题把文件安全换掉：谁该搬（每轮怎么挑出互不冲突的一小撮）、谁来搬（线程池和限流怎么分蛋糕）、怎么搬（从 key range 切分到原子换账本）。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：三步排单、一条捷径、三层线程预算</h2></div>
+<p class="sec-sub">点部件卡片，动画里对应的泳道结构会亮起。</p>
+<div class="quote">「分解要 MECE：同一层粒度一致，不重不漏。」</div>
+<div class="figure"><svg viewBox="0 0 920 168" role="img" xmlns="http://www.w3.org/2000/svg"><text x="460" y="18" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">线程预算三层（include/rocksdb/options.h:919-950 · db_impl_compaction_flush.cc:3763-3782）</text>
+<rect x="40" y="34" width="260" height="52" rx="7" fill="#EFF6FF" stroke="#2563EB"/><text x="52" y="54" font-size="11" fill="#3B3A34">max_background_jobs = 2（总闸）</text><text x="52" y="72" font-size="10" fill="#6B695F">拆分：flush = max(1, 2/4) = 1（HIGH 池）</text><rect x="320" y="34" width="260" height="52" rx="7" fill="#FFF6E8" stroke="#EF9F27"/><text x="332" y="54" font-size="11" fill="#3B3A34">max_compactions = 2 − 1 = 1（LOW 池）</text><text x="332" y="72" font-size="10" fill="#6B695F">压到非零最大输出层自动转 BOTTOM 池</text><rect x="600" y="34" width="280" height="52" rx="7" fill="#FFFFFF" stroke="#3B3A34"/><text x="612" y="54" font-size="11" fill="#3B3A34">max_subcompactions = 1 · limiter = nullptr</text><text x="612" y="72" font-size="10" fill="#6B695F">单任务并行度 · 单 CF 在途任务数（ConcurrentTaskLimiter）</text>
+<text x="40" y="112" font-size="10.5" fill="#854F0B" font-weight="600">分工：总闸管机器上有多少条流水线，limiter 管某个 CF 最多占几条——</text><text x="40" y="130" font-size="10.5" fill="#6B695F">十个 CF 共享 16 线程时给大 CF 配 limiter=1，小 CF 就不会被挤饿；想有 2 条压实线并发，至少 max_background_jobs=5（flush 占 1）。</text><text x="40" y="152" font-size="10.5" fill="#6B695F">trivial move 的五条件：L0 输入不与其他 L0 重叠 · 无 compaction filter · 起止层不同 · 单输入层且压缩一致 · 加祖父母不超 max_compaction_bytes。</text></svg></div>
+<p class="figcap">静态标注图：线程预算与 trivial move 判据。与下方部件卡、动画泳道一一对应。</p>
+<div class="partgroup"><div class="gname">排单（Picker）</div><div class="parts">
+<button class="part" data-part="score"><b>打分选层</b><span>按 score 从高到低过一遍，score ≥ 1 的最高分入选；输出层 = L0 则是基座，否则下一层。</span></button>
+<button class="part" data-part="cut"><b>ExpandInputsToCleanCut</b><span>把头名文件扩成干净切口：输入键范围与层内其他文件无半键重叠——no parts of a key are lost。</span></button>
+<button class="part" data-part="gate"><b>并发闸</b><span>新任务的键范围与在途压实的输出层范围相撞 → 放弃本轮：两个任务往同一层写重叠键，装回来账就乱了。</span></button>
+<button class="part" data-part="tm"><b>IsTrivialMove</b><span>五条件全过 → 不读不写，MANIFEST 两行账；手动压实配了 filter 不行——过滤器必须真的执行。</span></button>
+</div></div>
+<div class="partgroup"><div class="gname">搬运与打包（Job / Iterator）</div><div class="parts">
+<button class="part" data-part="sub"><b>GenSubcompactionBoundaries</b><span>每个输入文件要 128 个均匀键锚点，合并按序累计尺寸，在总量 1/N 处下刀；边界取 user key。</span></button>
+<button class="part" data-part="iter"><b>CompactionIterator</b><span>按「最早可见快照」分带：同带只留最新（规则 A）；墓碑三道判据；Merge 一次性结清。</span></button>
+<button class="part" data-part="cut2"><b>ShouldStopBefore</b><span>输出攒到 target_file_size（64MB）或即将跨过祖父母边界就切——现在的切口决定下一次压实的输入规模。</span></button>
+<button class="part" data-part="edit"><b>VersionEdit + LogAndApply</b><span>删输入 + 加输出一次记账，同一次持锁替换内存 Version；失败全弃，旧账纹丝不动。</span></button>
+</div></div>
+<p class="hint">这些部件怎么在一条时间轴上接力？切到分步模式，看琥珀点怎么走完四条泳道、绿色捷径在哪儿分岔。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：一次任务的生命周期，8 个相位</h2></div>
+<p class="sec-sub">第一遍跟琥珀点走主路；第 2 步盯绿色捷径的判定，第 4 步盯快照分带怎么丢掉 seq=4。</p>
+<div class="quote">「动态分析看的是时间轴上的顺序、状态变化和因果链。」</div>
+<table class="grid">
+<tr><th>相位</th><th>阶段</th><th>关键动作</th><th>读数</th></tr>
+<tr><td>0–90°</td><td>① 打分选层</td><td>score 最高层入选；CompactionPri（默认 kMinOverlappingRatio）取头名文件</td><td>输入 1</td></tr>
+<tr><td>90–180°</td><td>② 扩干净切口</td><td>半键重叠扩边（f5 带上 f6）；SetupOtherInputs 拉进输出层重叠文件；并发闸放行</td><td class="hot">输入 3 · 切口干净</td></tr>
+<tr><td>180–270°</td><td>③ trivial move 判定</td><td>五条件全过 → 两行账零字节；否则进主路。日志 event:"trivial_move" 不是没干活</td><td class="hot">分支点</td></tr>
+<tr><td>270–360°</td><td>④ 切 3 段并行</td><td>128 锚点按序累计，总量 1/N 下刀；边界 = user key，同键永远同段</td><td class="hot">3 段并行</td></tr>
+<tr><td>360–450°</td><td>⑤ 快照分带合并</td><td>seq=5→带8、seq=4→带8（同带只留最新→丢）、seq=2→带3（留）</td><td class="hot">丢 1 版</td></tr>
+<tr><td>450–540°</td><td>⑥ 墓碑三道判据</td><td>推干净 / bottommost / 保留（kKeepDel）；Merge 键在此结清</td><td class="hot">COMPACTION_KEY_DROP_*</td></tr>
+<tr><td>540–630°</td><td>⑦ 输出新 SST</td><td>64MB 或祖父母边界切刀；verify_output 回读校验和与键序</td><td>输出 2</td></tr>
+<tr><td>630–720°</td><td>⑧ VersionEdit 原子安装</td><td>删输入 + 加输出 → LogAndApply 一次持锁换 Version → 引用归零删旧文件</td><td class="hot">新 Version 生效</td></tr>
+</table>
+<p>相位零点：0° = 后台线程问 Picker「有没有活干」；720° = 新 Version 原子生效。演示任务的输入/输出/丢弃读数为小算例；一条真实收尾日志见第五节。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件 × 阶段</h2></div>
+<p class="sec-sub">同一部件在不同阶段扮演不同角色，这张矩阵是排障时的索引。</p>
+<div class="quote">「动静融合的关键是映射：每个部件在每一步里负责什么。」</div>
+<table class="grid">
+<tr><th>部件</th><th>①② 排单</th><th>③ 分支</th><th>④ 切分</th><th>⑤⑥ 归并</th><th>⑦⑧ 安装</th></tr>
+<tr><td>Picker（选层/扩边）</td><td class="hot">打分、扩干净切口</td><td class="act">查 trivial move 条件</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>并发闸 / being_compacted</td><td class="hot">范围相撞 → 放弃本轮</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>CompactionJob</td><td>—</td><td class="hot">全过 → 跳过整个 Job</td><td class="hot">128 锚点切 3 段并行</td><td class="act">喂 MergingIterator</td><td>—</td></tr>
+<tr><td>CompactionIterator</td><td>—</td><td>—</td><td class="act">每段一个</td><td class="hot">分带去重 · 墓碑判据 · Merge 结算</td><td>—</td></tr>
+<tr><td>输出切口（ShouldStopBefore）</td><td>—</td><td>—</td><td>—</td><td class="hot">64MB / 祖父母边界切</td><td class="act">切口 = 下次输入规模</td></tr>
+<tr><td>VersionEdit / MANIFEST</td><td>—</td><td class="act">捷径只写两行账</td><td>—</td><td>—</td><td class="hot">删输入+加输出，一次持锁生效</td></tr>
+</table>
+<p><b>涌现属性：</b>「层内不重叠」这条不变式不属于任何单个部件——它是干净切口（同键不拆开）+ 并发闸（范围不相撞）+ 原子安装（半成品不进账）三方协同守出来的。任何一方失守，账就乱了。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：流水线之外还有什么</h2></div>
+<p class="sec-sub">拆掉任何一个外部依赖，前面看到的流程都会变。</p>
+<div class="quote">「环境属性 = 外在关系 + 依赖 + 失效后果。」</div>
+<div class="envcards">
+<div class="env"><b>后台线程池</b><span>max_background_jobs=2（默认）拆成 flush 1 条（HIGH）+ 压实 1 条（LOW）；压到非零最大输出层自动转 BOTTOM 池，不与前台抢带宽。</span></div>
+<div class="env"><b>CF 级限流</b><span>compaction_thread_limiter 限单个 CF 的在途任务数；领不到令牌就排队——大 CF 不许吃光所有流水线。</span></div>
+<div class="env"><b>compaction filter</b><span>每个 user key 的第一个已提交版本过一遍过滤器，返回「删」当场变墓碑或跳段；与 trivial move 互斥。</span></div>
+<div class="env"><b>flush 孪生兄弟</b><span>FlushJob 与压实共用 BuildTable 和 CompactionIterator（compaction=nullptr）；差别只有输入是 memtable、输出固定 L0、不做跨文件墓碑 GC。</span></div>
+<div class="env"><b>Remote Compaction</b><span>compaction_service 把 subcompaction 搬到远端跑：Schedule → OpenAndCompact → Wait → 导入安装；任一环节掉链子 kUseLocal 原路回退本机。</span></div>
+<div class="env"><b>湖上同款</b><span>MANIFEST ≈ manifest 文件（不可变日志 + 原子切换，失败即全弃）；subcompaction ≈ Spark split（都按 key range 切、边界取 user key）。</span></div>
+</div>
+<p class="figcap">边界：本页画的是一次任务的 happy path + trivial move 分支；真实收尾日志样例：「Compacted (L1 8 files + L2 23 files) =&gt; 19 files, 620MB · write-amplify(1.4) · records in: 5,800,000, records dropped: 1,230,000」。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">能说清「0 字节压实为什么是好事」，才算真的懂这条流水线。</p>
+<div class="quote">「用自己的话能讲清楚，才算真的懂。」</div>
+<div id="quiz"></div>
+</section>
+
+<div class="summary">
+<h2>一页带走</h2>
+<p class="chant">排单扩边防冲突，捷径两行账；分带丢版本，一次持锁换新账。</p>
+<p>· Picker 三步走：打分选层 → CompactionPri 取头名并扩成干净切口 → 拉输出层重叠与 grandparents；与在途任务范围相撞直接放弃本轮。</p>
+<p>· trivial move 五条件全过 = 只改 MANIFEST 两行账：DeleteFile(L2,f9) + AddFile(L3,f9)，20MB 零字节搬运——日志 event:"trivial_move" 不是没干活。</p>
+<p>· 线程预算三层：max_background_jobs（2）总闸 → max_subcompactions（1）单任务并行 → limiter 按 CF 限在途；128 锚点按 key range 切段，边界永远落在 user key 上。</p>
+<p>· CompactionIterator 按「最早可见快照」分带，同带只留最新；墓碑要「早于最早快照 + 更深层无此键」或「bottommost 且无更老带引用」才能真删。</p>
+<p>· 安装 = 一个 VersionEdit（删输入+加输出）+ 一次 LogAndApply：读侧要么旧账要么新账，不存在「看见一半」；旧文件引用归零后由后台删除。</p>
+<p>· 边界与简化：演示任务的输入 3 / 输出 2 / 丢 1 版为小算例；subcompaction 切 3 段为示意（默认 max_subcompactions=1）；日志样例数字引自正文第五节。</p>
+</div>
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+<script>
+var STEPS=[
+{d:0,t:"① 打分选层",x:"后台线程问 Picker「有没有活干」：按 score 从高到低选层（score ≥ 1 的最高分入选），输出层 = L0 则是基座、否则下一层；层内按 CompactionPri（默认 kMinOverlappingRatio：与下层重叠越少越先压）取头名文件。",k:"输入 1 个文件"},
+{d:90,t:"② 扩干净切口",x:"ExpandInputsToCleanCut 把头名文件扩到「切口两端都是不同 user key」——f5[aaa~kkk]、f6[kkk~zzz] 相邻同键，挑 f6 必须带上 f5，否则 kkk 的旧版本没被合并、键序还可能压坏。SetupOtherInputs 再拉进输出层重叠文件、登记 grandparents；并发闸确认与在途任务范围不撞。",k:"输入 3 · 切口干净"},
+{d:180,t:"③ trivial move 分支",x:"IsTrivialMove 五条件全过（不与其他 L0 重叠、无 compaction filter、起止层不同、单输入层且压缩一致、加祖父母不超 max_compaction_bytes）就不读不写：MANIFEST 记两行账 DeleteFile(L2,f9)+AddFile(L3,f9)，20MB 零字节搬运、几毫秒完成。本页演示任务未全过 → 走主路。",k:"分支点 · 捷径待命"},
+{d:270,t:"④ 切 3 段并行",x:"ShouldFormSubcompactions 允许时（max_subcompactions > 1），GenSubcompactionBoundaries 问每个输入文件要 128 个均匀键锚点（扫索引块估算），全部锚点按序累计尺寸，在总量 1/N 处下刀；边界取在 user key 上——同键的所有版本永远在同一段里。",k:"3 段并行"},
+{d:360,t:"⑤ 快照分带合并",x:"CompactionIterator 把每个版本映射到「最早能看见它的快照」：seq=5 → 带 8、seq=4 → 带 8（与 seq=5 同带，没有任何快照能区分它们 → 规则 A 丢）、seq=2 → 带 3（不同带 → 必须留）。结果留下 C 和 A——B 没了。",k:"丢 1 版 · 留 C/A"},
+{d:450,t:"⑥ 墓碑三道判据",x:"① 墓碑早于最早快照且更深层无此键 → 推干净，丢；② 输出层就是最底层且更老带无引用 → 丢（bottommost）；③ 否则原样写进输出继续下沉（kKeepDel）。Merge 键也在这一站一次性结清；每类丢弃都有计数：COMPACTION_KEY_DROP_*。",k:"三道判据"},
+{d:540,t:"⑦ 输出新 SST",x:"主循环把 iterator 吐出的记录逐键 AddToOutput：攒到 target_file_size（默认 64MB）或即将跨过祖父母文件边界就切一刀——现在的切口决定下一次压实的输入规模。收尾按 verify_output 回读输出，校验块校验和与键序，把写坏的输出挡在安装之前。",k:"输出 2 个新 SST"},
+{d:630,t:"⑧ VersionEdit 原子安装",x:"Install 组装一个 VersionEdit：删全部输入 + 加全部输出，LogAndApply 顺序追加进 MANIFEST 并在同一次持锁里替换内存 Version——读侧要么看到旧账本、要么看到新账本，不存在「看见一半」。新 Version 生效后输入文件引用归零，旧文件由后台删除。",k:"原子换 Version"}];
+var CHIPS=[{k:"pick",l:"Picker 排单"},{k:"tm",l:"绿色捷径"},{k:"sub",l:"subcompaction"},{k:"iter",l:"快照分带"},{k:"inst",l:"原子安装"}];
+var PARTS={"score":["bScore"],"cut":["bCut"],"cut2":["bOut"],"gate":["bGate"],"tm":["bTm","tmPath"],"sub":["bSub","seg0","seg1","seg2"],"iter":["v5","v4","v2","tombNote"],"edit":["bEdit","bApply"]};
+var QUIZ=[
+{q:"日志里 event: \"trivial_move\"、写了 0 字节，说明什么？",opts:["压实任务失败了，被静默跳过","判定不用搬数据：MANIFEST 只记 DeleteFile+AddFile 两行账，零字节换层","输出文件太小，被合并进别的任务"],a:1,exp:"IsTrivialMove 五条件全过（单输入层、不重叠、压缩一致、祖父母不超限、无 filter）→ 不读不写不重开文件，20MB 数据几毫秒完成换层。省下的是一次完整的读+归并+写——Leveled 写放大里最冤的那份。"},
+{q:"L2 里 f5[aaa~kkk]、f6[kkk~zzz] 相邻，f6 被选中压实，为什么必须把 f5 拉进来？",opts:["为了凑够输入量","kkk 是同一个 user key：不带上 f5，它的旧版本没被合并，两文件的顺序还可能压坏——切口必须两端都是不同 user key","因为 L2 必须整层一起压"],a:1,exp:"ExpandInputsToCleanCut 一直扩到输入键范围与层内其他文件无半键重叠（no parts of a key are lost）。同键的所有版本必须在一次归并里相遇，去重和消墓碑才成立。"},
+{q:"快照 s1=3、s2=8，key=k 的版本 seq=4 为什么能丢？",opts:["因为它不是最新版本","它与 seq=5 落在同一个带（最早可见快照都是 s2=8），没有任何快照能区分它们——同带只留最新","因为快照 s1 看不见它"],a:1,exp:"findEarliestVisibleSnapshot：seq=5 和 seq=4 的第一个 ≥seq 的快照都是 8 → 同带。s1=3 只见 seq≤3，s2=8 见到的 k 已是 seq=5 的 C——B 对任何读者都不可见，规则 A 直接丢。s1 释放后 seq=2 也落带 8，一并丢。"},
+{q:"seq=9 的墓碑要满足什么才能被真正丢掉？",opts:["压实轮数够多就行","早于最早快照且更深层无此键（推干净）；或输出层就是最底层且更老带无引用","永远不会被丢，只能等手工清理"],a:1,exp:"三道判据：① 推干净（所有快照都看得见它 + KeyNotExistsBeyondOutputLevel）；② bottommost 且更老带无引用；③ 否则保留（kKeepDel）继续下沉——它还要遮挡更深处的旧版本。"},
+{q:"并发闸为什么要拦下「输出范围与在途任务相撞」的新任务？",opts:["怕线程不够用","两个任务往同一层写重叠的键，层内不重叠的不变式就保不住了","怕 MANIFEST 太大"],a:1,exp:"FilesRangeOverlapWithCompaction：若放行，两批输出都写同一层的同一段键，键序冲突。任务登记进在途名单后输入文件打上 being_compacted，紧接着重算 score——下一轮 Picker 看到的已经是扣除在途任务后的分数。"},
+{q:"VersionEdit + LogAndApply 为什么能保证读侧不存在「看见一半」？",opts:["因为 SST 压缩了","删输入+加输出合成一个 edit，顺序追加进 MANIFEST 并在同一次持锁里替换内存 Version——要么旧账要么新账","因为读加锁等压实完成"],a:1,exp:"SST 不可变，变化的只有「哪些文件属于哪个层」这本账；edit 是 MANIFEST 里一条不可变记录。中途失败则输出全弃、旧 Version 纹丝不动——免费回滚。"}];
+var WP=[[0,127,110],[35,292,110],[80,470,110],[170,470,110],[180,837,110],[262,837,110],[280,172,270],[320,404,266],[345,568,266],[370,732,266],[420,732,266],[445,108,379],[530,108,379],[545,700,395],[620,700,395],[640,141,530],[665,325,530],[682,520,530],[700,720,530],[720,884,530]];
+var PERIOD=6000,basePeriod=PERIOD,PHASE_MAX=720,STEP_DUR=600;
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,stepIdx=-1,dots=[],ticking=false,chipEls={};
+function $(id){return document.getElementById(id);}
+function setText(id,s){var n=$(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setOp(id,v){var n=$(id);if(n)n.setAttribute('opacity',Math.max(0,Math.min(1,v)).toFixed(2));}
+function setAttr(id,k,v){var n=$(id);if(n)n.setAttribute(k,v);}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){t=clamp(t,0,1);return t*t*(3-2*t);}
+function ramp(th,a,b){return clamp((th-a)/((b-a)||1),0,1);}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function lerpPts(pts,th){
+  if(th<=pts[0][0])return[pts[0][1],pts[0][2]];
+  for(var i=0;i<pts.length-1;i++){if(th<pts[i+1][0]){var t=smooth((th-pts[i][0])/(pts[i+1][0]-pts[i][0]));return[pts[i][1]+(pts[i+1][1]-pts[i][1])*t,pts[i][2]+(pts[i+1][2]-pts[i][2])*t];}}
+  return[pts[pts.length-1][1],pts[pts.length-1][2]];
+}
+function setChip(k,v){var n=chipEls[k];if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',/^(已|完成|命中|进行|归并|并行|切分|丢|原子|生效)/.test(v));n.classList.toggle('off',/^(待命|—|无|未|0)/.test(v));}
+function stageIdx(pr){var s=0;for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)s=i;}return s;}
+function pageRender(pr,si){
+  setOp('laneP',si<=2?1:0.3);
+  setOp('laneJ',si===3?1:0.3);
+  setOp('laneI',(si===4||si===5)?1:0.3);
+  setOp('laneO',si>=6?1:0.3);
+  var tmWin=(si===2)?1:ramp(pr,178,192)*(1-ramp(pr,262,278));
+  setOp('tmPath',si===2?1:tmWin*0.9);
+  setOp('tmPathT',si===2?1:tmWin);
+  setOp('tmLedger',si===2?1:tmWin);
+  setOp('v4',si>=4?1:(si>=2?0.6:0.3));
+  setOp('bOut',si>=6?1:0.5);
+  setText('roIn',(pr<90?1:3)+' 个（扩边后）');
+  setText('roOut',pr<540?'—':pr<630?'2 个（写入中）':'2 个（已安装）');
+  setText('roDrop',(pr>=470?1:0)+' 个（seq=4）');
+  setChip('pick',si===0?'打分中':si===1?'扩边中':si===2?'判定中':si>2?'已完成':'待命');
+  setChip('tm',si===2?'判定中':si>2?'未走（演示任务）':'待命');
+  setChip('sub',si===3?'3 段并行':si>3?'已跑完':'待命');
+  setChip('iter',si===4?'分带丢 1 版':si===5?'墓碑判据':si>5?'已结清':'待命');
+  setChip('inst',si===6?'写新 SST':si===7?'已原子生效':'待命');
+}
+function render(th){
+  var pr=norm(th);
+  setText('roPhase',Math.round(pr)+'°');
+  var si=stageIdx(pr);if(mode==='step'&&stepIdx>=0)si=stepIdx;
+  setText('roStep',STEPS[si]?STEPS[si].t:'—');
+  setText('roKey',STEPS[si]?STEPS[si].k:'—');
+  pageRender(pr,si);
+  var p=lerpPts(WP,pr);setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));
+}
+function tick(now){
+  ticking=false;
+  var dt=Math.min(50,now-last);last=now;
+  if(run&&mode==='auto')phase=(phase+dt/PERIOD*PHASE_MAX)%PHASE_MAX;
+  if(mode==='step'&&stepTo!==null){
+    stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);var p=stepElapsed/STEP_DUR,e=smooth(p);
+    phase=stepFrom+(stepTo-stepFrom)*e;if(p>=1){phase=stepTo;stepTo=null;}
+  }
+  render(phase);
+  if(run||stepTo!==null){ticking=true;requestAnimationFrame(tick);}
+}
+function wake(){if(ticking)return;ticking=true;last=performance.now();requestAnimationFrame(tick);}
+function setAuto(on){
+  mode='auto';run=on;stepTo=null;var b=$('engBtn');if(b)b.textContent=on?'暂停':'播放';
+  if(on){stepIdx=-1;dots.forEach(function(d){d.classList.remove('on');});
+  setText('stepT','自动运转模式');setText('stepX','点下方步骤点可切换到分步演示，随你点击定格。');wake();}
+}
+window.goStep=function(i){
+  stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+  var target=STEPS[stepIdx].d;
+  if(reduced||Math.abs(target-norm(phase))>180){phase=target;stepTo=null;}
+  else{stepFrom=phase;stepTo=target;stepElapsed=0;}
+  render(phase);wake();
+  var b=$('engBtn');if(b)b.textContent='继续自动运转';
+  dots.forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+  setText('stepT','第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t);
+  setText('stepX',STEPS[stepIdx].x);
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+CHIPS.forEach(function(c){var box=$('stateChips');var s=document.createElement('span');s.className='chip';s.innerHTML=c.l+' <b>--</b>';box.appendChild(s);chipEls[c.k]=s;});
+var stepBar=$('stepBar');
+STEPS.forEach(function(s,n){var b=document.createElement('button');b.className='stepnode';b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+s.t+'</span>';b.onclick=function(){goStep(n);};stepBar.appendChild(b);dots.push(b);});
+var engBtn=$('engBtn');engBtn.textContent=run?'暂停':'播放';
+engBtn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+var spd=$('engSpd');
+if(spd){spd.oninput=function(){speed=parseFloat(spd.value);$('engSpdV').textContent=speed+'×';PERIOD=basePeriod/speed;};}
+document.querySelectorAll('.part').forEach(function(btn){btn.onclick=function(){var ids=(PARTS[btn.dataset.part]||[]);document.querySelectorAll('#eng .hl').forEach(function(n){n.classList.remove('hl');});ids.forEach(function(id){var n=$(id);if(n)n.classList.add('hl');});};});
+var quizBox=$('quiz');QUIZ.forEach(function(q,n){var d=document.createElement('div');d.className='q';var html='<div class="qt">'+(n+1)+'. '+q.q+'</div>';q.opts.forEach(function(o,j){html+='<button class="opt" data-q="'+n+'" data-o="'+j+'">'+o+'</button>';});html+='<div class="exp"><b>答案：</b>'+q.opts[q.a]+'<br>'+q.exp+'</div>';d.innerHTML=html;quizBox.appendChild(d);});
+quizBox.querySelectorAll('.opt').forEach(function(b){b.onclick=function(){var q=QUIZ[+b.dataset.q];var box=b.closest('.q');if(box.classList.contains('done'))return;box.classList.add('done');b.classList.add(+b.dataset.o===q.a?'right':'wrong');box.querySelectorAll('.opt').forEach(function(o){if(+o.dataset.o===q.a)o.classList.add('right');});};});
+if(reduced){run=false;phase=0;render(0);engBtn.textContent='播放';}else{wake();}
+</script>
+</body>
+</html>

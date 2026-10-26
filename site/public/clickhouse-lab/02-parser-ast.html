@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SQL 解析器与 AST：先把句子拆成树 · ClickHouse 互动原理实验室</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#fff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:1000px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#fff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px;flex-wrap:wrap}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:38px 0 22px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:750px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#fff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:500;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:11.5px;fill:#3B3A34}
+.tn{font-size:12.5px;font-weight:500;fill:#1F1E1A}
+.tag{font-size:10px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:nowrap;overflow-x:auto;max-width:100%;padding-bottom:4px}
+.stepnode{flex:1;min-width:62px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px;flex-wrap:wrap}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+section{padding:34px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .arr{color:#C46A0A;font-weight:600}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.figcap b{color:#3B3A34;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:13.5px;table-layout:fixed}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 9px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+.env span,.env b,.part span,.figcap,.summary p,table.grid td{overflow-wrap:anywhere;word-break:break-word}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#scene [opacity],#scene2 [opacity],#scene3 [opacity]{transition:opacity .22s ease}
+#eng .hl,#eng2 .hl,#eng3 .hl{stroke:#D96C06 !important;stroke-width:2.2 !important}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+.stage circle{fill:#fff;stroke:#B4B2A9;stroke-width:1.4;transition:fill .18s,stroke .18s}
+.stage.on rect:first-of-type{fill:#FFF6E8;stroke:#C46A0A;stroke-width:2}
+.stage.done rect:first-of-type{fill:#EAF3DE;stroke:#639922}
+.stage.done circle{fill:#EAF3DE;stroke:#639922}
+.stage.on circle{fill:#EF9F27;stroke:#C46A0A;stroke-width:2}
+.stage text{font-size:10px;fill:#6B695F}
+.stage.on text{fill:#854F0B;font-weight:600}
+.subview{margin:8px 0 4px;background:#fff;border:1px dashed #D3D1C7;border-radius:10px;padding:8px 10px}
+.subview .viewtitle{font-size:12px;font-weight:600;color:#854F0B;margin-bottom:4px}
+@media (max-width:560px){.page{padding:0 12px 60px}.labbar{padding:8px 12px}.labbar .idx{width:100%;margin-left:0;text-align:right}.hero h1{font-size:24px}.sec-head h2{font-size:18px}.stepnode{min-width:54px}.stepnode .lab2{font-size:9px}}
+@media (prefers-reduced-motion: reduce){#scene [opacity],#scene2 [opacity],#scene3 [opacity]{transition:none}}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：SQL 解析器与 AST：先把句子拆成树</a>
+  <span class="idx">第 2 / 13 章</span>
+</div>
+<div class="page">
+<header class="hero">
+<div class="kicker">QUERY PIPELINE · SQL 解析器与 AST</div>
+<h1>SQL 解析器与 AST：先把句子拆成树</h1>
+<p>两条 SQL 都报错，但一条停在 Parser，一条停在 Analyzer。先把文本拆成 token，再拼成 AST；这棵树忠实记录「你写了什么」，但还不回答「它指的是什么」。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span><span class="mnode">② 静态分解</span><span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span><span class="mnode">⑤ 环境场景</span><span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 440" role="img" xmlns="http://www.w3.org/2000/svg"><defs>
+<marker id="aW" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aM" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#6B695F" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs><text x="500" y="28" font-size="18" fill="#1F1E1A" text-anchor="middle" font-weight="600">SQL 文本 → Token → AST：解析器在做什么</text><text x="500" y="48" font-size="11.5" fill="#6B695F" text-anchor="middle">Lexer 切词，递归下降 Parser 按子句拼树；语法错误在这一站，语义错误留给下一站</text><text x="976" y="24" font-size="10.5" fill="#C46A0A" text-anchor="end">橙色：文本/请求</text><text x="976" y="39" font-size="10.5" fill="#2F6FA8" text-anchor="end">蓝色：结构</text><text x="976" y="54" font-size="10.5" fill="#E24B4A" text-anchor="end">红色：语法错误</text><g class="stage" id="s1"><rect x="20.0" y="76" width="111.25" height="142" rx="9" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/><text x="28.0" y="98" class="tn" text-anchor="start" font-size="12">SQL 文本</text><text x="28.0" y="118" class="tb" text-anchor="start" font-size="10.2">SELECT region,</text><text x="28.0" y="132" class="tb" text-anchor="start" font-size="10.2">COUNT(*) AS n</text><text x="28.0" y="146" class="tb" text-anchor="start" font-size="10.2">FROM shop.orders</text><text x="28.0" y="160" class="tb" text-anchor="start" font-size="10.2">WHERE status</text><text x="28.0" y="174" class="tb" text-anchor="start" font-size="10.2">= 'paid'</text><text x="28.0" y="209" class="tag" text-anchor="start" fill="#C46A0A">字节流</text></g><path d="M131.25 147.0 L139.25 147.0" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><g class="stage" id="s2"><rect x="141.25" y="76" width="111.25" height="142" rx="9" fill="#fff" stroke="#D3D1C7" stroke-width="1.2"/><text x="149.25" y="98" class="tn" text-anchor="start" font-size="12">Lexer</text><text x="149.25" y="118" class="tb" text-anchor="start" font-size="10.2">切 token</text><text x="149.25" y="132" class="tb" text-anchor="start" font-size="10.2">关键字/标识符</text><text x="149.25" y="146" class="tb" text-anchor="start" font-size="10.2">数字/字符串</text><text x="149.25" y="160" class="tb" text-anchor="start" font-size="10.2">跳过空白/注释</text><text x="149.25" y="209" class="tag" text-anchor="start" fill="#C46A0A">Token 流</text></g><path d="M252.5 147.0 L260.5 147.0" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><g class="stage" id="s3"><rect x="262.5" y="76" width="111.25" height="142" rx="9" fill="#fff" stroke="#D3D1C7" stroke-width="1.2"/><text x="270.5" y="98" class="tn" text-anchor="start" font-size="12">Parser</text><text x="270.5" y="118" class="tb" text-anchor="start" font-size="10.2">递归下降</text><text x="270.5" y="132" class="tb" text-anchor="start" font-size="10.2">按子句读</text><text x="270.5" y="146" class="tb" text-anchor="start" font-size="10.2">SELECT/FROM</text><text x="270.5" y="160" class="tb" text-anchor="start" font-size="10.2">WHERE/GROUP BY</text><text x="270.5" y="209" class="tag" text-anchor="start" fill="#C46A0A">语法规则</text></g><path d="M373.75 147.0 L381.75 147.0" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><g class="stage" id="s4"><rect x="383.75" y="76" width="111.25" height="142" rx="9" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/><text x="391.75" y="98" class="tn" text-anchor="start" font-size="12">AST</text><text x="391.75" y="118" class="tb" text-anchor="start" font-size="10.2">ASTSelectQuery</text><text x="391.75" y="132" class="tb" text-anchor="start" font-size="10.2">select / from</text><text x="391.75" y="146" class="tb" text-anchor="start" font-size="10.2">where / group_by</text><text x="391.75" y="160" class="tb" text-anchor="start" font-size="10.2">order_by / limit</text><text x="391.75" y="209" class="tag" text-anchor="start" fill="#C46A0A">语法树</text></g><path d="M495.0 147.0 L503.0 147.0" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><g class="stage" id="s5"><rect x="505.0" y="76" width="111.25" height="142" rx="9" fill="#fff" stroke="#D3D1C7" stroke-width="1.2"/><text x="513.0" y="98" class="tn" text-anchor="start" font-size="12">语义检查</text><text x="513.0" y="118" class="tb" text-anchor="start" font-size="10.2">绑定表/列</text><text x="513.0" y="132" class="tb" text-anchor="start" font-size="10.2">别名作用域</text><text x="513.0" y="146" class="tb" text-anchor="start" font-size="10.2">类型推断</text><text x="513.0" y="160" class="tb" text-anchor="start" font-size="10.2">聚合合法性</text><text x="513.0" y="209" class="tag" text-anchor="start" fill="#C46A0A">Analyzer</text></g><path d="M616.25 147.0 L624.25 147.0" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><g class="stage" id="s6"><rect x="626.25" y="76" width="111.25" height="142" rx="9" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/><text x="634.25" y="98" class="tn" text-anchor="start" font-size="12">QueryTree</text><text x="634.25" y="118" class="tb" text-anchor="start" font-size="10.2">ColumnNode</text><text x="634.25" y="132" class="tb" text-anchor="start" font-size="10.2">FunctionNode</text><text x="634.25" y="146" class="tb" text-anchor="start" font-size="10.2">TableNode</text><text x="634.25" y="160" class="tb" text-anchor="start" font-size="10.2">JoinNode</text><text x="634.25" y="209" class="tag" text-anchor="start" fill="#C46A0A">语义树</text></g><path d="M737.5 147.0 L745.5 147.0" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><g class="stage" id="s7"><rect x="747.5" y="76" width="111.25" height="142" rx="9" fill="#fff" stroke="#D3D1C7" stroke-width="1.2"/><text x="755.5" y="98" class="tn" text-anchor="start" font-size="12">EXPLAIN AST</text><text x="755.5" y="118" class="tb" text-anchor="start" font-size="10.2">打印语法树</text><text x="755.5" y="132" class="tb" text-anchor="start" font-size="10.2">看别名/结构</text><text x="755.5" y="146" class="tb" text-anchor="start" font-size="10.2">排查解析</text><text x="755.5" y="160" class="tb" text-anchor="start" font-size="10.2">不是执行计划</text><text x="755.5" y="209" class="tag" text-anchor="start" fill="#C46A0A">诊断</text></g><path d="M858.75 147.0 L866.75 147.0" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><g class="stage" id="s8"><rect x="868.75" y="76" width="111.25" height="142" rx="9" fill="#fff" stroke="#D3D1C7" stroke-width="1.2"/><text x="876.75" y="98" class="tn" text-anchor="start" font-size="12">下一站</text><text x="876.75" y="118" class="tb" text-anchor="start" font-size="10.2">QueryAnalyzer</text><text x="876.75" y="132" class="tb" text-anchor="start" font-size="10.2">QueryTreePass</text><text x="876.75" y="146" class="tb" text-anchor="start" font-size="10.2">Planner</text><text x="876.75" y="160" class="tb" text-anchor="start" font-size="10.2">QueryPlan</text><text x="876.75" y="209" class="tag" text-anchor="start" fill="#C46A0A">第 3 章</text></g><text x="20" y="244" font-size="12" fill="#C46A0A" font-weight="600">分支：语法错误停在 Parser，语义错误停在 Analyzer</text>
+<rect x="20" y="256" width="450" height="64" rx="8" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.1"/>
+<text x="34" y="278" font-size="11.5" fill="#1F1E1A" font-weight="600">语法错误：括号/关键字/引号</text>
+<text x="34" y="296" font-size="10.5" fill="#6B695F">Syntax error: failed at position 62</text>
+<text x="34" y="312" font-size="10.5" fill="#E24B4A">连 AST 都没生成，检查文本结构</text>
+<rect x="500" y="256" width="480" height="64" rx="8" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1"/>
+<text x="514" y="278" font-size="11.5" fill="#1F1E1A" font-weight="600">语义错误：列不存在/类型不匹配</text>
+<text x="514" y="296" font-size="10.5" fill="#6B695F">Unknown expression identifier 'stauts'</text>
+<text x="514" y="312" font-size="10.5" fill="#C46A0A">AST 已生成，检查绑定与类型</text>
+<rect x="20" y="332" width="960" height="58" rx="8" fill="#fff" stroke="#ECEAE2" stroke-width="1"/>
+<text x="34" y="354" font-size="11" fill="#3B3A34">读法：橙色令牌从左往右经过 token、语法树、语义树；红色/黄色分支只在对应错误时点亮，正常查询走上面的主链。</text>
+<text x="34" y="374" font-size="10.5" fill="#6B695F">口径：ParserSelectWithUnionQuery.cpp:11、ParserSelectQuery.cpp:326、IAST.h:35；AST 节点名以 EXPLAIN AST 输出为准。</text><circle id="tok" cx="75.6" cy="147.0" r="7" fill="#EF9F27" stroke="#D97E06" stroke-width="1.4"/></svg>
+<div class="subview">
+<div class="viewtitle">第二视图 · ASTSelectQuery 的子节点与 EXPLAIN AST 的读法</div>
+<svg id="eng2" viewBox="0 0 1000 210" role="img" xmlns="http://www.w3.org/2000/svg"><defs>
+<marker id="aW" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aM" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#6B695F" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs><rect x="18" y="14" width="964" height="182" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/><text x="34" y="38" font-size="13" fill="#1F1E1A" font-weight="600">ASTSelectQuery 的六个关键子节点</text><rect x="34" y="54" width="150" height="78" rx="6" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.1"/><text x="109.0" y="76" class="tn" text-anchor="middle" font-size="11.5">select</text><text x="109.0" y="94" class="tag" text-anchor="middle">表达式列表</text><rect x="204" y="54" width="150" height="78" rx="6" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.1"/><text x="279.0" y="76" class="tn" text-anchor="middle" font-size="11.5">from</text><text x="279.0" y="94" class="tag" text-anchor="middle">表/子查询</text><rect x="374" y="54" width="150" height="78" rx="6" fill="#fff" stroke="#D3D1C7" stroke-width="1.1"/><text x="449.0" y="76" class="tn" text-anchor="middle" font-size="11.5">where</text><text x="449.0" y="94" class="tag" text-anchor="middle">过滤条件</text><rect x="544" y="54" width="150" height="78" rx="6" fill="#fff" stroke="#D3D1C7" stroke-width="1.1"/><text x="619.0" y="76" class="tn" text-anchor="middle" font-size="11.5">group_by</text><text x="619.0" y="94" class="tag" text-anchor="middle">分组键</text><rect x="714" y="54" width="150" height="78" rx="6" fill="#fff" stroke="#D3D1C7" stroke-width="1.1"/><text x="789.0" y="76" class="tn" text-anchor="middle" font-size="11.5">order_by</text><text x="789.0" y="94" class="tag" text-anchor="middle">排序键</text><rect x="884" y="54" width="84" height="78" rx="6" fill="#EAF3DE" stroke="#639922" stroke-width="1.1"/><text x="926.0" y="76" class="tn" text-anchor="middle" font-size="11.5">limit</text><text x="926.0" y="94" class="tag" text-anchor="middle">5</text><path d="M184 86 L202 86" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><path d="M354 86 L372 86" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><path d="M524 86 L542 86" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><path d="M694 86 L712 86" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><path d="M864 86 L882 86" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/><text x="34" y="154" class="tb" text-anchor="start" fill="#3B3A34" font-size="10.8">读法：每个子节点本身又是一棵子树；EXPLAIN AST 的缩进就是这棵树。</text><text x="34" y="172" class="tb" text-anchor="start" fill="#3B3A34" font-size="10.8">别名只记在 ASTWithAlias 里，是否生效由 Analyzer 决定；EXPLAIN SYNTAX 看改写后的 SQL。</text><circle id="tok2" cx="109" cy="142" r="6" fill="#639922" stroke="#4C7A1A" stroke-width="1.4"/></svg>
+</div>
+</div>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.5" max="2" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm">默认 ≈ 5.6 秒 / 轮</span>
+</div>
+<div class="readout">
+<span class="ro">进度 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">读数 <b id="roKey">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav"><button class="btn" onclick="prevStep()">‹ 上一步</button><button class="btn warn" onclick="nextStep()">下一步 ›</button></span>
+</div>
+<p class="figcap">相位 0° = 收到文本，630° = AST 交给下一站；红色/黄色分支只在对应错误时点亮。<br>口径：ClickHouse 26.11.1.1-testing；Parser 入口见 ParserSelectWithUnionQuery.cpp:11、ParserSelectQuery.cpp:326；AST 基类见 IAST.h:35。</p>
+</div>
+
+<section><div class="sec-head"><span class="sec-num">1</span><h2>表象观察：两种报错，两个站点</h2></div>
+<p class="sec-sub">同样是「SQL 写错了」，错误发生的层完全不同。</p>
+<div class="quote">「先分清是文本结构错了，还是名字/类型错了。」</div>
+<div class="flow"><span class="node">SQL</span><span class="arr">→</span><span class="node box">Lexer/Parser</span><span class="arr">→</span><span class="node">AST</span><span class="arr">→</span><span class="node box">Analyzer</span><span class="arr">→</span><span class="node">QueryTree</span></div>
+<p>少右括号、关键字拼错、引号不配对，停在 Parser；列名拼错、类型不匹配、聚合嵌套错误，能过 Parser，停在 Analyzer。前者看文本，后者看元数据。</p>
+</section>
+<section><div class="sec-head"><span class="sec-num">2</span><h2>静态分解：Token、AST、QueryTree 各是什么</h2></div>
+<table class="grid"><tr><th>对象</th><th>谁产生</th><th>回答什么</th><th>例子</th></tr>
+<tr><td>Token</td><td>Lexer</td><td>这段字符是什么类型</td><td>SELECT / region / 'paid'</td></tr>
+<tr><td>AST</td><td>Parser</td><td>用户写了什么结构</td><td>ASTSelectQuery(select, from, where...)</td></tr>
+<tr><td>QueryTree</td><td>Analyzer</td><td>名字指的是什么、类型是什么</td><td>ColumnNode(shop.orders.region)</td></tr>
+<tr><td>QueryPlan</td><td>Planner</td><td>引擎决定怎么执行</td><td>ReadFromMergeTree → AggregatingStep</td></tr></table>
+<p class="hint">解析器只造第二行；第三、四行在后面的章节。</p>
+</section>
+<section><div class="sec-head"><span class="sec-num">3</span><h2>动态分析：一条 SQL 的解析顺序</h2></div>
+<div class="quote">「解析是单向的：先 WITH，再 SELECT/FROM，最后 GROUP BY/ORDER BY/LIMIT。」</div>
+<table class="grid"><tr><th>阶段</th><th>读什么</th><th>产物</th></tr>
+<tr><td>WITH</td><td>CTE / 标量别名</td><td>with 子树</td></tr>
+<tr><td>SELECT</td><td>投影表达式 + 别名</td><td>select 表达式列表</td></tr>
+<tr><td>FROM</td><td>表/子查询/表函数/JOIN</td><td>tables 子树</td></tr>
+<tr><td>WHERE/GROUP BY/HAVING</td><td>过滤与聚合</td><td>对应子节点</td></tr>
+<tr><td>ORDER BY/LIMIT/SETTINGS</td><td>排序、截断、查询设置</td><td>对应子节点</td></tr></table>
+<p>PREWHERE 是 ClickHouse 自己的语法，位置在 WHERE 之前；它不是标准 SQL，解析器单独处理。</p>
+</section>
+<section><div class="sec-head"><span class="sec-num">4</span><h2>动静融合：AST 节点和别名规则</h2></div>
+<table class="grid"><tr><th>写法</th><th>解析结果</th><th>Analyzer 怎么处理</th></tr>
+<tr><td>COUNT(*) AS orders</td><td>ASTFunction(count, alias=orders)</td><td>输出列名 = orders</td></tr>
+<tr><td>ORDER BY orders</td><td>ASTIdentifier(orders)</td><td>优先匹配真实列，再匹配别名</td></tr>
+<tr><td>WHERE double_amount &gt; 100</td><td>ASTIdentifier(double_amount)</td><td>ClickHouse 扩展：可解析别名</td></tr>
+<tr><td>SELECT amount AS region, region</td><td>两个 ASTIdentifier</td><td>真实列优先（prefer_column_name_to_alias=false）</td></tr></table>
+<p class="hint">EXPLAIN AST 能看到结构，但看不到最终绑定；要看绑定用 EXPLAIN SYNTAX 或 EXPLAIN PLAN。</p>
+</section>
+<section><div class="sec-head"><span class="sec-num">5</span><h2>环境场景：解析器的边界与安全</h2></div>
+<div class="envcards">
+<div class="env"><b>max_query_size</b><span>256 KiB；防止超长 SQL 拖垮解析器。</span></div>
+<div class="env"><b>max_parser_depth</b><span>1000 层；防止递归爆栈。</span></div>
+<div class="env"><b>max_ast_elements</b><span>5 万节点；防止巨型 AST。</span></div>
+<div class="env"><b>查询参数</b><span>{name:Type} 把值变字面量，避免 SQL 注入。</span></div>
+<div class="env"><b>MySQL 对比</b><span>Bison/LALR vs 手写递归下降；错误提示和扩展性不同。</span></div>
+<div class="env"><b>FORMAT</b><span>输出格式声明，不是 SELECT 子句；位置写错会报语法错误。</span></div>
+</div>
+</section>
+<section><div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div><div id="quiz"></div></section>
+
+<div class="summary">
+<h2>一页带走</h2>
+<p class="chant">解析分两步：Lexer 切 token，递归下降 Parser 拼 AST。</p>
+<p>· 解析分两步：Lexer 切 token，递归下降 Parser 拼 AST。</p>
+<p>· AST 只记录「写了什么」，不裁决别名/类型/表绑定。</p>
+<p>· 语法错误停在 Parser，语义错误停在 Analyzer。</p>
+<p>· AST/QueryTree/QueryPlan 是三棵不同的树，EXPLAIN 工具也不同。</p>
+<p>· 解析器有硬限制：256 KiB、1000 层、5 万节点。</p>
+</div>
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+<script>
+var STEPS=[{"d": 0, "t": "SQL 文本", "x": "客户端发来一条 SELECT；此时只是字节，没有结构。", "k": "raw text"}, {"d": 90, "t": "Lexer", "x": "按字符切成 token：关键字、标识符、数字、字符串、运算符；空白和注释跳过。", "k": "token 流"}, {"d": 180, "t": "Parser", "x": "递归下降按子句读：WITH → SELECT → FROM → WHERE → GROUP BY → ORDER BY → LIMIT。", "k": "语法规则"}, {"d": 270, "t": "AST", "x": "生成 ASTSelectQuery，子节点是 select/from/where/group_by/order_by/limit。", "k": "AST"}, {"d": 360, "t": "语义检查", "x": "绑定 region 到 shop.orders.region，检查 count() 是否合法，推断 gmv 类型。", "k": "QueryTree"}, {"d": 450, "t": "别名", "x": "orders 是别名还是列？解析阶段只记名字，Analyzer 按作用域裁决。", "k": "alias"}, {"d": 540, "t": "EXPLAIN AST", "x": "打印语法树，确认 SQL 被理解成什么结构；不是执行计划。", "k": "诊断"}, {"d": 630, "t": "交给优化器", "x": "AST 送进 QueryAnalyzer/Planner，下一章把树修成可执行的 QueryPlan。", "k": "next"}];
+var CHIPS=[{"k": "tok", "l": "Token"}, {"k": "ast", "l": "AST"}, {"k": "alias", "l": "别名"}, {"k": "err", "l": "错误"}, {"k": "next", "l": "下一站"}];
+var PARTS={"sql": ["s1"], "lexer": ["s2"], "parser": ["s3"], "ast": ["s4"], "sem": ["s5"], "tree": ["s6"]};
+var QUIZ=[{"q": "Syntax error 通常发生在哪一站？", "opts": ["Lexer/Parser", "Analyzer", "Planner"], "a": 0, "exp": "语法错误在解析阶段报；Analyzer 负责列/类型/别名等语义错误。"}, {"q": "AST 里 ORDER BY gmv 的 gmv 是什么节点？", "opts": ["一定是列", "ASTIdentifier，语义由 Analyzer 决定", "ASTLiteral"], "a": 1, "exp": "解析阶段只记标识符；它可能是列也可能是别名，由作用域规则裁决。"}, {"q": "EXPLAIN AST 和 EXPLAIN PLAN 有什么区别？", "opts": ["同一个东西", "AST 看语法结构，PLAN 看执行步骤", "AST 会执行查询"], "a": 1, "exp": "三棵树：AST / QueryTree / QueryPlan；EXPLAIN AST 只打印第一棵。"}, {"q": "max_query_size 默认是多少？", "opts": ["256 KiB", "1 MiB", "无限制"], "a": 0, "exp": "262144 字节；还有 max_parser_depth=1000、max_ast_elements=50000 等保护。"}, {"q": "为什么 ClickHouse 用手写递归下降解析器？", "opts": ["因为 Bison 不支持 SQL", "扩展语法、错误提示、特殊子句更可控", "因为解析速度一定更快"], "a": 1, "exp": "手写 parser 更容易加 PREWHERE/QUALIFY/LIMIT BY 等语法，也能定制错误；代价是文法不集中。"}];
+var TOK=[[75.625, 236], [196.875, 147.0], [318.125, 147.0], [439.375, 147.0], [560.625, 147.0], [681.875, 147.0], [803.125, 147.0], [924.375, 147.0]];
+var TOK2=[[109, 86], [279, 86], [449, 86], [619, 86], [789, 86], [869, 86], [869, 86], [619, 86]];
+
+var PERIOD=5600, PHASE_MAX=720, STEP_DUR=600;
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto', run=!reduced, speed=1, phase=0, last=performance.now();
+var stepFrom=0, stepTo=null, stepElapsed=0, stepIdx=-1, dots=[], ticking=false;
+function $(id){return document.getElementById(id);}
+function setText(id,s){var n=$(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setOp(id,v){var n=$(id);if(n)n.setAttribute('opacity',Math.max(0,Math.min(1,v)).toFixed(2));}
+function setW(id,v){var n=$(id);if(n)n.setAttribute('width',Math.max(0,v).toFixed(1));}
+function setAttr(id,k,v){var n=$(id);if(n)n.setAttribute(k,v);}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){t=clamp(t,0,1);return t*t*(3-2*t);}
+function ramp(x,a,b){return clamp((x-a)/(b-a),0,1);}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function setChip(k,v){var n=chipEls[k];if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',/^(开|是|已|命中|完成|一致|通过|留下|已读|已加密|已解密|写入|可读|生效|追平|选中|返回)/.test(v));n.classList.toggle('off',/^(关|否|待命|—|不|跳过|未|失败|阻塞|只读)/.test(v));}
+function stageAt(th){return clamp(Math.floor(th/(PHASE_MAX/STEPS.length)),0,STEPS.length-1);}
+function lerpPts(pts,th){var i=stageAt(th),a=pts[Math.min(i,pts.length-1)],b=pts[Math.min(i+1,pts.length-1)];var t=smooth((th%(PHASE_MAX/STEPS.length))/(PHASE_MAX/STEPS.length));return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t];}
+function render(th){
+  var pr=norm(th);
+  setText('roPhase',Math.round(pr)+'°');
+  var si=stageAt(pr);
+  if(mode==='step'&&stepIdx>=0)si=stepIdx;
+  setText('roStep',STEPS[si]?STEPS[si].t:'—');
+  setText('roKey',STEPS[si]?STEPS[si].k:'—');
+  document.querySelectorAll('#eng .stage,#eng2 .stage,#eng3 .stage').forEach(function(n,i){});
+  document.querySelectorAll('#eng .stage').forEach(function(n,i){n.classList.toggle('on',i===si);n.classList.toggle('done',i<si);});
+  if(typeof TOK!=='undefined'&&TOK.length){var p=lerpPts(TOK,pr);setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));}
+  if(typeof TOK2!=='undefined'&&TOK2.length){var q=lerpPts(TOK2,pr);setAttr('tok2','cx',q[0].toFixed(1));setAttr('tok2','cy',q[1].toFixed(1));}
+  pageRender(pr,si);
+}
+function tick(now){
+  ticking=false;
+  var dt=Math.min(50,now-last);last=now;
+  if(run&&mode==='auto')phase=(phase+dt/PERIOD*PHASE_MAX)%PHASE_MAX;
+  if(mode==='step'&&stepTo!==null){
+    stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);var p=stepElapsed/STEP_DUR,e=smooth(p);
+    phase=stepFrom+(stepTo-stepFrom)*e;if(p>=1){phase=stepTo;stepTo=null;}
+  }
+  render(phase);
+  if(run||stepTo!==null){ticking=true;requestAnimationFrame(tick);}
+}
+function wake(){if(ticking)return;ticking=true;last=performance.now();requestAnimationFrame(tick);}
+function setAuto(on){
+  mode='auto';run=on;stepTo=null;var b=$('engBtn');if(b)b.textContent=on?'暂停':'播放';
+  if(on){stepIdx=-1;dots.forEach(function(d){d.classList.remove('on');});
+  setText('stepT','自动运转模式');setText('stepX','点下方步骤点可切换到分步演示，随你点击定格。');wake();}
+}
+window.goStep=function(i){
+  stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+  var target=STEPS[stepIdx].d;
+  if(reduced||Math.abs(target-norm(phase))>PHASE_MAX/2){phase=target;stepTo=null;}
+  else{stepFrom=phase;stepTo=target;stepElapsed=0;}
+  render(phase);wake();
+  var b=$('engBtn');if(b)b.textContent='继续自动运转';
+  dots.forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+  setText('stepT','第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t);
+  setText('stepX',STEPS[stepIdx].x);
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+var chipEls={};CHIPS.forEach(function(c){var box=$('stateChips');var s=document.createElement('span');s.className='chip';s.innerHTML=c.l+' <b>--</b>';box.appendChild(s);chipEls[c.k]=s;});
+var stepBar=$('stepBar');
+STEPS.forEach(function(s,n){var b=document.createElement('button');b.className='stepnode';b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+s.t+'</span>';b.onclick=function(){goStep(n);};stepBar.appendChild(b);dots.push(b);});
+var engBtn=$('engBtn');engBtn.textContent=run?'暂停':'播放';
+engBtn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+var spd=$('engSpd');
+if(spd){spd.oninput=function(){speed=parseFloat(spd.value);$('engSpdV').textContent=speed+'×';PERIOD=5600/speed;};}
+document.querySelectorAll('.part').forEach(function(btn){btn.onclick=function(){var ids=(PARTS[btn.dataset.part]||[]);document.querySelectorAll('#eng .hl,#eng2 .hl,#eng3 .hl').forEach(function(n){n.classList.remove('hl');});ids.forEach(function(id){var n=$(id);if(n)n.classList.add('hl');});};});
+var quizBox=$('quiz');QUIZ.forEach(function(q,n){var d=document.createElement('div');d.className='q';var html='<div class="qt">'+(n+1)+'. '+q.q+'</div>';q.opts.forEach(function(o,j){html+='<button class="opt" data-q="'+n+'" data-o="'+j+'">'+o+'</button>';});html+='<div class="exp"><b>答案：</b>'+q.opts[q.a]+'<br>'+q.exp+'</div>';d.innerHTML=html;quizBox.appendChild(d);});
+quizBox.querySelectorAll('.opt').forEach(function(b){b.onclick=function(){var q=QUIZ[+b.dataset.q];var box=b.closest('.q');if(box.classList.contains('done'))return;box.classList.add('done');b.classList.add(+b.dataset.o===q.a?'right':'wrong');box.querySelectorAll('.opt').forEach(function(o){if(+o.dataset.o===q.a)o.classList.add('right');});};});
+if(reduced){run=false;phase=0;render(0);engBtn.textContent='播放';}else{wake();}
+
+
+function pageRender(pr,si){
+  var lexed=pr>=90, parsed=pr>=180, ast=pr>=270, bound=pr>=360;
+  setChip('tok',lexed?'已切分':'待命');
+  setChip('ast',ast?'已生成':'待命');
+  setChip('alias',bound?'已绑定':'待命');
+  setChip('err',pr>=180&&pr<360?'可能':'—');
+  setChip('next',pr>=630?'已交接':'待命');
+  setOp('tok2',ramp(pr,260,290)*(1-ramp(pr,690,715)));
+}
+
+</script>
+</body>
+</html>

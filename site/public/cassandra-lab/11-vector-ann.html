@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>向量搜索与 ANN · Cassandra 互动原理实验室 第 12 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:960px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:720px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:600;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:12px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:600;fill:#1F1E1A}
+.tag{font-size:10.5px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:66px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .outbranch{display:inline-flex;flex-direction:column;align-items:flex-start;gap:6px}
+.flow .outline{display:inline-flex;align-items:center;gap:8px}
+.flow .flownote{font-size:12px;color:#6B695F;font-weight:600;margin-right:4px}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 10px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+#eng [opacity]{transition:opacity .28s ease}
+#eng2 [opacity]{transition:opacity .28s ease}
+@media (prefers-reduced-motion: reduce){#eng [opacity],#eng2 [opacity]{transition:none}}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:8px 4px 0;font-size:12px;color:#6B695F}
+.legend i{display:inline-block;width:18px;height:0;border-top:2px solid #C46A0A;vertical-align:middle;margin-right:5px}
+.legend i.g{border-color:#639922}
+.legend i.r{border-color:#E24B4A}
+.legend i.b{border-color:#2F6FA8}
+.legend i.dash{border-top-style:dashed}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：向量搜索与 ANN</a>
+  <span class="idx">第 12 / 15 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · VECTOR SEARCH &amp; ANN</div>
+<h1>贪心跳邻居，池满再淘汰</h1>
+<p>一张 8 个点的二维近邻图，把 ANN 的全部秘密演给你看：从入口 P1 出发贪心跳转 P1→P2→P4→P6，候选池边走边攒、最后按距离淘汰到 Top-3；右侧计数器全程对比全表扫描的账。切「建图」模式看 8 次 INSERT 怎么把图长出来、flush 怎么落 segment、压缩怎么合并重建。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span>
+<span class="mnode">② 静态分解</span>
+<span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span>
+<span class="mnode">⑤ 环境场景</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 560" role="img" xmlns="http://www.w3.org/2000/svg"><title>8 点近邻图贪心 Top-K</title><defs><marker id="rA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="rB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="rG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker></defs><text class="th" x="500" y="24" text-anchor="middle" id="engTitle">贪心查找：入口 P1 → 跳邻居 → 候选池淘汰出 Top-3</text><text class="ts" x="500" y="44" text-anchor="middle" id="engSub">SELECT id FROM users ORDER BY embedding ANN OF [0.70,0.55] LIMIT 3｜M=16、束宽 100（教学图缩到 8 点 2 维）</text><text x="972" y="24" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">橙色：查询 / 跳转</text><text x="972" y="40" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">蓝色：贪心路径</text><text x="972" y="56" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色：候选 / Top-3</text><g id="stStrip"><rect id="st0" x="28" y="64" width="172" height="52" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/><text id="stL0" x="38" y="84" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">G1 入口</text><text id="stS0" x="38" y="102" font-size="9.5" fill="#6B695F" text-anchor="start">E=P1，d=0.69</text><rect id="st1" x="212" y="64" width="172" height="52" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/><text id="stL1" x="222" y="84" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">G2 看邻居</text><text id="stS1" x="222" y="102" font-size="9.5" fill="#6B695F" text-anchor="start">算邻居距离入池</text><rect id="st2" x="396" y="64" width="172" height="52" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/><text id="stL2" x="406" y="84" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">G3 贪心跳</text><text id="stS2" x="406" y="102" font-size="9.5" fill="#6B695F" text-anchor="start">跳到最近的邻居</text><rect id="st3" x="580" y="64" width="172" height="52" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/><text id="stL3" x="590" y="84" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">G4 局部停</text><text id="stS3" x="590" y="102" font-size="9.5" fill="#6B695F" text-anchor="start">邻居无一更近</text><rect id="st4" x="764" y="64" width="208" height="52" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/><text id="stL4" x="774" y="84" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">G5 淘汰收敛</text><text id="stS4" x="774" y="102" font-size="9.5" fill="#6B695F" text-anchor="start">topKFor 放大→收敛 3</text></g>
+<g id="mapBox"><rect x="28" y="128" width="548" height="392" rx="10" fill="#ffffff" stroke="#3B3A34" stroke-width="1.2"/><text x="42" y="150" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">embedding 二维地图（8 行 users；坐标 = 向量值）</text><line x1="80" y1="440" x2="540" y2="440" stroke="#D3D1C7" stroke-width="1.2"/><line x1="80" y1="335" x2="540" y2="335" stroke="#ECEAE2" stroke-width="1" stroke-dasharray="3 3"/><line x1="80" y1="230" x2="540" y2="230" stroke="#ECEAE2" stroke-width="1" stroke-dasharray="3 3"/><line x1="310" y1="170" x2="310" y2="445" stroke="#ECEAE2" stroke-width="1" stroke-dasharray="3 3"/><line x1="195" y1="170" x2="195" y2="445" stroke="#ECEAE2" stroke-width="1" stroke-dasharray="3 3"/><line x1="425" y1="170" x2="425" y2="445" stroke="#ECEAE2" stroke-width="1" stroke-dasharray="3 3"/><g id="edgeG"><line x1="110" y1="189" x2="185" y2="218" stroke="#B4B2A9" stroke-width="1.2"/><line x1="110" y1="189" x2="235" y2="170" stroke="#B4B2A9" stroke-width="1.2"/><line x1="185" y1="218" x2="235" y2="170" stroke="#B4B2A9" stroke-width="1.2"/><line x1="185" y1="218" x2="285" y2="296" stroke="#B4B2A9" stroke-width="1.2"/><line x1="235" y1="170" x2="360" y2="243" stroke="#B4B2A9" stroke-width="1.2"/><line x1="285" y1="296" x2="360" y2="243" stroke="#B4B2A9" stroke-width="1.2"/><line x1="285" y1="296" x2="410" y2="325" stroke="#B4B2A9" stroke-width="1.2"/><line x1="360" y1="243" x2="410" y2="325" stroke="#B4B2A9" stroke-width="1.2"/><line x1="360" y1="243" x2="510" y2="203" stroke="#B4B2A9" stroke-width="1.2"/><line x1="410" y1="325" x2="460" y2="398" stroke="#B4B2A9" stroke-width="1.2"/><line x1="460" y1="398" x2="510" y2="203" stroke="#B4B2A9" stroke-width="1.2"/></g><g id="hopG"><path id="hop1" d="M110 189 L185 218" fill="none" stroke="#2F6FA8" stroke-width="2.6" opacity="0" marker-end="url(#rB)"/><path id="hop2" d="M185 218 L285 296" fill="none" stroke="#2F6FA8" stroke-width="2.6" opacity="0" marker-end="url(#rB)"/><path id="hop3" d="M285 296 L410 325" fill="none" stroke="#2F6FA8" stroke-width="2.6" opacity="0" marker-end="url(#rB)"/></g><g id="nodeG"><circle id="ndP1" cx="110" cy="189" r="13" fill="#FFF6E8" stroke="#C46A0A" stroke-width="2"/><text x="110" y="193" font-size="10" fill="#1F1E1A" text-anchor="middle" font-weight="600">P1</text><text id="entTag" x="110" y="168" font-size="10" fill="#C46A0A" text-anchor="middle" font-weight="600">入口 E</text><circle id="ndP2" cx="185" cy="218" r="13" fill="#ffffff" stroke="#3B3A34" stroke-width="1.6"/><text x="185" y="222" font-size="10" fill="#1F1E1A" text-anchor="middle" font-weight="600">P2</text><circle id="ndP3" cx="235" cy="170" r="13" fill="#ffffff" stroke="#3B3A34" stroke-width="1.6"/><text x="235" y="174" font-size="10" fill="#1F1E1A" text-anchor="middle" font-weight="600">P3</text><circle id="ndP4" cx="285" cy="296" r="13" fill="#ffffff" stroke="#3B3A34" stroke-width="1.6"/><text x="285" y="300" font-size="10" fill="#1F1E1A" text-anchor="middle" font-weight="600">P4</text><circle id="ndP5" cx="360" cy="243" r="13" fill="#ffffff" stroke="#3B3A34" stroke-width="1.6"/><text x="360" y="247" font-size="10" fill="#1F1E1A" text-anchor="middle" font-weight="600">P5</text><circle id="ndP6" cx="410" cy="325" r="13" fill="#ffffff" stroke="#3B3A34" stroke-width="1.6"/><text x="410" y="329" font-size="10" fill="#1F1E1A" text-anchor="middle" font-weight="600">P6</text><circle id="ndP7" cx="460" cy="398" r="13" fill="#ffffff" stroke="#3B3A34" stroke-width="1.6"/><text x="460" y="402" font-size="10" fill="#1F1E1A" text-anchor="middle" font-weight="600">P7</text><circle id="ndP8" cx="510" cy="203" r="13" fill="#ffffff" stroke="#3B3A34" stroke-width="1.6"/><text x="510" y="207" font-size="10" fill="#1F1E1A" text-anchor="middle" font-weight="600">P8</text></g><g id="qG"><path d="M410 281 L415 294 L429 294 L418 303 L422 316 L410 308 L398 316 L402 303 L391 294 L405 294 Z" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/><text x="452" y="292" font-size="10.5" fill="#854F0B" text-anchor="middle" font-weight="600">q=(0.70,0.55)</text></g><text id="curTag" x="42" y="468" font-size="11" fill="#2F6FA8" text-anchor="start" font-weight="600">当前：—</text><text id="nbrTag" x="42" y="486" font-size="10.5" fill="#3B3A34" text-anchor="start">邻居：—</text><text id="poolTag" x="42" y="504" font-size="10.5" fill="#639922" text-anchor="start" font-weight="600">候选池：—</text><text x="42" y="516" font-size="10" fill="#6B695F" text-anchor="start">真 Top-3：P6(0.05) P5(0.22) P4(0.25)——全扫 8 次距离才能拿到的答案</text></g>
+<rect id="poolBox" x="588" y="128" width="384" height="200" rx="10" fill="#FBFAF6" stroke="#639922" stroke-width="1.3"/><text x="602" y="150" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">候选池（按距离升序，淘汰线以下出局）</text><line id="cutLine" x1="602" y1="238" x2="956" y2="238" stroke="#E24B4A" stroke-width="1.4" stroke-dasharray="5 4" opacity="0"/><text id="cutTag" x="956" y="232" font-size="9.5" fill="#E24B4A" text-anchor="end" font-weight="600" opacity="0">LIMIT 3 淘汰线</text><text id="pl1" x="602" y="176" font-size="10.5" fill="#3B3A34" text-anchor="start" font-weight="600">1. —</text><text id="pl2" x="602" y="194" font-size="10.5" fill="#3B3A34" text-anchor="start" font-weight="600">2. —</text><text id="pl3" x="602" y="212" font-size="10.5" fill="#3B3A34" text-anchor="start" font-weight="600">3. —</text><text id="pl4" x="602" y="256" font-size="10.5" fill="#8A877C" text-anchor="start">4. —</text><text id="pl5" x="602" y="274" font-size="10.5" fill="#8A877C" text-anchor="start">5. —</text><text id="pl6" x="602" y="292" font-size="10.5" fill="#8A877C" text-anchor="start">6. —</text><text id="pl7" x="602" y="310" font-size="10.5" fill="#8A877C" text-anchor="start">7. —</text><text id="poolNote" x="602" y="324" font-size="9.5" fill="#6B695F" text-anchor="start">topKFor 放大：LIMIT 3 时 LATENCY 问图要 10 个、RECALL 要 19 个（OptimizeFor:34-35）</text>
+<rect id="cntBox" x="588" y="340" width="384" height="180" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/><text x="602" y="362" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">这一趟的账（对照：全表扫描）</text><text id="cVisit" x="602" y="386" font-size="11" fill="#3B3A34" text-anchor="start" font-weight="600">访问节点：0 / 8</text><text id="cDist" x="602" y="406" font-size="11" fill="#3B3A34" text-anchor="start" font-weight="600">距离计算：0 次</text><text id="cFull" x="602" y="426" font-size="11" fill="#E24B4A" text-anchor="start" font-weight="600">全扫对照：8 次（本图）｜100 万×512 维 ≈ 10.4 亿次/查询</text><text id="cRecall" x="602" y="446" font-size="11" fill="#639922" text-anchor="start" font-weight="600">recall：—</text><text id="cBrute" x="602" y="470" font-size="10" fill="#6B695F" text-anchor="start">行太少时引擎直接退化为暴力扫（maxBruteForceRows:356-368）</text><text id="cExp" x="602" y="488" font-size="10" fill="#6B695F" text-anchor="start">CL 只许 ONE/LOCAL_ONE、无分页（experimental，StorageAttachedIndex:126-134）</text><text id="cMap" x="602" y="508" font-size="10" fill="#6B695F" text-anchor="start">ordinal→rowId→主键：OnDiskOrdinalsMap + VectorPostings:30 回表</text>
+<circle id="tok" cx="-20" cy="-20" r="8" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/></svg>
+<svg id="eng2" viewBox="0 0 1000 180" role="img" xmlns="http://www.w3.org/2000/svg"><text x="40" y="26" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">相位总线：贪心查找 / 建图 各一条 0°→720°</text><text x="960" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">切换模式时相位归零</text><rect id="seg0" x="40" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg0" x="89.1" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">入口</text><text id="sd0" x="89.1" y="96" font-size="10" fill="#6B695F" text-anchor="middle">0°</text><rect id="seg1" x="142.2" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg1" x="191.3" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd1" x="191.3" y="96" font-size="10" fill="#6B695F" text-anchor="middle">90°</text><rect id="seg2" x="244.4" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg2" x="293.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd2" x="293.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle">180°</text><rect id="seg3" x="346.7" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg3" x="395.8" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd3" x="395.8" y="96" font-size="10" fill="#6B695F" text-anchor="middle">270°</text><rect id="seg4" x="448.9" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg4" x="498" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd4" x="498" y="96" font-size="10" fill="#6B695F" text-anchor="middle">360°</text><rect id="seg5" x="551.1" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg5" x="600.2" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd5" x="600.2" y="96" font-size="10" fill="#6B695F" text-anchor="middle">450°</text><rect id="seg6" x="653.3" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg6" x="702.4" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd6" x="702.4" y="96" font-size="10" fill="#6B695F" text-anchor="middle">540°</text><rect id="seg7" x="755.6" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg7" x="804.7" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd7" x="804.7" y="96" font-size="10" fill="#6B695F" text-anchor="middle">630°</text><rect id="seg8" x="857.8" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg8" x="906.9" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">复盘</text><text id="sd8" x="906.9" y="96" font-size="10" fill="#6B695F" text-anchor="middle">680°</text><line id="subNow" x1="40" y1="44" x2="40" y2="126" stroke="#C46A0A" stroke-width="2"/><text x="500" y="152" font-size="11" fill="#6B695F" text-anchor="middle" font-weight="400">每格是一个可定格的关键时刻；分步时所有视图冻结到同一相位。</text></svg>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<button class="btn warn" id="scenBtn">切到建图</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 轮 / 6.4 秒</span>
+</div>
+
+<div class="readout">
+<span class="ro">相位 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">模式 <b id="roScen">贪心查找</b></span>
+<span class="ro">当前 <b id="roNode">--</b></span>
+<span class="ro">访问 <b id="roVisit">--</b></span>
+<span class="ro">距离计算 <b id="roDist">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格；橙色按钮切换「贪心查找 / 建图」两条线。</span>
+<span class="snav">
+<button class="btn" onclick="prevStep()">‹ 上一步</button>
+<button class="btn warn" onclick="nextStep()">下一步 ›</button>
+</span>
+</div>
+<div class="legend"><span><i></i>查询 / 入口</span><span><i class="b"></i>贪心路径</span><span><i class="g"></i>候选 / Top-3</span><span><i class="r"></i>淘汰线 / 对照</span></div>
+<p class="figcap">贪心 0°=入口、720°=复盘；建图模式同相位总线另走一轮。8 点 2 维为教学压缩；真实分层图（HNSW 族）有顶层稀疏入口层，本页 P1 的「入口 E」即其示意。<br>口径：apache/cassandra master（7.0-SNAPSHOT）；q=(0.70,0.55)、真 Top-3 P6/P5/P4 与正文第 12 章手算完全一致。</p>
+</div>
+</div>
+
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：先把它当黑盒</h2></div>
+<p class="sec-sub">同一张表两问句：按 id 点查毫秒回，按相似度找 Top-K——黑盒行为完全两套。</p>
+<div class="quote"><i>先把系统当黑盒：只看输入、输出和边界，不急着解释内部。</i></div>
+
+<p>黑盒视角三句话：<b>WHERE id=47 走老路</b>（令牌环定位，第 6 章）；<b>ORDER BY embedding ANN OF q LIMIT 3 返回带分数的近似 Top-3</b>——大概率就是真 Top-3，但不保证；<b>LIMIT 必带且 ≤ 1000</b>，CL 只许 ONE/LOCAL_ONE——这两个「怪限制」是理解 ANN 的入口：它没有全量排序语义，K 是契约；分数归并还没和多副本一致性谈拢。</p>
+<div class="flow">
+<span class="node">ORDER BY embedding ANN OF [0.70,0.55] LIMIT 3（输入）</span><span class="arr">→</span>
+<span class="node box">近邻图索引（黑盒）</span>
+<span class="outbranch">
+<span class="outline"><span class="arr">→</span><span class="node">跳着访问 1%~5% 节点，返回 Top-3</span></span>
+<span class="outline"><span class="arr">→</span><span class="node">对照：精确全扫 100 万×512 维 ≈ 10.4 亿次浮点</span></span>
+<span class="outline"><span class="arr">→</span><span class="node">recall 概率保证：边是采样连的，不保证完备</span></span>
+</span>
+</div>
+<p>反直觉的点先记一个：向量列上建的是 SAI 索引（第 11 章同款语法），文件名同款 -SAI+aa+users_vec_idx+…——「索引跟着 SSTable 走」的纪律原封不动，换的只是索引内部：Trie 换成了图。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：部件各管什么</h2></div>
+<p class="sec-sub">外部库 JVector 出结构，集成层出纪律。点下面的部件卡，动画里对应部分会亮起。</p>
+<div class="quote"><i>结构分解要 MECE：同一层只放同一粒度的部件。</i></div>
+<div class="figure"><svg viewBox="0 0 920 250" role="img" xmlns="http://www.w3.org/2000/svg"><text x="460" y="22" font-size="15" fill="#1F1E1A" text-anchor="middle" font-weight="600">外部库 + 集成层：三层五件套</text><text x="460" y="42" font-size="11.5" fill="#6B695F" text-anchor="middle" font-weight="400">图的本体在 JVector（io.github.jbellis），生命周期全在 Cassandra 集成层</text><rect x="20" y="64" width="280" height="130" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="34" y="88" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">① 内存层（memtable 期间）</text><text x="34" y="110" font-size="10.5" fill="#6B695F" text-anchor="start">VectorMemoryIndex:72（memtable 切换即预建）</text><text x="34" y="128" font-size="10.5" fill="#3B3A34" text-anchor="start">OnHeapGraph:74 = JVector GraphIndexBuilder</text><text x="34" y="146" font-size="10.5" fill="#3B3A34" text-anchor="start">写入当场插节点连边（M=16、束宽 100）</text><text x="34" y="168" font-size="10.5" fill="#6B695F" text-anchor="start">update 先加新再删旧（:110-139）</text><rect x="320" y="64" width="280" height="130" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="334" y="88" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">② 盘上层（segment 随 SSTable）</text><text x="334" y="110" font-size="10.5" fill="#6B695F" text-anchor="start">flush：OnDiskGraphIndex.write（:378）</text><text x="334" y="128" font-size="10.5" fill="#3B3A34" text-anchor="start">+ CompressedVectors（PQ，&lt;1024 跳过 :78）</text><text x="334" y="146" font-size="10.5" fill="#3B3A34" text-anchor="start">压缩：两图合并重建（不能拼接）</text><text x="334" y="168" font-size="10.5" fill="#6B695F" text-anchor="start">文件名同款 -SAI+aa+…（第 11 章）</text><rect x="620" y="64" width="280" height="130" rx="10" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/><text x="634" y="88" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">③ 查询层（Top-K 之旅）</text><text x="634" y="110" font-size="10.5" fill="#6B695F" text-anchor="start">VectorIndexSegmentSearcher:72（:112 orderBy）</text><text x="634" y="128" font-size="10.5" fill="#3B3A34" text-anchor="start">DiskAnn.search:96 图搜 / 少行暴力扫</text><text x="634" y="146" font-size="10.5" fill="#3B3A34" text-anchor="start">VectorTopKProcessor:65 分数队列收敛</text><text x="634" y="168" font-size="10.5" fill="#6B695F" text-anchor="start">LIMIT ≤ 1000（validate:578-586）</text><path d="M300 128 L316 128" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#rG)"/><path d="M600 128 L616 128" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#rB)"/><rect x="20" y="204" width="880" height="40" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.2"/><text x="460" y="222" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">回表桥不变：VectorPostings:30（向量→主键）+ OnDiskOrdinalsMap（rowId↔ordinal）——第 11 章的 posting 语义换了个行头</text><text x="460" y="238" font-size="10.5" fill="#6B695F" text-anchor="middle">OptimizeFor:34-35：LATENCY f(1)=5.0、RECALL f(1)=10.0——LIMIT 3 分别问图要 10 / 19 个候选再收敛</text></svg></div>
+<div class="partgroup"><div class="gname">图与池</div><div class="parts"><button class="part" data-part="map"><b>1. 8 点近邻图</b><span>节点=向量、边=采样近邻；入口 P1、贪心路径蓝箭头、真 Top-3 绿圈。</span></button><button class="part" data-part="pool"><b>2. 候选池</b><span>按距离升序攒候选，LIMIT 3 淘汰线以下出局；topKFor 先放大再收敛。</span></button><button class="part" data-part="cnt"><b>3. 计数对照卡</b><span>访问节点/距离计算 vs 全扫；recall 读数；实验性限制常驻。</span></button></div></div>
+<p class="hint">静态图与动画共用同一套编号和口径；把动画暂停，它就是一张可打印的结构图。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：一步一停看顺序</h2></div>
+<p class="sec-sub">贪心查找八个关键时刻——盯「当前在谁、看了哪些邻居、池里多了谁」。</p>
+<div class="quote"><i>动态分析看三件事：顺序、状态、触发条件。</i></div>
+
+<table class="grid">
+<tr><th>相位</th><th>贪心查找（G）</th><th>建图（B）</th></tr>
+<tr><td>0°</td><td>入口 E=P1：d=0.69，池 [P1]</td><td>INSERT P1：第一个点，无邻居可连</td></tr>
+<tr><td>90°</td><td>看 P1 邻居 P2(0.52)/P3(0.53) 入池，跳最近 P2</td><td>P2 插入，连 P1↔P2（当时只有它）</td></tr>
+<tr><td>180°</td><td class="act">P2 邻居 P4(0.25) 入池，跳 P4</td><td>P3~P5 插入：各自找邻居，边渐渐成网</td></tr>
+<tr><td class="hot">270°</td><td class="act">P4 邻居 P6(0.05) 入池，跳 P6</td><td class="act">P6~P8 插入；先插入的边可能被反超——边不完备</td></tr>
+<tr><td>360°</td><td>P6 邻居 0.25/0.22/0.36 无一更近 → 局部停</td><td>flush：图落 segment 文件（8&lt;1024，跳过 PQ）</td></tr>
+<tr><td>450°</td><td class="act">池 7 个候选：P6/P5/P4/P7/P2/P3/P1</td><td class="act">第二本 memtable 再 flush → 第二个 segment</td></tr>
+<tr><td class="hot">540°</td><td class="hot">淘汰线落下：LIMIT 3 收敛，recall 3/3</td><td class="hot">压缩：两图合并重建（不能拼接）</td></tr>
+<tr><td>630°</td><td>复盘：贪心跳邻居、池满再淘汰</td><td>复盘：结构全新（图）、纪律照旧</td></tr>
+</table>
+<p>盯两张高亮行：G 线 270°→360° 是贪心的心脏——每跳只看当前节点的邻居、只往更近的方向走，停在局部最优；B 线 270° 的「边不完备」正是 G 线「近似」的根源，两条线在这里扣上。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件 × 阶段</h2></div>
+<p class="sec-sub">同一批部件在写与查两趟里接力——图的「建」与「搜」用的是同一套边。</p>
+<div class="quote"><i>把部件放回阶段里，才能看清谁在什么时候接力。</i></div>
+
+<table class="grid">
+<tr><th>阶段</th><th>建侧（写入/落盘）</th><th>搜侧（查询）</th><th>第 11 章对应</th></tr>
+<tr><td>memtable</td><td>OnHeapGraph 逐点插入连边</td><td>先问内存图（M=16 束宽 100）</td><td>内存 Trie（TrieMemoryIndex）</td></tr>
+<tr><td>flush</td><td>图 + PQ 落 segment 文件</td><td>——</td><td class="hot">同款 flush 观察者两阶段</td></tr>
+<tr><td>压缩</td><td>两图合并重建</td><td>视图换血，全 segment 都要问</td><td class="hot">同款 handleNotification</td></tr>
+<tr><td>收敛</td><td>——</td><td>topKFor 放大 → 分数队列淘汰 → LIMIT</td><td>交集迭代器 → LIMIT（结构不同、收口同义）</td></tr>
+</table>
+<p>表里两格绿色是本章最重要的同构：<b>向量索引的写读纪律与普通 SAI 完全一致，换的只是内存/盘上的数据结构</b>。RocksDB 对照（第 1 章）：它的 memtable/SST 全序结构对「距离」无感——Faiss+RocksDB 拼装方案里，图与账本的一致性全靠应用层自己缝。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：它依赖什么才能成立</h2></div>
+<p class="sec-sub">拆掉任意一个外部依赖，ANN 的行为都会变。</p>
+<div class="quote"><i>任何机制都有环境前提；拆掉外部依赖，它就不再成立。</i></div>
+<div class="envcards">
+<div class="env"><b>嵌入模型</b><span>向量的「语义」全在模型里——模型一换，旧向量全部失效，索引得重建。</span></div>
+<div class="env"><b>M 与束宽</b><span>M=16（邻居上限）、束宽 100（建图搜索深度）：M 越大图越稠密、recall 越高、内存与建图越贵。</span></div>
+<div class="env"><b>PQ 压缩阈值</b><span>&lt;1024 个向量跳过 PQ（MIN_PQ_ROWS:78）；短码有损，是 recall 损耗第二来源。</span></div>
+<div class="env"><b>暴力扫分岔</b><span>行太少或范围太窄时 maxBruteForceRows:356 判定直接逐向量算——图不总是更划算。</span></div>
+<div class="env"><b>实验性限制</b><span>CL&gt;ONE、分页、无 LIMIT 都不支持（StorageAttachedIndex:126-134）——源码注释是边界真相。</span></div>
+<div class="env"><b>JVector 版本</b><span>图格式随外部库演进——升级 Cassandra 可能触发索引重建（文件版本 aa 检查）。</span></div>
+</div>
+<p class="figcap">边界：本页 8 点 2 维单层图；真实 HNSW 族分层（顶层稀疏入口），PQ/重排、WHERE 范围圈行、多副本归并在正文有文字交代。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">六个问题，检查你是否能在边界上做判断。</p>
+<div class="quote"><i>自测不是复述结论，而是检查你能否在边界上做判断。</i></div>
+<div id="quiz"></div>
+</section>
+
+
+<div class="summary">
+<h2>一页带走</h2>
+
+<p class="chant">贪心跳邻居、池满再淘汰；图是采样边、近似换十亿。</p>
+<p>· 查询线：入口 P1 → 看邻居入池 → 跳最近（P1→P2→P4→P6）→ 局部停 → topKFor 放大（LATENCY 10 / RECALL 19）→ VectorTopKProcessor 分数队列收敛 LIMIT 3。本例 recall 3/3，访问 5 点、12 次距离。</p>
+<p>· 建图线：INSERT 当场插节点连边（OnHeapGraph.add:102）→ flush 落 segment 图文件（OnDiskGraphIndex.write:378，&lt;1024 跳 PQ）→ 压缩两图合并重建。「近似」的两个来源：边的采样性 + PQ 有损。</p>
+<p>· 纪律照旧：文件名 -SAI+aa+…、flush 观察者、压缩通知、posting 回表（VectorPostings:30）全是第 11 章的规矩。RocksDB 只管 byte-wise 全序——Faiss+RocksDB 是「图是图、账本是账」的拼装货，一致性自己缝。</p>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+</div>
+
+<script>
+(function(){
+var PERIOD=6400,PHASE_MAX=720;
+var STG=[{"d":0,"t":"入口","x":"ORDER BY embedding ANN OF [0.70,0.55] LIMIT 3。从顶层入口出发——本图示意一个入口 E=P1（真实 HNSW 族分层，顶层稀疏）。d(q,P1)=0.69，候选池=[P1(0.69)]。距离计算 1 次。"},{"d":90,"t":"看邻居入池","x":"贪心第一定律：只看当前节点的邻居。P1 的邻居 P2、P3，d 分别 0.52、0.53——两个都入池（池=[P1,P2,P3]），最近的 P2 成为下一跳。距离计算 +2=3。真实图同样如此：算的是邻居的距离，池按距离攒。"},{"d":180,"t":"跳到 P2","x":"当前=P2（0.52）。邻居 P1(0.69)、P3(0.53)、P4(0.25)——P4 更近，入池并成为下一跳。注意 P3 又被看了一遍（池里已有）：贪心不记账本外的世界，重复计算是常态。距离计算 +3=6。"},{"d":270,"t":"跳到 P4","x":"当前=P4（0.25）。邻居 P2(0.52)、P5(0.22)、P6(0.05)——P5、P6 都比当前近，双双入池；P6 最近，成为下一跳。距离计算 +3=9。此刻池里已经有真 Top-3 的全部成员，但算法自己不知道——它只认「还有没有更近的邻居」。"},{"d":360,"t":"局部停","x":"当前=P6（0.05）。邻居 P4(0.25)、P5(0.22)、P7(0.36)——没有一个比 0.05 更近：局部最优，图搜索结束。访问 P1/P2/P4/P6 四站、看过 P3/P5/P7 三位邻居，距离计算 12 次（全扫是 8 次——本图太小看不出优势，真实表是 10.4 亿次 vs 约 2% 节点）。"},{"d":450,"t":"候选池盘点","x":"池内 7 个候选按距离排好：P6(0.05)、P5(0.22)、P4(0.25)、P7(0.36)、P2(0.52)、P3(0.53)、P1(0.69)。对照右侧真距离表：前 3 恰好是真 Top-3。但注意 P8(0.36) 从头到尾没被看过——它不在任何被访问节点的邻居里，若它是真近邻就会漏掉。"},{"d":540,"t":"淘汰收敛","x":"LIMIT 3 淘汰线落下：池底 4 个（P7/P2/P3/P1）出局，返回 P6/P5/P4。代码里这一步先放大再收敛：topKFor（OptimizeFor:34-35）LATENCY 档问图要 10 个、RECALL 档要 19 个——多要的候选让图搜走得更深，最后由 VectorTopKProcessor:124-126 的分数队列弹出多余者。"},{"d":630,"t":"复盘","x":"口诀：贪心跳邻居、池满再淘汰。近似丢什么：没被走到的真近邻（边的采样性）+ PQ 短码排错的名次。代价换到的：访问 1%~5% 节点替代 10.4 亿次浮点——这就是 ANN 的一笔账。"}];
+var STB=[{"d":0,"t":"首点","x":"INSERT 第一行（P1）：VectorMemoryIndex.add:90 → OnHeapGraph.add:102 当场插节点。图里没有别人，P1 的邻居表空着——边是「当时谁在场」决定的，这就是采样性的起点。memtable 切换时图已预建（Manager:55-59）。"},{"d":90,"t":"连边","x":"P2 插入：找当前图里最近的邻居连边 P1↔P2。JVector 的 GraphIndexBuilder 用束宽（默认 100）控制建图时的搜索深度——邻居挑得越认真图越好、建得越慢。"},{"d":180,"t":"成网","x":"P3~P5 陆续插入，边渐渐成网。注意插入顺序的暴政：P3 插入时只认识 P1/P2，后来才出现的 P5 即使更近，边也未必重连——先插入的边可能被反超。"},{"d":270,"t":"图完整","x":"P6~P8 插入，8 点图完整（M=16 是真实上限，教学图 2~3 条边足够）。此刻这张图只活在内存——盘上一个字节都还没有。CommitLog 只记数据行，索引不记日志、可重建（第 11 章同款纪律）。"},{"d":360,"t":"flush 落盘","x":"memtable flush：StorageAttachedIndexWriter（第 11 章同款观察者）把整张图写成 segment 文件——OnDiskGraphIndex.write（OnHeapGraph:378）。8 行 < 1024（MIN_PQ_ROWS:78），跳过 PQ 压缩直接存原始向量。文件名 -SAI+aa+users_vec_idx+…。"},{"d":450,"t":"第二本","x":"新 memtable 再攒再 flush：第二个 segment 独立成图。查询时两张图都要问（View.match 对 ANN 不裁 segment，:68-71）——本页贪心模式演示的就是单张图内的一趟。"},{"d":540,"t":"压缩重建","x":"压缩把两本 SSTable 合一，两张图不能拼接、只能合并重建：所有向量重插一遍、邻居重挑。比普通列的 Trie 合并（归并排序）贵得多——换到的是数据集中后邻居选择余地更大、图质量更好。"},{"d":630,"t":"复盘","x":"口诀：结构全新（图）、纪律照旧。flush 观察、压缩通知、posting 回表、文件命名——第 11 章的规矩原封不动罩住向量；这正是「外部库 + 集成层」分工的价值：JVector 管图，Cassandra 管生命周期。"}];
+var STG_LABEL=[["G1 入口","E=P1（顶层入口示意）"],["G2 看邻居","邻居距离入池"],["G3 贪心跳","跳到最近邻居"],["G4 局部停","邻居无一更近"],["G5 淘汰收敛","topKFor→LIMIT 3"]];
+var STB_LABEL=[["B1 首点","OnHeapGraph.add:102"],["B2 连边","束宽 100 挑邻居"],["B3 成网","插入顺序的暴政"],["B4 图完整","8 点 M=2~3（示意）"],["B5 落盘重建","segment→压缩重建"]];
+var DIST=[["P6","0.05"],["P5","0.22"],["P4","0.25"],["P7","0.36"],["P2","0.52"],["P3","0.53"],["P1","0.69"]];
+var PARTS={"map":["mapBox"],"pool":["poolBox","poolNote"],"cnt":["cntBox","cFull"]};
+var CHIPS=[{"k":"scen","l":"模式"},{"k":"node","l":"当前"},{"k":"visit","l":"访问"},{"k":"dist","l":"距离计算"},{"k":"pool","l":"候选池"}];
+var QUIZ=[{"q":"ANN 的「近似」丢的是什么？","opts":["返回行数不对","可能漏掉没被走到的真近邻——图上的边是建图时采样连的，不保证完备；PQ 短码粗算还会排错名次","会返回重复行"],"a":1,"exp":"两个 recall 损耗源：边的采样性（先插入的点只能在当时在场的点里挑邻居）+ PQ 有损压缩。本页 450° 的 P8 就从头到尾没被看过。"},{"q":"LIMIT 3 时引擎问图要几个候选？","opts":["恰好 3 个","LATENCY 档要 10 个、RECALL 档要 19 个（topKFor 放大），最后由 VectorTopKProcessor 收敛回 3","要全部 100 万个"],"a":1,"exp":"OptimizeFor.java:34-35 的公式 f(1)=5.0 / 10.0，乘上 LIMIT。多要的候选让图搜走得更深、recall 更高，代价是时延。"},{"q":"贪心什么时候停？","opts":["访问完全部节点","当前节点的邻居里没有任何一个比当前更近——局部最优即停（本图停在 P6）","池满 LIMIT 个就停"],"a":1,"exp":"本页 360°：P6 的邻居 0.25/0.22/0.36 无一 < 0.05。访问 5 点、12 次距离就拿到 Top-3——真实场景这就是 10.4 亿次浮点到 2% 节点的差距。"},{"q":"向量索引的压缩为什么比普通列贵？","opts":["向量更大","图不能拼接只能重建：两本 SSTable 合并时所有向量重插、邻居重挑；普通列的 Trie 合并只是归并排序","压缩线程对向量有偏见"],"a":1,"exp":"B 线 540°。换到的红利是数据集中后邻居选择余地更大、图质量更好——重建不是白花钱。"},{"q":"与第 11 章 name 索引对照，向量索引「结构全新、纪律照旧」里的纪律指什么？","opts":["索引文件名、flush 观察者、压缩通知、posting 回表这套生命周期管理","CQL 语法完全相同","内存占用相同"],"a":0,"exp":"文件名同款 -SAI+aa+…、flush 两阶段同款观察者、压缩 handleNotification 驱动重建、回表都走「ordinal/term → rowId → 主键」的桥。换的只是 Trie 变成了图。"},{"q":"RocksDB 为什么做不了向量检索？","opts":["性能不够","它的全部结构（跳表/LSM/块索引/布隆）都建立在键可比大小上；距离空间无全序，近邻散落各方，按键的排列聚不拢它们","没有浮点数支持"],"a":1,"exp":"Faiss+RocksDB 的拼装方案里图是图、账本是账——快照、压缩感知、一致性全要应用层自己缝；Cassandra 把距离空间收编为一种列型 + 一种 SAI（仍是 experimental，限制见源码注释）。"}];
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var scenBtn=document.getElementById('scenBtn');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,STEP_DUR=650;
+var stepIdx=-1;
+var SCEN='G',STEPS=STG;
+var el={};
+document.querySelectorAll('#eng [id],#eng2 [id]').forEach(function(n){el[n.id]=n;});
+function setOp(id,v){var n=typeof id==='string'?el[id]:id;if(n)n.setAttribute('opacity',v.toFixed(2));}
+function setText(id,s){var n=el[id]||document.getElementById(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setAttr(id,k,v){var n=el[id];if(n)n.setAttribute(k,v);}
+function setFill(id,v){var n=el[id];if(n)n.setAttribute('fill',v);}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){return t*t*(3-2*t);}
+function lerp2(a,b,t){return a+(b-a)*t;}
+function band(id,a,b,lo,hi){setOp(id,(pr>=a&&pr<b)?(hi===undefined?1:hi):(lo===undefined?0.14:lo));}
+var pr=0;
+function applyScen(){
+ var L=SCEN==='G'?STG_LABEL:STB_LABEL;
+ for(var i=0;i<5;i++){setText('stL'+i,L[i][0]);setText('stS'+i,L[i][1]);setText('sg'+(i+1),L[i][0].split(' ')[0]);}
+ setText('sg5',SCEN==='G'?'局部停':'图完整');
+ setText('sg6',SCEN==='G'?'池盘点':'flush 落盘');
+ setText('sg7',SCEN==='G'?'淘汰收敛':'压缩重建');
+ setText('engTitle',SCEN==='G'?'贪心查找：入口 P1 → 跳邻居 → 候选池淘汰出 Top-3':'建图：8 次 INSERT 长出一张近邻图 → flush 落 segment → 压缩重建');
+ setText('engSub',SCEN==='G'?'SELECT id FROM users ORDER BY embedding ANN OF [0.70,0.55] LIMIT 3｜M=16、束宽 100（教学图缩到 8 点 2 维）':'INSERT 逐点插节点连边（OnHeapGraph.add:102）→ OnDiskGraphIndex.write:378 落盘 → 两图合并重建');
+ scenBtn.textContent=SCEN==='G'?'切到建图':'切到贪心查找';
+ setText('roScen',SCEN==='G'?'贪心查找':'建图');
+ setChip('scen',SCEN==='G'?'贪心查找':'建图',SCEN==='G');
+ setText('entTag',SCEN==='G'?'入口 E':'首点');
+}
+function gState(){
+ if(pr<90)return{node:'P1 (0.69)',visit:1,dist:1,pool:[0],res:'入口就位',recall:'—'};
+ if(pr<180)return{node:'P1→P2',visit:2,dist:3,pool:[0,5,2],res:'P2/P3 入池，跳 P2',recall:'—'};
+ if(pr<270)return{node:'P2→P4',visit:3,dist:6,pool:[0,5,2,4,1],res:'P4 入池，跳 P4',recall:'—'};
+ if(pr<360)return{node:'P4→P6',visit:4,dist:9,pool:[0,5,2,4,1,3],res:'P5/P6 入池，跳 P6',recall:'—'};
+ if(pr<450)return{node:'P6 停',visit:5,dist:12,pool:[0,1,3,4,2,5,6],res:'邻居无一更近，局部停',recall:'池已含真 Top-3'};
+ if(pr<540)return{node:'池盘点',visit:5,dist:12,pool:[0,1,3,4,2,5,6],res:'7 候选按距离排好',recall:'前 3 = 真 Top-3'};
+ if(pr<630)return{node:'收敛 3',visit:5,dist:12,pool:[0,1,3],res:'淘汰线落下 → P6/P5/P4',recall:'3/3（P8 未被看过）'};
+ return{node:'—',visit:5,dist:12,pool:[0,1,3],res:'口诀：贪心跳邻居、池满再淘汰',recall:'3/3'};
+}
+function bState(){
+ if(pr<90)return{node:'P1',visit:1,dist:0,pool:[],res:'首点无邻居',recall:'—'};
+ if(pr<180)return{node:'P1~P2',visit:2,dist:0,pool:[],res:'P1↔P2 连边',recall:'—'};
+ if(pr<270)return{node:'P1~P5',visit:5,dist:0,pool:[],res:'P3~P5 插入成网',recall:'—'};
+ if(pr<360)return{node:'8 点',visit:8,dist:0,pool:[],res:'图完整（边有采样性）',recall:'—'};
+ if(pr<450)return{node:'flush',visit:8,dist:0,pool:[],res:'segment 图文件落盘（跳 PQ）',recall:'—'};
+ if(pr<540)return{node:'第二本',visit:8,dist:0,pool:[],res:'第二个 segment 独立成图',recall:'—'};
+ if(pr<630)return{node:'重建',visit:8,dist:0,pool:[],res:'压缩：两图合并重建',recall:'—'};
+ return{node:'—',visit:8,dist:0,pool:[],res:'口诀：结构全新、纪律照旧',recall:'—'};
+}
+function poolText(idx){
+ var m=DIST[idx];return (idx+1)+'. '+m[0]+'（'+m[1]+'）';
+}
+function renderScene(){
+ var st=SCEN==='G'?gState():bState();
+ band('st0',0,90);band('st1',90,180);band('st2',180,360);band('st3',360,450);band('st4',450,720);
+ var showCut=SCEN==='G'&&pr>=540;
+ setOp('cutLine',showCut?1:0);setOp('cutTag',showCut?1:0);
+ for(var i=0;i<7;i++){var id='pl'+(i+1);setText(id,poolText(i));
+  if(SCEN!=='G'){setOp(id,0.35);}
+  else{setOp(id,(i<st.pool.length)?1:0.35);setAttr(id,'fill',(showCut&&i<3)?'#639922':(i<3?'#3B3A34':'#8A877C'));}}
+ if(SCEN==='G'){
+  setOp('hop1',pr>=90?1:0);setOp('hop2',pr>=180?1:0);setOp('hop3',pr>=270?1:0);
+  var cur=pr<90?'P1':pr<180?'P2':pr<270?'P4':pr<360?'P6':'P6';
+  var nbrs=pr<90?'P2(0.52) P3(0.53) → 跳 P2':pr<180?'P1(0.69) P3(0.53) P4(0.25) → 跳 P4':pr<270?'P2(0.52) P5(0.22) P6(0.05) → 跳 P6':'P4(0.25) P5(0.22) P7(0.36) → 无一更近，停';
+  setText('curTag','当前：'+cur+'（d='+ (pr<90?'0.69':pr<180?'0.52':pr<270?'0.25':'0.05') +'）');
+  setText('nbrTag','邻居：'+nbrs);
+  setText('poolTag','候选池：'+st.pool.length+' 个'+(showCut?'（淘汰后 3）':''));
+  for(var i=1;i<=8;i++){var nid='ndP'+i;setAttr(nid,'fill','#ffffff');setAttr(nid,'stroke','#3B3A34');}
+  setFill('ndP1','#FFF6E8');setAttr('ndP1','stroke','#C46A0A');
+  var top3=['ndP6','ndP5','ndP4'];
+  top3.forEach(function(n){if(pr>=360){setFill(n,'#EAF3DE');setAttr(n,'stroke','#639922');}});
+  if(pr>=270&&pr<360){setFill('ndP6','#EAF3DE');}
+ }else{
+  var upTo=pr<90?1:pr<180?2:pr<270?5:8;
+  for(var i=1;i<=8;i++){var nid='ndP'+i;setOp(nid,i<=upTo?1:0.15);}
+  setOp('edgeG',pr>=180?1:0.3);
+  setOp('hop1',0);setOp('hop2',0);setOp('hop3',0);
+  setText('curTag','INSERT 进度：'+upTo+' / 8');
+  setText('nbrTag',pr<90?'首点：邻居表空着（没别人可连）':pr<180?'P2 找到 P1，连第一条边':pr<270?'P3~P5 插入：边渐渐成网（顺序的暴政）':pr<360?'图完整——此刻只活在内存':pr<450?'flush：图落 segment 文件（跳 PQ）':pr<540?'第二本 memtable → 第二个 segment':'压缩：两图合并重建（不能拼接）');
+  setText('poolTag','（建图模式：候选池不适用）');
+ }
+ setText('cVisit','访问节点：'+(SCEN==='G'?st.visit:st.visit)+' / 8');
+ setText('cDist','距离计算：'+st.dist+' 次');
+ setText('cRecall','recall：'+st.recall);
+ setText('roNode',st.node);
+ setText('roVisit',st.visit+' / 8');
+ setText('roDist',st.dist+' 次');
+ setText('roStep',STEPS[Math.min(STEPS.length-1,Math.floor(pr/90))]?STEPS[Math.min(STEPS.length-1,Math.floor(pr/90))].t:'—');
+ setChip('node',st.node,true);
+ setChip('visit',st.visit+' / 8',true);
+ setChip('dist',st.dist+' 次',st.dist<=12);
+ setChip('pool',SCEN==='G'?st.pool.length+' 个候选':'建图模式',SCEN==='G');
+}
+function setChip(k,v,on){var n=document.querySelector('#stateChips .chip[data-k="'+k+'"]');if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',!!on);n.classList.toggle('off',!on);}
+function tokPath(){
+ var P={P1:[110,189],P2:[185,218],P3:[235,170],P4:[285,296],P5:[360,243],P6:[410,325],P7:[460,398],P8:[510,203]};
+ if(SCEN==='G'){
+  if(pr<90)return P.P1;
+  if(pr<180)return [lerp2(P.P1[0],P.P2[0],(pr-90)/90),lerp2(P.P1[1],P.P2[1],(pr-90)/90)];
+  if(pr<270)return [lerp2(P.P2[0],P.P4[0],(pr-180)/90),lerp2(P.P2[1],P.P4[1],(pr-180)/90)];
+  if(pr<360)return [lerp2(P.P4[0],P.P6[0],(pr-270)/90),lerp2(P.P4[1],P.P6[1],(pr-270)/90)];
+  return null;
+ }else{
+  var upTo=pr<90?1:pr<180?2:pr<270?5:8;
+  var order=['P1','P2','P3','P4','P5','P6','P7','P8'];
+  return P[order[upTo-1]];
+ }
+}
+function renderSub(th){
+ var p=norm(th); var si=0;
+ for(var i=0;i<STEPS.length;i++){if(p>=STEPS[i].d)si=i;}
+ for(var i=0;i<9;i++){var on=(i===si)||(i===8&&si>=STEPS.length-1);setOp('seg'+i,on?1:0.35);}
+ var x=40+(p/PHASE_MAX)*920;
+ setAttr('subNow','x1',x.toFixed(1)); setAttr('subNow','x2',x.toFixed(1));
+}
+function render(th){
+ pr=norm(th);
+ setText('roPhase',Math.round(pr)+'°');
+ var si=0;for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)si=i;}
+ if(mode==='step'&&stepIdx>=0)si=stepIdx;
+ setText('roStep',STEPS[si]?STEPS[si].t:'—');
+ var tp=tokPath();
+ if(tp){setAttr('tok','cx',tp[0].toFixed(1));setAttr('tok','cy',tp[1].toFixed(1));setOp('tok',1);}
+ else{setOp('tok',0);}
+ renderScene();
+ if(typeof renderSub==='function')renderSub(th,pr,si);
+}
+function buildStepbar(){
+ stepBar.innerHTML='';
+ for(var s=0;s<STEPS.length;s++){(function(n){
+  var b=document.createElement('button');b.className='stepnode';
+  b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+  b.onclick=function(){goStep(n);};stepBar.appendChild(b);
+ })(s);}
+}
+function tick(now){
+ var dt=Math.min(50,now-last);last=now;
+ if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+ if(mode==='step'&&stepTo!==null){
+  stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);
+  var p=stepElapsed/STEP_DUR;var e=smooth(p);
+  phase=stepFrom+(stepTo-stepFrom)*e;
+  if(p>=1){phase=((stepTo%PERIOD)+PERIOD)%PERIOD;stepTo=null;}
+ }
+ render(phase/PERIOD*PHASE_MAX);
+ requestAnimationFrame(tick);
+}
+function setAuto(on){
+ mode='auto';run=on;stepTo=null;btn.textContent=on?'暂停':'播放';
+ if(on){stepIdx=-1;document.querySelectorAll('.stepnode').forEach(function(d){d.classList.remove('on');});
+ stepT.textContent='自动运转模式';stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格；橙色按钮切换「贪心查找 / 建图」两条线。';}
+}
+window.goStep=function(i){
+ stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+ var target=STEPS[stepIdx].d/PHASE_MAX*PERIOD;var delta=target-phase;
+ if(reduced||Math.abs(delta)>PERIOD/3){phase=target;stepTo=null;render(target/PERIOD*PHASE_MAX+0.01);}
+ else{stepFrom=phase;stepTo=phase+delta;stepElapsed=0;render(phase/PERIOD*PHASE_MAX+0.01);}
+ btn.textContent='继续自动运转';
+ document.querySelectorAll('.stepnode').forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+ stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+ stepX.textContent=STEPS[stepIdx].x;
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+btn.textContent=run?'暂停':'播放';
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+scenBtn.onclick=function(){SCEN=SCEN==='G'?'B':'G';STEPS=SCEN==='G'?STG:STB;phase=0;stepIdx=-1;applyScen();buildStepbar();setAuto(true);render(0.01);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+buildStepbar();
+applyScen();
+CHIPS.forEach(function(c){var sp=document.createElement('span');sp.className='chip';sp.setAttribute('data-k',c.k);sp.innerHTML=c.l+' <b>--</b>';document.getElementById('stateChips').appendChild(sp);});
+document.querySelectorAll('.part').forEach(function(b){
+  b.onclick=function(){
+    var ids=PARTS[b.getAttribute('data-part')]||[];
+    ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+    document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+    setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+  };
+});
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+  var d=document.createElement('div');d.className='q';
+  var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+  it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+  h+='<div class="exp">'+it.exp+'</div>';d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+  var b=e.target.closest('.opt');if(!b)return;var box2=b.parentElement;if(box2.classList.contains('done'))return;
+  box2.classList.add('done');
+  var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+  box2.querySelectorAll('.opt').forEach(function(x,n){x.classList.add(n===QUIZ[qi].a?'right':'wrong');});
+});
+var BASE=(location.pathname.split('/cassandra-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/cassandra/lab';
+document.getElementById('lnkArt').href=BASE+'/cassandra/index/02-vector-ann';
+
+requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

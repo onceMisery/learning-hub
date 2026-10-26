@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 710" width="1000" height="710" font-family="Microsoft YaHei, sans-serif">
+<defs>
+<marker id="sA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="sB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="sG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="sR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<rect x="0" y="0" width="1000" height="710" fill="#ffffff"/>
+<text x="500" y="34" font-size="20" fill="#1F1E1A" text-anchor="middle" font-weight="600">存储附着索引（SAI）：索引跟着 SSTable 走</text>
+<text x="500" y="56" font-size="12" fill="#6B695F" text-anchor="middle" font-weight="400">users.name 建一个 SAI：写 5 行进内存 Trie → flush 长出 -SAI+aa 文件族 → 查 '阿福2' 裁 SSTable、读 posting [1]、回表 id=47</text>
+<text x="976" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">橙色：写路径</text>
+<text x="976" y="42" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色：落盘 / flush</text>
+<text x="976" y="58" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">蓝色：查询路径</text>
+<text x="976" y="74" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">红色：被裁剪 / 不参与</text>
+
+<!-- ============ 泳道一：写路径 ============ -->
+<rect x="28" y="86" width="944" height="128" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.3"/>
+<text x="44" y="108" font-size="13" fill="#C46A0A" text-anchor="start" font-weight="600">写路径：索引搭第 2 章的顺风车（Keyspace.apply:438 注释「…then updates memtables and indexes」）</text>
+<rect x="44" y="120" width="212" height="76" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="58" y="142" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">① 写入 5 行 users</text>
+<text x="58" y="160" font-size="10" fill="#6B695F" text-anchor="start">rowId0=阿福(id52) 1=阿福2(id47)</text>
+<text x="58" y="176" font-size="10" fill="#6B695F" text-anchor="start">2=大壮(id61) 3=阿福(id73)</text>
+<text x="58" y="192" font-size="10" fill="#6B695F" text-anchor="start">4=大壮(id88)｜UPDATE 型事务</text>
+<path d="M256 158 L272 158" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#sA)"/>
+<rect x="276" y="120" width="190" height="76" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="290" y="142" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">② CommitLog：只记数据</text>
+<text x="290" y="160" font-size="10" fill="#6B695F" text-anchor="start">索引不写日志——可重建</text>
+<text x="290" y="176" font-size="10" fill="#E24B4A" text-anchor="start">（REBUILD 即重跑构建）</text>
+<text x="290" y="192" font-size="10" fill="#6B695F" text-anchor="start">崩溃恢复随行重放</text>
+<path d="M466 158 L482 158" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#sA)"/>
+<rect x="486" y="120" width="212" height="76" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="500" y="142" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">③ Memtable + 内存索引</text>
+<text x="500" y="160" font-size="10" fill="#6B695F" text-anchor="start">MemtableIndexManager.index:74</text>
+<text x="500" y="176" font-size="10" fill="#2F6FA8" text-anchor="start" font-weight="600">TrieMemoryIndex = InMemoryTrie</text>
+<text x="500" y="192" font-size="10" fill="#6B695F" text-anchor="start">「大/壮」路径挂 PrimaryKeys（第 4 章同款）</text>
+<path d="M698 158 L714 158" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#sA)"/>
+<rect x="718" y="120" width="236" height="76" rx="8" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.2"/>
+<text x="732" y="142" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">④ 内存索引此刻记下的账</text>
+<text x="732" y="160" font-size="10" fill="#3B3A34" text-anchor="start">'阿福'→{id52,id73}　'阿福2'→{id47}</text>
+<text x="732" y="176" font-size="10" fill="#3B3A34" text-anchor="start">'大壮'→{id61,id88}｜删除不索引</text>
+<text x="732" y="192" font-size="10" fill="#6B695F" text-anchor="start">（Group:182「留给后置过滤」）</text>
+
+<!-- ============ 泳道二：flush + 压缩 ============ -->
+<rect x="28" y="224" width="944" height="170" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.3"/>
+<text x="44" y="246" font-size="13" fill="#639922" text-anchor="start" font-weight="600">flush 与压缩：索引是 SSTable 的行李（StorageAttachedIndexWriter implements SSTableFlushObserver:49）</text>
+<rect x="44" y="258" width="260" height="118" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="58" y="280" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">⑤ flush 两阶段（先数据后索引）</text>
+<text x="58" y="298" font-size="10" fill="#3B3A34" text-anchor="start">阶段一：随 SSTable 逐行 nextRow:281</text>
+<text x="58" y="314" font-size="10" fill="#3B3A34" text-anchor="start">　RowMapping 攒 rowId→主键（共享层）</text>
+<text x="58" y="330" font-size="10" fill="#3B3A34" text-anchor="start">阶段二：complete():189-224 逐列写</text>
+<text x="58" y="346" font-size="10" fill="#6B695F" text-anchor="start">　term 字典 + posting 文件，fsync 收尾</text>
+<text x="58" y="364" font-size="10" fill="#6B695F" text-anchor="start">　观察者由组统一提供（Group:206-221）</text>
+<path d="M304 317 L322 317" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#sG)"/>
+<rect x="326" y="258" width="330" height="118" rx="8" fill="#ffffff" stroke="#639922" stroke-width="1.3"/>
+<text x="340" y="278" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">⑥ nb-11-big-Data.db 身边长出的索引文件族</text>
+<text x="340" y="296" font-size="10" fill="#3B3A34" text-anchor="start">-SAI+aa+GroupMeta.db / RowToToken.db　← 共享层</text>
+<text x="340" y="312" font-size="10" fill="#3B3A34" text-anchor="start">-SAI+aa+PartitionKeyBlocks.db　　　　（列间共用）</text>
+<text x="340" y="328" font-size="10" fill="#639922" text-anchor="start" font-weight="600">-SAI+aa+users_name_idx+TermsData.db（Trie）</text>
+<text x="340" y="344" font-size="10" fill="#639922" text-anchor="start" font-weight="600">-SAI+aa+users_name_idx+PostingLists.db</text>
+<text x="340" y="360" font-size="10" fill="#6B695F" text-anchor="start">命名格式 &lt;描述符&gt;-SAI+&lt;版本&gt;+&lt;索引名&gt;+&lt;组件&gt;.db（Version:135-156）</text>
+<path d="M656 317 L674 317" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#sG)"/>
+<rect x="678" y="258" width="276" height="118" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="692" y="280" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">⑦ 压缩：索引跟着重写</text>
+<text x="692" y="298" font-size="10" fill="#3B3A34" text-anchor="start">组订阅 tracker（Group:99-100）；</text>
+<text x="692" y="314" font-size="10" fill="#3B3A34" text-anchor="start">SSTableListChanged → handleNotification</text>
+<text x="692" y="330" font-size="10" fill="#3B3A34" text-anchor="start">:258-289 → onSSTableChanged 换视图</text>
+<text x="692" y="346" font-size="10" fill="#6B695F" text-anchor="start">第 3 章「不可变文件重写」的纪律</text>
+<text x="692" y="364" font-size="10" fill="#6B695F" text-anchor="start">对索引文件同样成立</text>
+
+<!-- ============ 泳道三：查询路径 ============ -->
+<rect x="28" y="404" width="944" height="196" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.3"/>
+<text x="44" y="426" font-size="13" fill="#2F6FA8" text-anchor="start" font-weight="600">查询路径：第 6 章被拒的那句（executeLocally 分岔：searcher.search() 顶替 queryStorage，ReadCommand:536-554）</text>
+<rect x="44" y="438" width="196" height="76" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="58" y="458" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">⑧ SELECT * FROM users</text>
+<text x="58" y="474" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">　WHERE name='阿福2'</text>
+<text x="58" y="490" font-size="10" fill="#6B695F" text-anchor="start">第 0 步：内存索引落空（已 flush）</text>
+<text x="58" y="506" font-size="10" fill="#6B695F" text-anchor="start">无索引时：ALLOW FILTERING 全表扫</text>
+<path d="M240 476 L256 476" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#sB)"/>
+<rect x="260" y="438" width="252" height="76" rx="8" fill="#ffffff" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="274" y="458" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">⑨ View.match 按 min/max 裁 SSTable</text>
+<text x="274" y="476" font-size="10.5" fill="#639922" text-anchor="start" font-weight="600">S11 [大壮..阿福2] ✓ 打开</text>
+<text x="274" y="492" font-size="10.5" fill="#E24B4A" text-anchor="start" font-weight="600">S12 [大壮..北京] ✗ 跳过　S13 [阿福..阿福] ✗ 跳过</text>
+<text x="274" y="508" font-size="10" fill="#6B695F" text-anchor="start">元数据建索引时写好（SSTableIndex:109-122）</text>
+<path d="M512 476 L528 476" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#sB)"/>
+<rect x="532" y="438" width="200" height="76" rx="8" fill="#ffffff" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="546" y="458" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">⑩ TermsData Trie 定位</text>
+<text x="546" y="476" font-size="10.5" fill="#3B3A34" text-anchor="start">'阿福2' → 叶子挂 posting 偏移</text>
+<text x="546" y="492" font-size="10.5" fill="#639922" text-anchor="start" font-weight="600">→ PostingLists 读出 [rowId 1]</text>
+<text x="546" y="508" font-size="10" fill="#6B695F" text-anchor="start">advance() 可跳块（求交集用）</text>
+<path d="M732 476 L748 476" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#sB)"/>
+<rect x="752" y="438" width="202" height="76" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="766" y="458" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">⑪ 回表 + 复核，返回 1 行</text>
+<text x="766" y="476" font-size="10.5" fill="#3B3A34" text-anchor="start">rowId 1 →（共享层反查）id=47</text>
+<text x="766" y="492" font-size="10.5" fill="#3B3A34" text-anchor="start">读原表该行 → FilterTree 复核 name</text>
+<text x="766" y="508" font-size="10.5" fill="#639922" text-anchor="start" font-weight="600">300 万行 → 1 行（示意）</text>
+<rect x="44" y="522" width="910" height="66" rx="8" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.2"/>
+<text x="58" y="542" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">posting list 的三行账本（PostingsWriter:47-67 文件头注释）：rowId 升序 → 差分 → 128 个一块 FoR 定宽打包（全等块只存一个值，尾块 VLong），块尾附跳表。</text>
+<text x="58" y="560" font-size="11" fill="#3B3A34" text-anchor="start">举例：「大壮」命中 8000 行、间隔约 125 → 差分后全等块 → 定宽 7bit/个 ≈ 7KB；不压缩 8000×8B=64KB，差 9 倍。</text>
+<text x="58" y="578" font-size="11" fill="#6B695F" text-anchor="start">多条件：name='阿福'∩age=31 → KeyRangeIntersectionIterator 交集（QueryController:270-273），小侧到头、大侧剩余 posting 免读；配额计时 QueryContext:86-93。</text>
+
+<!-- ============ 底部总结 ============ -->
+<rect x="28" y="612" width="944" height="62" rx="8" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="44" y="636" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">一张图的一句话：写路径只多一个内存钩子，flush/压缩时索引当 SSTable 的行李一起搬；查询从「全表逐行筛」变「裁文件 → 读 posting → 回表」——第 6 章 ALLOW FILTERING 的雷就此拆掉。</text>
+<text x="44" y="660" font-size="11" fill="#6B695F" text-anchor="start">代价：每个索引列多一笔内存写 + flush 多三个小文件；墓碑不进索引靠后置过滤；查询自带配额。对照 RocksDB：索引在 SST 内部服务「键在哪」，SAI 在 SST 旁边服务「哪些行等于 X」。</text>
+<text x="28" y="696" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">数据来源：index/sai/disk/StorageAttachedIndexWriter.java:49、189-224、281 · index/sai/StorageAttachedIndexGroup.java:206-221、258-289 · index/sai/disk/v1/postings/PostingsWriter.java:47-67 · db/ReadCommand.java:536-554（apache/cassandra master，7.0-SNAPSHOT）</text>
+</svg>

@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CQL3 解析与执行 · Cassandra 互动原理实验室 第 8 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:960px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:720px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:600;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:12px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:600;fill:#1F1E1A}
+.tag{font-size:10.5px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:66px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .outbranch{display:inline-flex;flex-direction:column;align-items:flex-start;gap:6px}
+.flow .outline{display:inline-flex;align-items:center;gap:8px}
+.flow .flownote{font-size:12px;color:#6B695F;font-weight:600;margin-right:4px}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 10px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+#eng [opacity]{transition:opacity .28s ease}
+#eng2 [opacity]{transition:opacity .28s ease}
+@media (prefers-reduced-motion: reduce){#eng [opacity],#eng2 [opacity]{transition:none}}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:8px 4px 0;font-size:12px;color:#6B695F}
+.legend i{display:inline-block;width:18px;height:0;border-top:2px solid #C46A0A;vertical-align:middle;margin-right:5px}
+.legend i.g{border-color:#639922}
+.legend i.r{border-color:#E24B4A}
+.legend i.b{border-color:#2F6FA8}
+.legend i.dash{border-top-style:dashed}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：CQL3 解析与执行</a>
+  <span class="idx">第 8 / 15 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · CQL3 PARSING &amp; EXECUTION</div>
+<h1>一句 CQL 的变身之旅</h1>
+<p>UPDATE users SET name='阿福2' WHERE id=47——这句 39 字符的文本到达 node3 后，被切成 token、归约成语法树、查表变成语句对象，最终装进一件叫 Mutation 的行李交给第 7 章的副本确认。分步看每一站的产物，再看 prepared statement 怎样把最贵的几站只付一次钱。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span>
+<span class="mnode">② 静态分解</span>
+<span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span>
+<span class="mnode">⑤ 环境场景</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 560" role="img" xmlns="http://www.w3.org/2000/svg"><title>一句 CQL 的变身之旅</title><defs><marker id="mA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="mG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="mB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker></defs><text class="th" x="500" y="24" text-anchor="middle">从 CQL 文本到 Mutation：解析流水线的六个站台</text><text class="ts" x="500" y="44" text-anchor="middle">上：请求与 token 流；中：AST 与语句对象、prepared 缓存；下：写终点 Mutation 与读终点 ReadCommand</text><text x="976" y="24" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">橙色：解析 / 文本形态</text><text x="976" y="40" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色：写终点 Mutation</text><text x="976" y="56" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">蓝色：读终点 ReadCommand</text><g id="reqBox"><rect x="28" y="70" width="620" height="52" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="44" y="90" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">① QUERY 消息到达 node3（原生协议，第 9 章）</text><text id="cqlTxt" x="44" y="110" font-size="11.5" fill="#3B3A34" text-anchor="start" font-weight="600">UPDATE users SET name = '阿福2' WHERE id = 47 ;</text></g><g id="prepBox"><rect x="664" y="70" width="308" height="52" rx="10" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.2" stroke-dasharray="5 4"/><text x="678" y="90" font-size="11" fill="#6B695F" text-anchor="start" font-weight="600">PREPARE / EXECUTE 消息走右侧缓存</text><text x="678" y="110" font-size="10.5" fill="#6B695F" text-anchor="start">id = MD5(keyspace+文本)（QueryProcessor.java:843）</text></g><path id="arr1" d="M283 122 L283 140" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#mA)"/><g id="tokBox"><rect x="28" y="144" width="620" height="58" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/><text x="42" y="162" font-size="11" fill="#6B695F" text-anchor="start" font-weight="600">② 词法（Lexer.g:20）：切成 10 个 token</text><g id="tkRow"><rect id="tk0" x="42" y="170" width="76" height="22" rx="5" fill="#ffffff" stroke="#C46A0A" stroke-width="1.1" opacity="0.25"/><text x="80" y="185" font-size="9.5" fill="#3B3A34" text-anchor="middle" font-weight="600">UPDATE</text><rect id="tk1" x="124" y="170" width="52" height="22" rx="5" fill="#ffffff" stroke="#C46A0A" stroke-width="1.1" opacity="0.25"/><text x="150" y="185" font-size="9.5" fill="#3B3A34" text-anchor="middle" font-weight="600">users</text><rect id="tk2" x="182" y="170" width="42" height="22" rx="5" fill="#ffffff" stroke="#C46A0A" stroke-width="1.1" opacity="0.25"/><text x="203" y="185" font-size="9.5" fill="#3B3A34" text-anchor="middle" font-weight="600">SET</text><rect id="tk3" x="230" y="170" width="46" height="22" rx="5" fill="#ffffff" stroke="#C46A0A" stroke-width="1.1" opacity="0.25"/><text x="253" y="185" font-size="9.5" fill="#3B3A34" text-anchor="middle" font-weight="600">name</text><rect id="tk4" x="282" y="170" width="20" height="22" rx="5" fill="#ffffff" stroke="#C46A0A" stroke-width="1.1" opacity="0.25"/><text x="292" y="185" font-size="9.5" fill="#3B3A34" text-anchor="middle" font-weight="600">=</text><rect id="tk5" x="308" y="170" width="76" height="22" rx="5" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.1" opacity="0.25"/><text x="346" y="185" font-size="9.5" fill="#854F0B" text-anchor="middle" font-weight="600">'阿福2'</text><rect id="tk6" x="390" y="170" width="56" height="22" rx="5" fill="#ffffff" stroke="#C46A0A" stroke-width="1.1" opacity="0.25"/><text x="418" y="185" font-size="9.5" fill="#3B3A34" text-anchor="middle" font-weight="600">WHERE</text><rect id="tk7" x="452" y="170" width="32" height="22" rx="5" fill="#ffffff" stroke="#C46A0A" stroke-width="1.1" opacity="0.25"/><text x="468" y="185" font-size="9.5" fill="#3B3A34" text-anchor="middle" font-weight="600">id</text><rect id="tk8" x="490" y="170" width="20" height="22" rx="5" fill="#ffffff" stroke="#C46A0A" stroke-width="1.1" opacity="0.25"/><text x="500" y="185" font-size="9.5" fill="#3B3A34" text-anchor="middle" font-weight="600">=</text><rect id="tk9" x="516" y="170" width="34" height="22" rx="5" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.1" opacity="0.25"/><text x="533" y="185" font-size="9.5" fill="#854F0B" text-anchor="middle" font-weight="600">47</text><text x="560" y="185" font-size="10" fill="#6B695F" text-anchor="start">10 个</text></g></g><path id="arr2" d="M283 202 L283 220" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#mA)"/><g id="astBox"><rect x="28" y="224" width="620" height="104" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/><text x="42" y="244" font-size="11" fill="#6B695F" text-anchor="start" font-weight="600">③ 语法（Parser.g:632 updateStatement 规则）：token 归约成 Raw 语句对象</text><text x="42" y="266" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="600">UpdateStatement.ParsedUpdate{</text><text x="62" y="284" font-size="10.5" fill="#3B3A34" text-anchor="start">name:"users"｜updates:[ name ← '阿福2' ]｜where:(id = 47)</text><text x="62" y="300" font-size="10.5" fill="#3B3A34" text-anchor="start">attrs:{ 无 USING TIMESTAMP / 无 TTL }</text><text x="42" y="320" font-size="10" fill="#6B695F" text-anchor="start">此刻仍是字面量：表没查、类型没对——prepare() 一跳才成正式对象（:958）</text></g><g id="cacheBox"><rect x="664" y="224" width="308" height="104" rx="10" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.2"/><text x="678" y="244" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="600">prepared 缓存（Caffeine，按字节计费）</text><text x="678" y="264" font-size="10.5" fill="#3B3A34" text-anchor="start">PREPARE：全价解析一次 → 入缓存</text><text x="678" y="282" font-size="10.5" fill="#3B3A34" text-anchor="start">EXECUTE：查缓存 → 绑参数 → 执行</text><text x="678" y="302" font-size="10.5" fill="#639922" text-anchor="start" font-weight="600">防注入：绑定值不进语法层</text><text x="678" y="320" font-size="10" fill="#6B695F" text-anchor="start">绑定数量不符 → 当场拒绝（:916）</text></g><path id="arr3" d="M283 328 L283 346" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#mA)"/><g id="stmtBox"><rect x="28" y="350" width="620" height="66" rx="10" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/><text x="42" y="372" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">④ 语句对象：UpdateStatement（cql3/statements/UpdateStatement.java:73）</text><text x="42" y="392" font-size="10.5" fill="#3B3A34" text-anchor="start">prepare() 已查表元数据：users 表存在、name 是 text、id 是分区键（int）</text><text x="42" y="408" font-size="10.5" fill="#6B695F" text-anchor="start">执行三连 authorize → validate → execute（QueryProcessor.java:302-312）</text></g><g id="tsBox"><rect x="664" y="350" width="308" height="66" rx="10" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.2"/><text x="678" y="370" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="600">时间戳：行李上的 ts 从哪来</text><text x="678" y="388" font-size="10.5" fill="#3B3A34" text-anchor="start">未写 USING TIMESTAMP → 协调者微秒时钟</text><text x="678" y="406" font-size="10.5" fill="#6B695F" text-anchor="start">（Attributes.java:85；示意 ts=1005，沿用全轨道）</text></g><path id="arrW" d="M180 416 L180 436" fill="none" stroke="#639922" stroke-width="1.8" marker-end="url(#mG)"/><text id="arrWL" x="192" y="430" font-size="10" fill="#639922" text-anchor="start" font-weight="600">写：ModificationStatement.execute:708</text><path id="arrR" d="M500 416 L500 436" fill="none" stroke="#2F6FA8" stroke-width="1.8" marker-end="url(#mB)"/><text id="arrRL" x="512" y="430" font-size="10" fill="#2F6FA8" text-anchor="start" font-weight="600">读：SelectStatement.getQuery:470</text><g id="mutBox"><rect x="28" y="440" width="452" height="76" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="42" y="460" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">⑤ 写终点：Mutation = 一个分区的一次完整修改（db/Mutation.java:68）</text><text x="42" y="478" font-size="10.5" fill="#3B3A34" text-anchor="start">keyspaceName:"demo"｜key: DecoratedKey{"47", token≈-9.0×10^18}</text><text x="42" y="496" font-size="10.5" fill="#3B3A34" text-anchor="start">modifications:{ users → PartitionUpdate{ name ← '阿福2' @ts } }</text><text x="42" y="512" font-size="10" fill="#639922" text-anchor="start" font-weight="600">→ StorageProxy.mutateWithTriggers（:748）→ 第 7 章 blockFor 倒计时</text></g><g id="rcBox"><rect x="496" y="440" width="476" height="76" rx="10" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/><text x="510" y="460" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">⑥ 读终点：ReadCommand（对照 SELECT ... WHERE id=47）</text><text x="510" y="478" font-size="10.5" fill="#3B3A34" text-anchor="start">分区键给全 → SinglePartitionReadCommand 点查（:98）；否则范围扫描</text><text x="510" y="496" font-size="10.5" fill="#3B3A34" text-anchor="start">LIMIT 到量即停；非分区键条件 → ALLOW FILTERING（第 6 章）</text><text x="510" y="512" font-size="10" fill="#2F6FA8" text-anchor="start" font-weight="600">→ StorageProxy.read（:2176）→ 1 data + R−1 digest 对账（第 7 章）</text></g><text x="28" y="534" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">读法：①→⑥ 按相位逐站点亮；右侧虚线盒是 prepared 的另一条入口——PREPARE 走完 ①②③ 入缓存，EXECUTE 从缓存直取。</text><text x="28" y="550" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">口径：apache/cassandra master（7.0-SNAPSHOT）；token≈-9.0×10^18 与 ts=1005 均为全轨道示意值。</text><circle id="tok" cx="-20" cy="-20" r="8" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/></svg>
+<svg id="eng2" viewBox="0 0 1000 180" role="img" xmlns="http://www.w3.org/2000/svg"><text x="40" y="26" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">相位总线：自动与分步共用同一进度</text><text x="960" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">0° → 720°</text><rect id="seg0" x="40" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="89.1" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">到达</text><text x="89.1" y="96" font-size="10" fill="#6B695F" text-anchor="middle">0°</text><rect id="seg1" x="142.2" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="191.3" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">词法</text><text x="191.3" y="96" font-size="10" fill="#6B695F" text-anchor="middle">70°</text><rect id="seg2" x="244.4" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="293.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">语法</text><text x="293.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle">160°</text><rect id="seg3" x="346.7" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="395.8" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">对象化</text><text x="395.8" y="96" font-size="10" fill="#6B695F" text-anchor="middle">250°</text><rect id="seg4" x="448.9" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="498" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">prepared</text><text x="498" y="96" font-size="10" fill="#6B695F" text-anchor="middle">340°</text><rect id="seg5" x="551.1" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="600.2" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">装箱</text><text x="600.2" y="96" font-size="10" fill="#6B695F" text-anchor="middle">430°</text><rect id="seg6" x="653.3" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="702.4" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">写交接</text><text x="702.4" y="96" font-size="10" fill="#6B695F" text-anchor="middle">520°</text><rect id="seg7" x="755.6" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="804.7" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">读对照</text><text x="804.7" y="96" font-size="10" fill="#6B695F" text-anchor="middle">600°</text><rect id="seg8" x="857.8" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="906.9" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">复盘</text><text x="906.9" y="96" font-size="10" fill="#6B695F" text-anchor="middle">680°</text><line id="subNow" x1="40" y1="44" x2="40" y2="126" stroke="#C46A0A" stroke-width="2"/><text x="500" y="152" font-size="11" fill="#6B695F" text-anchor="middle" font-weight="400">每格是一个可定格的关键时刻；分步时所有视图冻结到同一相位。</text></svg>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 轮 / 6.4 秒</span>
+</div>
+
+<div class="readout">
+<span class="ro">相位 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">当前形态 <b id="roForm">CQL 文本</b></span>
+<span class="ro">下一站 <b id="roNext">词法</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav">
+<button class="btn" onclick="prevStep()">‹ 上一步</button>
+<button class="btn warn" onclick="nextStep()">下一步 ›</button>
+</span>
+</div>
+<div class="legend"><span><i></i>解析 / 文本形态</span><span><i class="g"></i>写终点 Mutation</span><span><i class="b"></i>读终点 / 缓存</span><span><i class="dash"></i>prepared 另一入口</span></div>
+<p class="figcap">进度 0° = QUERY 消息到达，720° = 复盘；写路径停在 520°（交棒第 7 章），600° 起切换到读路径对照。<br>口径：apache/cassandra master（7.0-SNAPSHOT）；贯穿语句与 token≈-9.0×10^18、ts=1005 与全轨道一致。</p>
+</div>
+</div>
+
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：先把它当黑盒</h2></div>
+<p class="sec-sub">不急着拆解析器，只看「一句文本进、一件行李出」对外表现出的规律。</p>
+<div class="quote"><i>先把系统当黑盒：只看输入、输出和边界，不急着解释内部。</i></div>
+
+<p>对客户端来说，CQL 层的表观行为就三条：<b>同样的文本每次都要解析</b>（裸发）；<b>解析的产物可以缓存复用</b>（prepared，id = 文本的 MD5）；<b>执行报错分两类</b>——句子不合法（SyntaxException）和世界不配合（InvalidRequestException）。</p>
+<div class="flow">
+<span class="node">CQL 文本（输入）</span><span class="arr">→</span>
+<span class="node box">QueryProcessor 柜台（黑盒）</span>
+<span class="outbranch">
+<span class="outline"><span class="arr">→</span><span class="node">写 → Mutation → 副本确认</span></span>
+<span class="outline"><span class="arr">→</span><span class="node">读 → ReadCommand → data+digest</span></span>
+<span class="outline"><span class="arr">↳</span><span class="node">改元数据 → 集群共识（DDL，另一条路）</span></span>
+</span>
+</div>
+<p>黑盒对外承诺：只要表结构和权限没问题，任何合法 CQL 都会被翻译成 Mutation 或 ReadCommand 交给存储层。它不承诺「翻译免费」——这正是裸发与 prepared 的差价所在。</p>
+<p>反直觉的点先记一个：<b>报「语法错」的位置在解析器，「报列不存在」的位置在查表之后</b>——两类错误隔着一次 prepare 跳跃，排障方向完全不同。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：部件各管什么</h2></div>
+<p class="sec-sub">先把结构钉住，再让时间进来。点下面的部件卡，动画里对应部分会亮起。</p>
+<div class="quote"><i>结构分解要 MECE：同一层只放同一粒度的部件。</i></div>
+<div class="figure"><svg viewBox="0 0 920 250" role="img" xmlns="http://www.w3.org/2000/svg"><text x="460" y="22" font-size="15" fill="#1F1E1A" text-anchor="middle" font-weight="600">解析流水线上的七个部件</text><text x="460" y="42" font-size="11.5" fill="#6B695F" text-anchor="middle" font-weight="400">三个入口消息、两步解析、一个缓存、两个终点——全部住在 cql3/ 与 src/antlr/</text><rect x="20" y="64" width="200" height="120" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="34" y="88" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">① QueryProcessor 柜台</text><text x="34" y="110" font-size="10.5" fill="#6B695F" text-anchor="start">cql3/QueryProcessor.java:112</text><text x="34" y="128" font-size="10.5" fill="#3B3A34" text-anchor="start">QUERY / PREPARE / EXECUTE</text><text x="34" y="146" font-size="10.5" fill="#3B3A34" text-anchor="start">三连：authorize→validate→execute</text><text x="34" y="168" font-size="10.5" fill="#6B695F" text-anchor="start">单例，每节点一个（:119）</text><rect x="240" y="64" width="200" height="120" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="254" y="88" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">② Lexer + ③ Parser</text><text x="254" y="110" font-size="10.5" fill="#6B695F" text-anchor="start">src/antlr/Lexer.g:20、Parser.g:20</text><text x="254" y="128" font-size="10.5" fill="#3B3A34" text-anchor="start">词法切 token；语法归约出 Raw</text><text x="254" y="146" font-size="10.5" fill="#3B3A34" text-anchor="start">updateStatement 规则 :632</text><text x="254" y="168" font-size="10.5" fill="#6B695F" text-anchor="start">ANTLR 生成代码不进仓库</text><rect x="460" y="64" width="200" height="120" rx="10" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/><text x="474" y="88" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">④ prepared 缓存</text><text x="474" y="110" font-size="10.5" fill="#6B695F" text-anchor="start">QueryProcessor.java:123、143</text><text x="474" y="128" font-size="10.5" fill="#3B3A34" text-anchor="start">钥匙 = MD5(keyspace+文本)</text><text x="474" y="146" font-size="10.5" fill="#3B3A34" text-anchor="start">解析一次，绑定千次</text><text x="474" y="168" font-size="10.5" fill="#6B695F" text-anchor="start">防注入：绑定值绕过语法层</text><rect x="680" y="64" width="220" height="120" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="690" y="88" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">⑤⑥ 两个终点</text><text x="690" y="110" font-size="10.5" fill="#639922" text-anchor="start">Mutation（db/Mutation.java:68）</text><text x="690" y="128" font-size="10.5" fill="#3B3A34" text-anchor="start">一个分区的一次完整修改</text><text x="690" y="146" font-size="10.5" fill="#2F6FA8" text-anchor="start">ReadCommand（db/ReadCommand.java:127）</text><text x="690" y="168" font-size="10.5" fill="#3B3A34" text-anchor="start">分区键定位 / 范围扫描二选一</text><path d="M220 124 L236 124" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#mA)"/><path d="M440 124 L456 124" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#mA)"/><path d="M660 124 L676 124" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#mA)"/><rect x="20" y="200" width="880" height="40" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.2"/><text x="460" y="218" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">⑦ 交接点：StorageProxy.mutate（:978）与 StorageProxy.read（:2176）——从这里进入第 7 章的副本世界</text><text x="460" y="234" font-size="10.5" fill="#6B695F" text-anchor="middle">函数住 cql3/functions/（token() 即 TokenFct.java:33）——语句树上的叶子，不是独立阶段。</text></svg></div>
+<div class="partgroup"><div class="gname">入口与解析</div><div class="parts"><button class="part" data-part="request"><b>1. 三种消息入口</b><span>QUERY 现场解析；PREPARE 建档；EXECUTE 带 id 取档——同一柜台三种走法。</span></button><button class="part" data-part="lexer"><b>2. 词法站</b><span>字符流切 token：关键字、标识符、字面量各成一票。</span></button><button class="part" data-part="parser"><b>3. 语法站</b><span>Parser.g 的 updateStatement 规则把 token 归约成 Raw 语句对象。</span></button></div></div><div class="partgroup"><div class="gname">对象化与终点</div><div class="parts"><button class="part" data-part="prepared"><b>4. prepared 缓存</b><span>MD5 钥匙、按字节计费；解析一次绑定千次，顺带防注入。</span></button><button class="part" data-part="statement"><b>5. 语句对象</b><span>prepare() 查表后诞生；authorize/validate/execute 三连的执行者。</span></button><button class="part" data-part="mutation"><b>6. Mutation 终点</b><span>{keyspace, DecoratedKey, PartitionUpdate}——全集群的最小运费单位。</span></button><button class="part" data-part="readcommand"><b>7. ReadCommand 终点</b><span>分区键给全是点查、给不全走范围；LIMIT 只管到量即停。</span></button></div></div>
+<p class="hint">静态图与动画共用同一套编号和口径；把动画暂停，它就是一张可打印的结构图。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：一步一停看顺序</h2></div>
+<p class="sec-sub">重点不是记住箭头，而是记住每一站「产物的形态变了什么」。</p>
+<div class="quote"><i>动态分析看三件事：顺序、状态、触发条件。</i></div>
+
+<table class="grid">
+<tr><th>相位</th><th>产物形态</th><th>边界 / 反例</th></tr>
+<tr><td>到达</td><td>CQL 文本（39 字符）</td><td>QUERY 每次全价；PREPARE 只付一次</td></tr>
+<tr><td>词法</td><td>10 个 token</td><td>字符串 '阿福2' 是一票，不会被切碎</td></tr>
+<tr><td>语法</td><td>Raw 语句对象（AST）</td><td>句子不合法在此报 SyntaxException（:999）</td></tr>
+<tr><td class="hot">对象化</td><td>正式语句对象（查过表）</td><td>列不存在/类型不符在此报 InvalidRequest</td></tr>
+<tr><td>prepared</td><td>缓存条目（MD5 钥匙）</td><td>文本差一个空格 = 另一个 id</td></tr>
+<tr><td>装箱</td><td>Mutation 三字段行李</td><td>ts 未指定取协调者微秒时钟（:85）</td></tr>
+<tr><td>写交接</td><td>交给 StorageProxy.mutate</td><td>第 7 章接管：名单+blockFor 倒计时</td></tr>
+<tr><td>读对照</td><td>SinglePartitionReadCommand</td><td>非分区键条件 → ALLOW FILTERING</td></tr>
+</table>
+<p>盯高亮那行：对象化是「字面量世界」到「真实表结构世界」的分界——前两站只看句子本身，这一站开始看世界。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：语句 × 入口</h2></div>
+<p class="sec-sub">同一句 CQL 在三种入口消息下的成本与产物对照。</p>
+<div class="quote"><i>把部件放回阶段里，才能看清谁在什么时候接力。</i></div>
+
+<table class="grid">
+<tr><th>入口</th><th>词法+语法</th><th>查表对象化</th><th>执行</th><th>适用场景</th></tr>
+<tr><td>QUERY（裸发）</td><td class="hot">每次付</td><td class="hot">每次付</td><td>每次付</td><td>偶发运维、探索查询</td></tr>
+<tr><td>PREPARE</td><td>付一次</td><td>付一次</td><td>—</td><td>上线时/首次执行</td></tr>
+<tr><td>EXECUTE</td><td>免</td><td>免（取缓存）</td><td>付</td><td class="act">高频业务语句的常态</td></tr>
+</table>
+<p>成本表里被免掉的两格，就是凌晨 P99 案子省掉的那段：几千 QPS × 每条几十微秒的解析与分配，聚成协调者节点上一块看得见的热。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：它依赖什么才能成立</h2></div>
+<p class="sec-sub">拆掉任意一个外部依赖，前面看到的行为都会变。</p>
+<div class="quote"><i>任何机制都有环境前提；拆掉外部依赖，它就不再成立。</i></div>
+<div class="envcards">
+<div class="env"><b>表元数据随时可查</b><span>prepare/validate 都要 TableMetadata；schema 变更进行中语句可能被拒或失效，客户端要能重 PREPARE。</span></div>
+<div class="env"><b>缓存容量上限</b><span>prepared 缓存按字节计费（默认份额见配置）；ORM 拼出十万种文本会把它撑爆，逐出日志每分钟提醒。</span></div>
+<div class="env"><b>原生协议版本</b><span>绑定参数、分页状态都依赖协议版本协商（第 9 章）；老驱动走不了新绑定语义。</span></div>
+<div class="env"><b>客户端会话的 keyspace</b><span>statement id = MD5(keyspace+文本)：同一句 CQL 在不同 keyspace 下是两个 id。</span></div>
+<div class="env"><b>协调者时钟</b><span>未指定 USING TIMESTAMP 时 ts 取协调者微秒时钟；时钟漂移会改变 last-write-wins 的裁决方向。</span></div>
+</div>
+<p class="figcap">边界：本页只画非事务语句；LWT 条件更新会多一次 Paxos 读改写，Accord 事务语句走另一套执行器——都不在主图。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">六个问题，检查你是否能在边界上做判断。</p>
+<div class="quote"><i>自测不是复述结论，而是检查你能否在边界上做判断。</i></div>
+<div id="quiz"></div>
+</section>
+
+
+<div class="summary">
+<h2>一页带走</h2>
+
+<p class="chant">文本变 token，token 变树，树变语句，语句装箱成 Mutation。</p>
+<p>· QueryProcessor 是唯一柜台：authorize → validate → execute 三连，输入永远是语句对象不是文本。</p>
+<p>· prepared 的钥匙是 MD5(keyspace+文本)：解析一次、绑定千次，绑定值绕过语法层顺带防注入。</p>
+<p>· Mutation = 一个分区的一次完整修改：{keyspace, DecoratedKey, PartitionUpdate}——写侧的最小运费单位，交棒第 7 章的 blockFor。</p>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+</div>
+
+<script>
+(function(){
+var PERIOD=6400,PHASE_MAX=720;
+var STEPS=[{"d":0,"t":"到达","x":"QUERY 消息带着 39 字符的 CQL 文本到达 node3（原生协议解帧，第 9 章）。协调者任意节点客串——这句话接下来要走的流水线在每个节点上都一模一样。"},{"d":70,"t":"词法","x":"Lexer.g 的规则把字符流切成 10 个 token：UPDATE/users/SET/name/=/'阿福2'/WHERE/id/=/47。字符串 '阿福2' 是完整的一票——引号保护它不被切碎。"},{"d":160,"t":"语法","x":"Parser.g:632 的 updateStatement 规则把 token 归约成一棵树：根是 UpdateStatement.ParsedUpdate（Raw），挂着表名、SET 列表、WHERE 条件。此刻表还没查——一切仍是字面量。"},{"d":250,"t":"对象化","x":"prepare() 一跳（QueryProcessor.java:958）：按名字查到 users 的 TableMetadata，列对上定义、类型核过——Raw 变成正式的 UpdateStatement。句子不合法报 SyntaxException，世界不配合（列没了）报 InvalidRequest。"},{"d":340,"t":"prepared","x":"PREPARE 把语句对象存进缓存，钥匙 = MD5(keyspace+文本)（:843）。之后 EXECUTE 只带 id 和参数值：词法、语法、查表全部免单，只付绑定+执行——凌晨 P99 案子省的就是这两站。"},{"d":430,"t":"装箱","x":"executeWithoutCondition → getMutations（:961）装出 Mutation：{keyspaceName:'demo', key: DecoratedKey{47, token≈-9.0×10^18}, modifications: {users → PartitionUpdate{name←'阿福2' @ts=1005}}}。ts 未写 USING TIMESTAMP 就取协调者微秒时钟。"},{"d":520,"t":"写交接","x":"StorageProxy.mutateWithTriggers（ModificationStatement.java:748）→ 第 7 章接管：算名单 {node2,node4,node5}、体检、配响应处理器等 2 个 ack——CQL 层的任务到此全部完成。"},{"d":600,"t":"读对照","x":"SELECT ... WHERE id=47 走另一岔：SelectStatement.getQuery（:470-506）看分区键是否给全——给全生成 SinglePartitionReadCommand 点查；给不全走范围扫描，非分区键条件还要 ALLOW FILTERING（第 6 章）。"},{"d":680,"t":"复盘","x":"口诀：文本变 token，token 变树，树变语句，语句装箱成 Mutation。RocksDB 没有这条流水线——它的「查询语言」是编译期绑定的 C++ API，天生住在 prepared 的世界里。"}];
+var PARTS={"request":["reqBox","prepBox"],"lexer":["tokBox","tkRow"],"parser":["astBox"],"prepared":["cacheBox","prepBox"],"statement":["stmtBox","tsBox"],"mutation":["mutBox","arrW","arrWL"],"readcommand":["rcBox","arrR","arrRL"]};
+var CHIPS=[{"k":"form","l":"当前形态"},{"k":"ts","l":"行李 ts"},{"k":"cache","l":"prepared 缓存"},{"k":"next","l":"下一站"}];
+var QUIZ=[{"q":"prepared statement 的 id 是怎么算出来的？","opts":["自增整数","MD5(keyspace + 查询文本)","表名+时间戳"],"a":1,"exp":"computeId 把 keyspace 名与查询文本拼接后取 MD5（QueryProcessor.java:843-847）。推论：文本差一个空格就是另一个 id；同一句在不同 keyspace 下也是两个 id。"},{"q":"SELECT * FROM users WHERE name='阿福2'（无 ALLOW FILTERING）会在哪一站被拦？","opts":["词法站","语法站：归约不下去","对象化/校验站：name 定不了位，引擎拒绝"],"a":2,"exp":"句子完全合法，语法站放行。拦它的是定位检查：分区键没给，引擎不知道去哪个节点找——除非加 ALLOW FILTERING 接受逐分区扫描的代价（第 6 章定位链）。"},{"q":"为什么 prepared statement 顺带防注入？","opts":["驱动会转义引号","绑定值以二进制传输、从不参与语法解析，攻击文本只能是一个「值」","服务器有 SQL 注入黑名单"],"a":1,"exp":"EXECUTE 的参数走绑定通道，不进词法/语法层——'x OR 1=1' 只能成为某个字符串列的值，永远无法改变语法树形状。"},{"q":"UPDATE ... WHERE id IN (47,48,49) 会装箱成几件 Mutation？","opts":["1 件","3 件：每分区一件","看 batch 与否"],"a":1,"exp":"Mutation 的法律定义是「一个分区的一次完整修改」（db/Mutation.java:68）。IN 里的每个分区键各得一件，StorageProxy 为每件独立算名单、独立配响应处理器。"},{"q":"PREPARE 之后表被 ALTER 删了一列，EXECUTE 会怎样？","opts":["自动重 PREPARE","validate 阶段报错，客户端需自行重新 PREPARE","静默忽略该列"],"a":1,"exp":"预存的语句对象带着 prepare 时的元数据快照，execute 前的 validate 会发现世界变了。客户端驱动要实现「失效即重建档」的重试逻辑。"},{"q":"RocksDB 世界里「prepared statement」相当于什么？","opts":["没有对应物","直接调 C++ API：编译期已绑定「做什么」，运行时只传参数","WAL 的批量写"],"a":1,"exp":"Put/Get 的签名在编译期检查、序列化由调用代码写死——RocksDB 天生免解析。Cassandra 的 prepared 只是把 CQL 用户拉回这个编译期绑定的世界。"}];
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,STEP_DUR=650;
+var stepIdx=-1;
+var el={};
+document.querySelectorAll('#eng [id],#eng2 [id]').forEach(function(n){el[n.id]=n;});
+function setOp(id,v){var n=typeof id==='string'?el[id]:id;if(n)n.setAttribute('opacity',v.toFixed(2));}
+function setText(id,s){var n=el[id]||document.getElementById(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setAttr(id,k,v){var n=el[id];if(n)n.setAttribute(k,v);}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){return t*t*(3-2*t);}
+function lerp(a,b,t){return a+(b-a)*t;}
+function band(id,a,b,lo,hi){setOp(id,(pr>=a&&pr<b)?(hi===undefined?1:hi):(lo===undefined?0.14:lo));}
+var pr=0;
+function stage(){
+  if(pr<70)return{n:'到达',form:'CQL 文本',next:'词法'};
+  if(pr<160)return{n:'词法',form:'token ×10',next:'语法'};
+  if(pr<250)return{n:'语法',form:'Raw 语句对象（AST）',next:'对象化'};
+  if(pr<340)return{n:'对象化',form:'UpdateStatement（正式）',next:'prepared'};
+  if(pr<430)return{n:'prepared',form:'缓存条目 / 绑定值',next:'装箱'};
+  if(pr<520)return{n:'装箱',form:'Mutation',next:'写交接'};
+  if(pr<600)return{n:'写交接',form:'Mutation → StorageProxy',next:'读对照'};
+  if(pr<680)return{n:'读对照',form:'SinglePartitionReadCommand',next:'复盘'};
+  return{n:'复盘',form:'Mutation / ReadCommand',next:'—'};
+}
+function renderScene(){
+  band('reqBox',0,600,0.3,1);
+  band('prepBox',0,720,0.3,1);
+  band('tokBox',70,720,0.2,1);
+  band('astBox',160,720,0.2,1);
+  band('cacheBox',340,720,0.2,1);
+  band('stmtBox',250,720,0.2,1);
+  band('tsBox',250,720,0.2,1);
+  band('mutBox',430,720,0.2,1);
+  band('rcBox',600,720,0.2,1);
+  band('arr1',0,160,0.2,1);band('arr2',70,250,0.2,1);band('arr3',250,430,0.2,1);
+  band('arrW',430,600,0.2,1);band('arrWL',430,600,0.2,1);
+  band('arrR',600,720,0.2,1);band('arrRL',600,720,0.2,1);
+  var lit=pr<70?0:Math.min(10,Math.floor((pr-70)/8)+1);
+  for(var i=0;i<10;i++){setOp('tk'+i,pr>=70?(i<lit?1:0.25):(pr>=160?1:0.25));}
+  if(pr>=160){for(var j=0;j<10;j++)setOp('tk'+j,1);}
+  var st=stage();
+  setText('roForm',st.form);
+  setText('roNext',st.next);
+  setChip('form',st.form,true);
+  setChip('ts',pr>=430?'ts=1005（示意）':'--',pr>=430);
+  setChip('cache',pr>=340?(pr>=430?'命中（EXECUTE）':'建档（PREPARE）'):'未用',pr>=340);
+  setChip('next',st.next,st.next!=='—');
+}
+function setChip(k,v,on){var n=document.querySelector('#stateChips .chip[data-k="'+k+'"]');if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',!!on);n.classList.toggle('off',!on);}
+function tokPath(p){
+  if(p<70)return null;
+  if(p<160){var i=clamp(Math.floor((p-70)/9),0,9);var x0=42+i*47;return [x0,181];}
+  if(p<250){if(p<190)return [lerp(300,283,(p-160)/30),lerp(181,276,(p-160)/30)];if(p<220)return [lerp(283,283,(p-190)/30),lerp(276,276,(p-190)/30)];return [283,300];}
+  if(p<430)return [283,383];
+  if(p<520){if(p<460)return [lerp(283,180,(p-430)/30),lerp(383,452,(p-430)/30)];return [180,470];}
+  if(p<600)return [180,470];
+  if(p<680){if(p<640)return [lerp(180,500,(p-600)/40),lerp(470,452,(p-600)/40)];return [700,470];}
+  return null;
+}
+
+function renderSub(th){
+  var p=norm(th); var si=0;
+  for(var i=0;i<STEPS.length;i++){if(p>=STEPS[i].d)si=i;}
+  for(var i=0;i<STEPS.length;i++){setOp('seg'+i,i===si?1:0.35);}
+  var x=40+(p/PHASE_MAX)*920;
+  setAttr('subNow','x1',x.toFixed(1)); setAttr('subNow','x2',x.toFixed(1));
+}
+
+function render(th){
+  pr=norm(th);
+  setText('roPhase',Math.round(pr)+'°');
+  var si=0;for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)si=i;}
+  if(mode==='step'&&stepIdx>=0)si=stepIdx;
+  setText('roStep',STEPS[si]?STEPS[si].t:'—');
+  var tp=tokPath(pr);
+  if(tp){setAttr('tok','cx',tp[0].toFixed(1));setAttr('tok','cy',tp[1].toFixed(1));setOp('tok',1);}
+  else{setOp('tok',0);}
+  renderScene();
+  if(typeof renderSub==='function')renderSub(th,pr,si);
+}
+function tick(now){
+  var dt=Math.min(50,now-last);last=now;
+  if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+  if(mode==='step'&&stepTo!==null){
+    stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);
+    var p=stepElapsed/STEP_DUR;var e=smooth(p);
+    phase=stepFrom+(stepTo-stepFrom)*e;
+    if(p>=1){phase=((stepTo%PERIOD)+PERIOD)%PERIOD;stepTo=null;}
+  }
+  render(phase/PERIOD*PHASE_MAX);
+  requestAnimationFrame(tick);
+}
+function setAuto(on){
+  mode='auto';run=on;stepTo=null;btn.textContent=on?'暂停':'播放';
+  if(on){stepIdx=-1;document.querySelectorAll('.stepnode').forEach(function(d){d.classList.remove('on');});
+  stepT.textContent='自动运转模式';stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格。';}
+}
+window.goStep=function(i){
+  stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+  var target=STEPS[stepIdx].d/PHASE_MAX*PERIOD;var delta=target-phase;
+  if(reduced||Math.abs(delta)>PERIOD/3){phase=target;stepTo=null;render(target/PERIOD*PHASE_MAX+0.01);}
+  else{stepFrom=phase;stepTo=phase+delta;stepElapsed=0;render(phase/PERIOD*PHASE_MAX+0.01);}
+  btn.textContent='继续自动运转';
+  document.querySelectorAll('.stepnode').forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+  stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+  stepX.textContent=STEPS[stepIdx].x;
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+btn.textContent=run?'暂停':'播放';
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+for(var s=0;s<STEPS.length;s++){(function(n){
+  var b=document.createElement('button');b.className='stepnode';
+  b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+  b.onclick=function(){goStep(n);};stepBar.appendChild(b);
+})(s);}
+CHIPS.forEach(function(c){var sp=document.createElement('span');sp.className='chip';sp.setAttribute('data-k',c.k);sp.innerHTML=c.l+' <b>--</b>';document.getElementById('stateChips').appendChild(sp);});
+document.querySelectorAll('.part').forEach(function(b){
+  b.onclick=function(){
+    var ids=PARTS[b.getAttribute('data-part')]||[];
+    ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+    document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+    setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+  };
+});
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+  var d=document.createElement('div');d.className='q';
+  var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+  it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+  h+='<div class="exp">'+it.exp+'</div>';d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+  var b=e.target.closest('.opt');if(!b)return;var box2=b.parentElement;if(box2.classList.contains('done'))return;
+  box2.classList.add('done');
+  var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+  box2.querySelectorAll('.opt').forEach(function(x,n){x.classList.add(n===QUIZ[qi].a?'right':'wrong');});
+});
+var BASE=(location.pathname.split('/cassandra-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/cassandra/lab';
+document.getElementById('lnkArt').href=BASE+'/cassandra/query/01-cql3-parsing';
+
+requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

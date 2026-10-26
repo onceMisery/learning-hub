@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Blob 文件存储：大值单独安家 · RocksDB 互动原理实验室 第 9 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#fff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:960px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#fff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:38px 0 22px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:710px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#fff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:500;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:11.5px;fill:#3B3A34}
+.tn{font-size:12.5px;font-weight:500;fill:#1F1E1A}
+.tag{font-size:10px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:68px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+section{padding:34px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .arr{color:#C46A0A;font-weight:600}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.figcap b{color:#3B3A34;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:13.5px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 9px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#scene [opacity],#scene2 [opacity]{transition:opacity .22s ease}
+#eng .hl,#eng2 .hl{stroke:#D96C06 !important;stroke-width:2.2 !important}
+.subview{margin:8px 0 4px;background:#fff;border:1px dashed #D3D1C7;border-radius:10px;padding:8px 10px}
+.subview .viewtitle{font-size:12px;font-weight:600;color:#854F0B;margin-bottom:4px}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+@media (prefers-reduced-motion: reduce){#scene [opacity],#scene2 [opacity]{transition:none}}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：Blob 文件存储：大值单独安家</a>
+  <span class="idx">第 9 / 12 章</span>
+</div>
+<div class="page">
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · Blob 文件存储</div>
+<h1>大值单独安家：SST 里只留一张提货单</h1>
+<p>2 MB 的文档切片跟着键走完 7 层 LSM，要被原样重写 7 遍、实际写盘 14 MB——写放大 7 倍，钱花在一堆几乎永远不会改的字节上。这页看 Integrated BlobDB 怎么在 flush/压实顺手把大值切进 blob file：账本只留提货单，回收靠压实时给 blob 文件称重。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span><span class="mnode">② 静态分解</span><span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span><span class="mnode">⑤ 环境场景</span><span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 614" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>大值的分流与回收</title>
+<defs>
+<marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="g" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<text class="th" x="500" y="22" text-anchor="middle">大值的分流与回收：写入 2MB 切片 → SST 留 8B 提货单 → blob file 安家 → 压实称重回收</text>
+<text class="ts" x="500" y="40" text-anchor="middle">主图 = 写路径 / SST / blob file / 读路径 / GC 五块；副图 = BlobIndex 与 record 的字节地图（同一相位）</text>
+<text class="tag" x="958" y="22" text-anchor="end">琥珀点 = 值/游标当前位置</text>
+<text class="tag" x="958" y="38" text-anchor="end">绿 = 有效引用 · 红 = 垃圾</text>
+<g id="scene">
+<g class="stage" id="st0"><circle cx="58" cy="66" r="13"/><text x="58" y="70" text-anchor="middle">1</text><text x="58" y="94" text-anchor="middle">写大值</text></g>
+<line x1="74" y1="66" x2="166" y2="66" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st1"><circle cx="182" cy="66" r="13"/><text x="182" y="70" text-anchor="middle">2</text><text x="182" y="94" text-anchor="middle">判阈值</text></g>
+<line x1="198" y1="66" x2="290" y2="66" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st2"><circle cx="306" cy="66" r="13"/><text x="306" y="70" text-anchor="middle">3</text><text x="306" y="94" text-anchor="middle">记 Index</text></g>
+<line x1="322" y1="66" x2="414" y2="66" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st3"><circle cx="430" cy="66" r="13"/><text x="430" y="70" text-anchor="middle">4</text><text x="430" y="94" text-anchor="middle">追加 record</text></g>
+<line x1="446" y1="66" x2="538" y2="66" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st4"><circle cx="554" cy="66" r="13"/><text x="554" y="70" text-anchor="middle">5</text><text x="554" y="94" text-anchor="middle">查 Index</text></g>
+<line x1="570" y1="66" x2="662" y2="66" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st5"><circle cx="678" cy="66" r="13"/><text x="678" y="70" text-anchor="middle">6</text><text x="678" y="94" text-anchor="middle">读 blob</text></g>
+<line x1="694" y1="66" x2="786" y2="66" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st6"><circle cx="802" cy="66" r="13"/><text x="802" y="70" text-anchor="middle">7</text><text x="802" y="94" text-anchor="middle">称重</text></g>
+<line x1="818" y1="66" x2="910" y2="66" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st7"><circle cx="926" cy="66" r="13"/><text x="926" y="70" text-anchor="middle">8</text><text x="926" y="94" text-anchor="middle">GC 搬迁</text></g>
+
+<rect x="40" y="112" width="290" height="182" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/>
+<text class="tn" x="52" y="132">写路径 · flush/压实顺手分流</text>
+<rect id="mt" x="52" y="142" width="266" height="44" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/>
+<text class="tb" x="185" y="160" text-anchor="middle">memtable：1000 条 KV（值仍完整）</text>
+<text class="tag" x="185" y="177" text-anchor="middle">700×200B 小值 + 300×2MB 文档切片</text>
+<line x1="185" y1="186" x2="185" y2="196" stroke="#C46A0A" stroke-width="1.3" marker-end="url(#a)"/>
+<rect id="dec" x="52" y="198" width="266" height="42" rx="7" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/>
+<text class="tb" x="185" y="215" text-anchor="middle">BlobFileBuilder::Add：size &lt; min_blob_size？</text>
+<text class="tag" x="185" y="231" text-anchor="middle">flush/压实遍历每个 KV 时顺手判（本例 1KB）</text>
+<text id="noBr" class="tag" x="58" y="256">是：短路返回，小值照旧进 SST 块（×700）</text>
+<text id="yeBr" class="tag" x="58" y="272" fill="#854F0B">否：① 开文件（30B header）② 压缩 ③ 追加 record</text>
+<text class="tag" x="58" y="286">④ 超 blob_file_size（256MB）封口写 footer → 开新文件</text>
+
+<line x1="330" y1="170" x2="346" y2="170" stroke="#C46A0A" stroke-width="1.3" marker-end="url(#a)"/>
+<polyline points="185,240 185,304 700,304 700,298" fill="none" stroke="#C46A0A" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#a)"/>
+<text class="tag" x="330" y="301" fill="#854F0B">大值切出（×300）→</text>
+
+<rect x="350" y="112" width="290" height="182" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/>
+<text class="tn" x="362" y="132">SST：账本轻便，只留提货单</text>
+<rect id="sstBand" x="362" y="142" width="150" height="40" rx="5" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/>
+<text class="tb" x="437" y="159" text-anchor="middle">[键 | 200B 值]</text>
+<text class="tag" x="437" y="175" text-anchor="middle">×700 小值原样</text>
+<rect id="sstIdx" x="516" y="142" width="112" height="40" rx="5" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/>
+<text class="tb" x="572" y="159" text-anchor="middle">[键 | BlobIndex]</text>
+<text class="tag" x="572" y="175" text-anchor="middle">×300 · 共 8B</text>
+<g id="bix">
+<rect x="362" y="196" width="32" height="24" rx="3" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1"/><text class="tag" x="378" y="212" text-anchor="middle">01</text>
+<rect x="396" y="196" width="32" height="24" rx="3" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1"/><text class="tag" x="412" y="212" text-anchor="middle">05</text>
+<rect x="430" y="196" width="32" height="24" rx="3" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1"/><text class="tag" x="446" y="212" text-anchor="middle">69</text>
+<rect x="464" y="196" width="76" height="24" rx="3" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1"/><text class="tag" x="502" y="212" text-anchor="middle">80 80 80 01</text>
+<rect x="542" y="196" width="32" height="24" rx="3" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1"/><text class="tag" x="558" y="212" text-anchor="middle">00</text>
+<text class="tag" x="378" y="232" text-anchor="middle">type</text>
+<text class="tag" x="412" y="232" text-anchor="middle">file#</text>
+<text class="tag" x="446" y="232" text-anchor="middle">offset</text>
+<text class="tag" x="502" y="232" text-anchor="middle">size（varint64）</text>
+<text class="tag" x="558" y="232" text-anchor="middle">压缩</text>
+</g>
+<text class="tag" x="362" y="252">指针与值 1:260000 · SST ≈ 2.3MB（不开 blob 要 600MB）</text>
+<text class="tag" x="362" y="268">offset 指向 value 本身，不是 record 头</text>
+<text class="tag" x="362" y="284">压实层层翻新 SST，搬的只是提货单</text>
+
+<rect x="660" y="112" width="300" height="182" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/>
+<text class="tn" x="672" y="132">000007.blob：append-only 大货区</text>
+<rect x="672" y="142" width="80" height="20" rx="4" fill="#EFF6FF" stroke="#2563EB" stroke-width="1"/>
+<text class="tag" x="712" y="156" text-anchor="middle">header 30B</text>
+<rect id="recHead" x="672" y="170" width="58" height="54" rx="4" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1"/>
+<text class="tag" x="701" y="192" text-anchor="middle">32B 头</text>
+<text class="tag" x="701" y="208" text-anchor="middle">双 CRC</text>
+<rect x="732" y="170" width="40" height="54" rx="4" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1"/>
+<text class="tag" x="752" y="200" text-anchor="middle">key 9B</text>
+<rect id="recVal" x="774" y="170" width="174" height="54" rx="4" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/>
+<text class="tb" x="861" y="192" text-anchor="middle">value 2MB</text>
+<text class="tag" x="861" y="210" text-anchor="middle">offset=71 直指这里</text>
+<rect x="672" y="234" width="80" height="18" rx="4" fill="#F5F4EF" stroke="#B4B2A9" stroke-width="1" stroke-dasharray="3 2"/>
+<text class="tag" x="712" y="247" text-anchor="middle">footer 32B</text>
+<text class="tag" x="770" y="247">仅正常关闭才写 · magic 0x00248f37</text>
+<text class="tag" x="672" y="268">record 级追加，文件级顺序、record 级随机</text>
+<text class="tag" x="672" y="284">256MB ≈ 128 条 2MB record；压缩以 record 为单位</text>
+
+<rect x="40" y="314" width="450" height="200" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/>
+<text class="tn" x="52" y="332">读路径：点查多一层间接</text>
+<rect id="r1" x="52" y="344" width="128" height="44" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/>
+<text class="tb" x="116" y="362" text-anchor="middle">① Get 命中 index</text>
+<text class="tag" x="116" y="379" text-anchor="middle">老三样交出 8B</text>
+<line x1="182" y1="366" x2="194" y2="366" stroke="#C46A0A" stroke-width="1.3" marker-end="url(#a)"/>
+<rect id="rcache" x="196" y="344" width="126" height="44" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/>
+<text class="tb" x="259" y="362" text-anchor="middle">② blob cache</text>
+<text class="tag" x="259" y="379" text-anchor="middle">独立 Cache·默认未配</text>
+<line x1="324" y1="366" x2="336" y2="366" stroke="#C46A0A" stroke-width="1.3" marker-end="url(#a)"/>
+<rect id="rfile" x="338" y="344" width="140" height="44" rx="7" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/>
+<text class="tb" x="408" y="362" text-anchor="middle">③ blob file 读 record</text>
+<text class="tag" x="408" y="379" text-anchor="middle">值级随机读 1 次</text>
+<text class="tag" x="52" y="412">命中 → 0 次盘读；miss → 1 次 record 读（值级，不再是块级 4KB）</text>
+<text class="tag" x="52" y="428">BlobFileCache 缓存的是已打开的 reader 对象，不是文件内容</text>
+<text class="tag" x="52" y="444">verify_checksums：读整条回退 key+32=41B 验双 CRC；快路径直读 2MB</text>
+<text class="tag" x="52" y="460">MultiGet：同文件多个引用合并成一次顺序读；blob 值压到低优先级池</text>
+<text class="tag" x="52" y="476">压实时读回旧 blob 校验/搬迁：blob_compaction_readahead_size 预取整段</text>
+
+<rect x="510" y="314" width="450" height="200" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/>
+<text class="tn" x="522" y="332">GC：压实时给 blob 文件称重</text>
+<text class="tag" x="522" y="352">BlobGarbageMeter：inflow − outflow = 新增垃圾 → MANIFEST·BlobFileGarbage</text>
+<rect id="f10" x="522" y="364" width="200" height="106" rx="8" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/>
+<text class="tb" x="622" y="384" text-anchor="middle">blob 文件 10 · 100MB</text>
+<text class="tag" x="622" y="402" text-anchor="middle">最老 25% 圈内（age_cutoff=0.25）</text>
+<rect x="534" y="414" width="176" height="16" rx="3" fill="#FCEBEB"/>
+<rect id="f10ok" x="534" y="414" width="35" height="16" rx="3" fill="#EAF3DE" stroke="#639922" stroke-width="1"/>
+<text class="tag" x="534" y="446">绿 = 有效引用 20MB · 红 = 垃圾 80MB</text>
+<text class="tag" x="534" y="462">一轮压实后垃圾 80%</text>
+<rect id="brA" x="736" y="364" width="212" height="48" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/>
+<text class="tb" x="842" y="384" text-anchor="middle">A：引用多 / 未圈中</text>
+<text class="tag" x="842" y="402" text-anchor="middle">不回收，原地等下一轮压实</text>
+<rect id="brB" x="736" y="422" width="212" height="48" rx="7" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/>
+<text class="tb" x="842" y="442" text-anchor="middle">B：圈中且引用少</text>
+<text class="tag" x="842" y="460" text-anchor="middle">重写新文件+更新 BlobIndex → 清空可删</text>
+<text class="tag" x="522" y="488">GC 的主体仍是常规压实：搬迁发生在「压实路过引用它的 SST」时，不单设后台进程</text>
+<text class="tag" x="522" y="504">force_threshold 默认 1.0 = 永不触发；降到 0.5 反向强排引用这批文件的 SST</text>
+</g>
+<circle id="tok" cx="150" cy="168" r="7" fill="#EF9F27" stroke="#D97E06" stroke-width="1.4"/>
+</svg>
+
+<div class="subview">
+<div class="viewtitle">第二视图 · 提货单与 record 的字节地图：BlobIndex 8 字节怎么编码、blob record 怎么摆（与主图同一相位）</div>
+<svg id="eng2" viewBox="0 0 1000 232" role="img" xmlns="http://www.w3.org/2000/svg">
+<g id="scene2">
+<text class="tn" x="40" y="24">BlobIndex（kBlob）8 字节：01 05 69 80 80 80 01 00</text>
+<text class="tag" x="40" y="42">2MB=2^21，varint64 占 4 字节；文件号 5、偏移 105 均小于 128，各占 1 字节</text>
+<rect x="40" y="54" width="44" height="34" rx="4" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1"/><text class="tb" x="62" y="76" text-anchor="middle">01</text><text class="tag" x="62" y="102" text-anchor="middle">type=kBlob</text>
+<rect x="88" y="54" width="44" height="34" rx="4" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1"/><text class="tb" x="110" y="76" text-anchor="middle">05</text><text class="tag" x="110" y="102" text-anchor="middle">file#=5</text>
+<rect x="136" y="54" width="44" height="34" rx="4" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1"/><text class="tb" x="158" y="76" text-anchor="middle">69</text><text class="tag" x="158" y="102" text-anchor="middle">offset=105</text>
+<rect x="184" y="54" width="120" height="34" rx="4" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1"/><text class="tb" x="244" y="76" text-anchor="middle">80 80 80 01</text><text class="tag" x="244" y="102" text-anchor="middle">size=2MB（4B）</text>
+<rect x="308" y="54" width="44" height="34" rx="4" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1"/><text class="tb" x="330" y="76" text-anchor="middle">00</text><text class="tag" x="330" y="102" text-anchor="middle">kNoCompression</text>
+<text class="tag" x="400" y="76">kBlobTTL 头部多一个 varint64 过期时间；「内联 TTL 值」是 kInlinedTTL</text>
+<text class="tn" x="40" y="132">blob record 字节地图（key="device_47" 9B，value 2MB 未压缩）</text>
+<rect x="40" y="144" width="76" height="40" rx="4" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1"/><text class="tag" x="78" y="160" text-anchor="middle">key_len=9</text><text class="tag" x="78" y="176" text-anchor="middle">Fixed64</text>
+<rect x="120" y="144" width="92" height="40" rx="4" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1"/><text class="tag" x="166" y="160" text-anchor="middle">val_len=2097152</text><text class="tag" x="166" y="176" text-anchor="middle">Fixed64</text>
+<rect x="216" y="144" width="86" height="40" rx="4" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1"/><text class="tag" x="259" y="160" text-anchor="middle">expiration=0</text><text class="tag" x="259" y="176" text-anchor="middle">Fixed64</text>
+<rect x="306" y="144" width="70" height="40" rx="4" fill="#F5F4EF" stroke="#B4B2A9" stroke-width="1"/><text class="tag" x="341" y="160" text-anchor="middle">headerCRC</text><text class="tag" x="341" y="176" text-anchor="middle">盖长度字段</text>
+<rect x="380" y="144" width="64" height="40" rx="4" fill="#F5F4EF" stroke="#B4B2A9" stroke-width="1"/><text class="tag" x="412" y="160" text-anchor="middle">blobCRC</text><text class="tag" x="412" y="176" text-anchor="middle">盖 key+value</text>
+<rect x="448" y="144" width="80" height="40" rx="4" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1"/><text class="tag" x="488" y="168" text-anchor="middle">device_47（9B）</text>
+<rect id="rv2" x="532" y="144" width="150" height="40" rx="4" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/><text class="tb" x="607" y="168" text-anchor="middle">value 2MB（offset 71 起）</text>
+<text class="tag" x="700" y="160">← 32B 头（5 字段）+ key + value；</text>
+<text class="tag" x="700" y="176">offset=30+32+9=71 直指 value 第一字节</text>
+<text class="tag" x="40" y="206">读法：第 3 步看提货单逐字节开出（type/文件号/偏移/大小/压缩）；第 4 步看 record 怎么追加；第 6 步看按 offset 71 取值。</text>
+<text class="tag" x="40" y="222">口径：blob_index.h:29-41（kBlob 布局）、blob_log_format.h（32B 头 :96-116、回退换算 :125-128）；字节为文章演示值。</text>
+</g>
+<circle id="tok2" cx="62" cy="71" r="6" fill="#639922" stroke="#4C7A1A" stroke-width="1.4"/>
+</svg>
+</div>
+
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.5" max="2" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm">默认 ≈ 6 秒 / 轮</span>
+</div>
+<div class="readout">
+<span class="ro">进度 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">读数 <b id="roKey">--</b></span>
+<span class="ro">该值在 SST 占 <b id="roSize">--</b></span>
+<span class="ro">blob 偏移 <b id="roOffset">--</b></span>
+<span class="ro">GC 账 <b id="roGC">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav"><button class="btn" onclick="prevStep()">‹ 上一步</button><button class="btn warn" onclick="nextStep()">下一步 ›</button></span>
+</div>
+<p class="figcap">进度 0° = 大值进 memtable，720° = GC 分支落定。演示时刻：enable_blob_files=true、min_blob_size=1KB，memtable 里 700 个 200B 小值 + 300 个 2MB 切片；橙点 = 值/游标当前位置。<br>口径：RocksDB 11.13.0；blob 选项 advanced_options.h:1070-1209、BlobFileBuilder::Add blob_file_builder.cc:117-175、BlobIndex blob_index.h:29-41、日志格式 blob_log_format.h（header 30B / record 32B 头 / footer 32B）、GC 三参数同上；flush 例与文件 10 的垃圾账为文章演示值。</p>
+</div>
+</div>
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：磁盘三倍占用，压实窗口打满盘</h2></div>
+<p class="sec-sub">先不拆机制，只看大值在 LSM 里对外表现出什么。</p>
+<div class="quote">「观察一个系统，先分清它的静态结构、动态过程和外部依赖。」</div>
+<p>文档检索服务把 2 MB 切片直接塞进 RocksDB：磁盘占用是估算量的三倍，凌晨压实把盘打满，<code>COMPACT_WRITE_BYTES</code> 高得离谱——而这批文档大多是写进去就不改的冷数据。差别不在值多大，而在<b>这些值被迫跟着键走完了 LSM 的每一层</b>。</p>
+<div class="flow">
+<span class="node">2MB 值</span><span class="arr">→</span><span class="node box">flush/压实分流</span><span class="arr">→</span><span class="node">SST 只留 8B BlobIndex</span><span class="arr">→</span><span class="node">blob file 存原值</span><span class="arr">→</span><span class="node">压实搬提货单</span>
+</div>
+<p>一句话本质：<b>大值在落盘时就地分流，SST 里只留一张提货单</b>。不开 blob 付三笔账：SST 膨胀（索引/布隆被稀释）、压实 O(层数) 搬运（写放大 ≈ 层数）、缓存挤占（2MB 冷块顶掉几百个热小块）。100GB 业务数据、值平均 2MB：开 blob 后 SST 总量 ≈ 100GB × (9B 键 + 8B 指针)/2MB ≈ 1MB 级，blob 文件常态接近 100GB 静置。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：闸门、提货单与仓库</h2></div>
+<p class="sec-sub">点部件卡片，动画里对应的结构会亮起。</p>
+<div class="quote">「分解要 MECE：同一层粒度一致，不重不漏。」</div>
+<div class="figure"><svg viewBox="0 0 920 196" role="img" xmlns="http://www.w3.org/2000/svg"><text x="460" y="20" font-size="13" fill="#1F1E1A" text-anchor="middle" font-weight="600">blob file 三段式：日志皮、索引骨——header 30B / record（32B 头 + key + value）/ footer 32B</text><rect x="40" y="42" width="90" height="40" rx="5" fill="#EFF6FF" stroke="#2563EB"/><text x="85" y="60" font-size="11" fill="#3B3A34" text-anchor="middle">① header 30B</text><text x="85" y="76" font-size="9.5" fill="#6B695F" text-anchor="middle">magic/cf id/压缩</text><rect x="134" y="42" width="120" height="40" rx="5" fill="#FFFFFF" stroke="#3B3A34"/><text x="194" y="60" font-size="11" fill="#3B3A34" text-anchor="middle">② record 32B 头</text><text x="194" y="76" font-size="9.5" fill="#6B695F" text-anchor="middle">长度×3 + headerCRC</text><rect x="258" y="42" width="70" height="40" rx="5" fill="#FFFFFF" stroke="#3B3A34"/><text x="293" y="60" font-size="11" fill="#3B3A34" text-anchor="middle">③ key 9B</text><text x="293" y="76" font-size="9.5" fill="#6B695F" text-anchor="middle">blobCRC 盖它</text><rect x="332" y="42" width="180" height="40" rx="5" fill="#FFF6E8" stroke="#EF9F27"/><text x="422" y="60" font-size="11" fill="#3B3A34" text-anchor="middle">④ value 2MB</text><text x="422" y="76" font-size="9.5" fill="#6B695F" text-anchor="middle">BlobIndex 的 offset 指这里</text><rect x="516" y="42" width="90" height="40" rx="5" fill="#F5F4EF" stroke="#B4B2A9" stroke-dasharray="3 2"/><text x="561" y="60" font-size="11" fill="#3B3A34" text-anchor="middle">⑤ footer 32B</text><text x="561" y="76" font-size="9.5" fill="#6B695F" text-anchor="middle">仅正常关闭才写</text><text x="40" y="100" font-size="10.5" fill="#6B695F">不用块、不用前缀压缩、不用 varint（可用 Varint64 但会让 reader 更复杂）</text><text x="40" y="118" font-size="10.5" fill="#6B695F">访问模式是「按偏移直取一条」，不是「按序扫描」；CRC 分两层：</text><text x="40" y="136" font-size="10.5" fill="#6B695F">headerCRC 验「有没有读错位置」，blobCRC 验「数据本身完不完整」；压缩以 record 为单位。</text><rect x="640" y="42" width="240" height="118" rx="8" fill="#FFFFFF" stroke="#D3D1C7"/><text x="652" y="64" font-size="10.5" fill="#854F0B" font-weight="600">BlobIndex（kBlob）8 字节</text><text x="652" y="86" font-size="10.5" fill="#3B3A34">01 05 69 80 80 80 01 00</text><text x="652" y="104" font-size="10.5" fill="#6B695F">type 1B · 文件号 1B · 偏移 1B</text><text x="652" y="120" font-size="10.5" fill="#6B695F">大小 4B（2MB=2^21）· 压缩 1B</text><text x="652" y="140" font-size="10.5" fill="#6B695F">2MB 换 8 字节，指针与值 1:260000；</text><text x="652" y="156" font-size="10.5" fill="#6B695F">offset 指向 value 本身，非 record 头。</text></svg></div>
+<p class="figcap">静态标注图：blob file 三段式与 BlobIndex 8 字节布局。编号与下方部件卡、动画一致。</p>
+<div class="partgroup"><div class="gname">分流的闸门（db/blob/）</div><div class="parts">
+<button class="part" data-part="dec"><b>BlobFileBuilder::Add</b><span>flush/压实顺手判每个值：小值短路返回，大值四步切出。</span></button>
+<button class="part" data-part="thr"><b>min_blob_size（默认 0）</b><span>核心旋钮，典型 4KB~64KB；太小则 32B 头开销压过收益。本例 1KB。</span></button>
+<button class="part" data-part="cap"><b>blob_file_size（256MB）</b><span>单文件上限，超了封口写 footer 再开新文件。</span></button>
+</div></div>
+<div class="partgroup"><div class="gname">提货单与仓库</div><div class="parts">
+<button class="part" data-part="idx"><b>BlobIndex（kTypeBlobIndex）</b><span>type+文件号+偏移+大小+压缩类型；2MB 换 8B，1:260000。</span></button>
+<button class="part" data-part="off"><b>offset 指向 value</b><span>不是 record 头；读整条要回退 key_size+32 字节。</span></button>
+<button class="part" data-part="blob"><b>blob file 三段式</b><span>header 30B / record（32B 头+key+value）/ footer 32B（仅正常关闭）。</span></button>
+<button class="part" data-part="crc"><b>双 CRC + record 级压缩</b><span>headerCRC 验位置、blobCRC 验内容；压缩类型记在 BlobIndex 里。</span></button>
+</div></div>
+<div class="partgroup"><div class="gname">读与回收</div><div class="parts">
+<button class="part" data-part="read"><b>blob cache / BlobFileCache</b><span>一个缓存内容（独立 Cache，默认未配），一个缓存已打开的 reader 对象。</span></button>
+<button class="part" data-part="gc"><b>BlobGarbageMeter + 双阈值</b><span>称重 inflow−outflow 进 MANIFEST；age_cutoff 按龄搬迁，force_threshold 强排。</span></button>
+</div></div>
+<p class="hint">提货单是 flush/压实时才开出的：memtable 和 WAL 里值仍是完整的，写缓冲照旧要背大值——真正的卸载发生在落盘那一刻。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：一个 2MB 值的 8 个相位</h2></div>
+<p class="sec-sub">第一遍只看橙点从 memtable 走到 GC；第二遍同时看读数条「该值在 SST 占」什么时候从 2MB 变成 8B。</p>
+<div class="quote">「动态分析看的是时间轴上的顺序、状态变化和因果链。」</div>
+<table class="grid">
+<tr><th>相位</th><th>阶段</th><th>关键动作</th><th>读数</th></tr>
+<tr><td>0–90°</td><td>写入大值</td><td>memtable/WAL 里值仍完整，提货单未开</td><td>2MB 完整值</td></tr>
+<tr><td>90–180°</td><td>阈值分流</td><td class="hot">200B 小值短路留 SST；2MB ≥ 1KB 切出</td><td class="hot">2MB 切出</td></tr>
+<tr><td>180–270°</td><td>记 BlobIndex</td><td>kTypeBlobIndex：01 05 69 80 80 80 01 00</td><td class="hot">SST 内 8B</td></tr>
+<tr><td>270–360°</td><td>追加 record</td><td>30B header → 32B 头+key+value；offset=71</td><td>offset 71</td></tr>
+<tr><td>360–450°</td><td>Get 命中 index</td><td>老三样交出 8B，SaveValue 传「blob 引用」标记</td><td>BlobIndex 8B</td></tr>
+<tr><td>450–540°</td><td>定位读值</td><td>blob cache 命中 0 次盘读 / miss 1 次 record 读</td><td>1 次 record 读</td></tr>
+<tr><td>540–630°</td><td>压实称重</td><td>inflow−outflow → 文件 10 垃圾 80% 进 MANIFEST</td><td class="hot">垃圾 80%</td></tr>
+<tr><td>630–720°</td><td>GC 分支</td><td class="hot">圈中且引用少 → 重写搬迁；引用多 → 原地不动</td><td class="hot">搬迁 20MB</td></tr>
+</table>
+<p>相位零点：0° = 大值进 memtable；720° = GC 分支落定。值得分步细看的两处：第 ③ 步 8 字节逐字节开出（varint64 的 2MB 要 4 字节）；第 ⑧ 步的分支——age_cutoff 只圈最老 25%，圈外的文件引用再多也不动。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件 × 阶段</h2></div>
+<p class="sec-sub">竖看是大值的一生，横看是一个部件的完整职责。</p>
+<div class="quote">「把部件放回阶段里，才能看清谁在什么时候接力。」</div>
+<table class="grid">
+<tr><th>部件</th><th>写入</th><th>flush/压实分流</th><th>读</th><th>压实称重</th><th>GC 搬迁</th></tr>
+<tr><td>memtable / WAL</td><td class="hot">完整存 2MB</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>BlobFileBuilder</td><td>—</td><td class="hot">判 min_blob_size → 四步切出</td><td>—</td><td class="act">顺手给新 blob 登记</td><td>—</td></tr>
+<tr><td>SST 构建器</td><td>—</td><td class="hot">写 8B BlobIndex</td><td class="act">老三样交出提货单</td><td>—</td><td class="act">更新 BlobIndex</td></tr>
+<tr><td>blob file</td><td>—</td><td class="hot">追加 record</td><td class="hot">按 offset 直取</td><td>—</td><td class="hot">被重写/清空可删</td></tr>
+<tr><td>blob cache / BlobFileCache</td><td>—</td><td>—</td><td class="hot">内容/reader 两级</td><td>—</td><td>—</td></tr>
+<tr><td>BlobGarbageMeter</td><td>—</td><td>—</td><td>—</td><td class="hot">inflow−outflow 称重</td><td class="act">垃圾账进 MANIFEST</td></tr>
+</table>
+<p><b>涌现属性：</b>「账本轻、仓库静」不属于任何单个部件——SST 构建器与 BlobFileBuilder 在同一次遍历里接力（顺手二字），GC 的统计又搭常规压实的便车（不单设后台进程）。省下一套独立调度，付出的是回收速度取决于 SST 的压实节奏。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：分流之外还有什么</h2></div>
+<p class="sec-sub">拆掉任何一个外部依赖，前面看到的行为都会变。</p>
+<div class="quote">「环境属性 = 外在关系 + 依赖 + 失效后果。」</div>
+<div class="envcards">
+<div class="env"><b>blob cache 配置</b><span>默认 nullptr：未配则每次热读都多一次盘读——点查 P99 长尾变差先查它。</span></div>
+<div class="env"><b>压实节奏</b><span>GC 主体是常规压实：压得不勤的库，blob 垃圾照样堆积——开关只是给了回收一条路。</span></div>
+<div class="env"><b>MANIFEST</b><span>BlobFileAddition/BlobFileGarbage 随 VersionEdit 原子生效；offset 报错先查这里是否与 SST 同步。</span></div>
+<div class="env"><b>min_blob_size 选型</b><span>值普遍几百字节时划不出有意义的线，间接寻址开销压过写放大收益。</span></div>
+<div class="env"><b>blob_file_starting_level</b><span>短命大值场景调高：浅层保持完整 LSM 语义，活过几轮压实的才分流。</span></div>
+<div class="env"><b>温度分层</b><span>blob 文件支持温度标记，与 Temperature 配合把冷数据大值成批送到低温盘，账本留在热盘。</span></div>
+</div>
+<p class="figcap">边界：本页主线是成熟的 flush/压实分流；11.x 实验性的写路径直写（enable_blob_direct_write）与旧的独立 BlobDB 包装层不展开。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">能说清「提货单在什么时候开、GC 靠谁推动」，才算真的懂 blob 分流。</p>
+<div class="quote">「用自己的话能讲清楚，才算真的懂。」</div>
+<div id="quiz"></div>
+</section>
+
+<div class="summary">
+<h2>一页带走</h2>
+<p class="chant">大值落盘就地分流，账本只留提货单；回收跟着压实走。</p>
+<p>· 大值在 LSM 里付三笔账：SST 膨胀、压实 O(层数) 搬运、缓存挤占；enable_blob_files 让 flush/压实顺手把 ≥ min_blob_size 的值切出去。</p>
+<p>· SST 里留 BlobIndex：type+文件号+偏移+大小+压缩，2MB 换 8B；offset 指向 value 本身，读整条记录回退 key+32 字节。</p>
+<p>· blob file 是 append-only 日志：30B header、32B 记录头（双 CRC：定位与内容各一层）、关闭时写 32B footer。</p>
+<p>· 读路径多一层间接：SST 块 → BlobIndex → blob cache / blob file；BlobFileCache 缓存 reader，blob cache 缓存内容。</p>
+<p>· GC 三机制：BlobGarbageMeter 称重进 MANIFEST，age_cutoff 圈最老 25% 搬迁，force_threshold（默认 1.0=永不触发）强排引用 SST。</p>
+<p>· 边界与简化：min_blob_size=1KB、700/300 组合、文件 10 的 100MB/20MB 均为文章演示值；写路径直写与旧包装层本页不展开。</p>
+</div>
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+<script>
+var STEPS=[
+{d:0,t:"① 写入大值",x:"2MB 文档切片先走常规写路径：memtable 和 WAL 里仍是完整值——提货单要等落盘那一刻才开，写路径的缓冲区照旧要背大值。",k:"2MB 完整值"},
+{d:90,t:"② min_blob_size 分流",x:"flush/压实本来就要遍历每个 KV，BlobFileBuilder::Add 顺手判一行：200B 小值 < 1KB 短路返回照旧进 SST（×700）；2MB ≥ 1KB 切出去（×300）。",k:"2MB ≥ 1KB → 切出"},
+{d:180,t:"③ SST 记 BlobIndex",x:"SST 里的值换成 kTypeBlobIndex：01 05 69 80 80 80 01 00——type+文件号+偏移+大小+压缩，2MB 换 8 字节，指针与值 1:260000；SST 从 600MB 级瘦成 2.3MB。",k:"SST 内 8B"},
+{d:270,t:"④ blob file 追加 record",x:"000007.blob 先写 30B header，record 是 32B 头 + key 9B + value 2MB；BlobIndex 里的 offset=30+32+9=71，直指 value 第一字节。",k:"offset 71"},
+{d:360,t:"⑤ Get 命中 BlobIndex",x:"SST 侧老三样（filter+index+data block）查出 8 字节 BlobIndex；SaveValue 不返回值，把「这是个 blob 引用」标记传给 DBImpl 侧解析。",k:"BlobIndex 8B"},
+{d:450,t:"⑥ 定位 blob file 读值",x:"blob cache 命中 → 0 次盘读；miss → 按 offset 读 1 条 record（值级随机读，不再是块级 4KB），先验双 CRC 再解压；读整条记录要回退 key+32=41B。",k:"1 次 record 读"},
+{d:540,t:"⑦ 压实称重",x:"BlobGarbageMeter 对每个输入/输出 SST 解析 BlobIndex，按文件聚合 inflow−outflow；文件 10 的 100MB 里只剩 20MB 有效引用——垃圾 80%，写进 MANIFEST 的 BlobFileGarbage。",k:"垃圾 80%"},
+{d:630,t:"⑧ GC 回收（分支）",x:"age_cutoff=0.25 圈中最老 25%：圈中且引用少的重写进新文件、更新 BlobIndex，清空即删（B）；引用多或未圈中的原地不动（A）。force_threshold 默认 1.0=永不触发。",k:"搬迁 20MB"}];
+var CHIPS=[{k:"route",l:"分流"},{k:"sst",l:"SST"},{k:"blob",l:"blob file"},{k:"read",l:"读路径"},{k:"gc",l:"GC"}];
+var PARTS={"dec":["dec"],"thr":["dec"],"cap":["recHead"],"idx":["bix","sstIdx"],"off":["recVal","rv2"],"blob":["recHead","recVal"],"crc":["recHead"],"read":["r1","rcache","rfile"],"gc":["f10","brA","brB"],"mem":["mt"],"sst":["sstBand"]};
+var QUIZ=[
+{q:"一个 2MB 的值不开 blob 文件，走完 7 层 LSM 实际写盘多少？",opts:["2MB，值不变","14MB——每过一层压实就被原样重写一遍，写放大 ≈ 层数","600MB"],a:1,exp:"压实的主体是大值搬运：从 flush 到最底层要被完整拷贝 O(层数) 次，这是 COMPACT_WRITE_BYTES 里最冤枉的部分；SST 膨胀与缓存挤占是另外两笔账。"},
+{q:"BlobIndex 的 offset 指向哪里？",opts:["record 头（32 字节头的起点）","value 本身——读整条记录要回退 key_size+32 字节把头补回来","文件开头"],a:1,exp:"快路径直读 71 起的 2MB；校验路径回退 41B（32B 头 + key 9B）读出双 CRC——CalculateAdjustmentForRecordHeader 做的就是这个换算。"},
+{q:"blob file 为什么「退回」日志格式（不用块、不用前缀压缩、不用 varint）？",opts:["实现简单","它的访问模式是按偏移直取一条 record，不是按序扫描","为了和 WAL 兼容"],a:1,exp:"文件级顺序、record 级随机；CRC 分两层同理：headerCRC 验「有没有读错位置」，blobCRC 验「数据本身完不完整」。"},
+{q:"blob 的 GC 靠什么决定搬不搬？",opts:["独立后台进程定期扫描","压实时 BlobGarbageMeter 称重（inflow−outflow）+ age_cutoff 圈最老文件 + force_threshold 强排","SST 压实自动带走旧 blob"],a:1,exp:"blob 文件脱离了 LSM，没有「压实顺带清旧版本」的待遇；统计与搬迁都搭常规压实的便车，回收节奏由压实节奏决定。"},
+{q:"blob_garbage_collection_force_threshold 默认 1.0 意味着什么？",opts:["垃圾满 100% 就删文件","默认永不触发强排——想让「垃圾多就快点收」要主动降到 0.5 之类","每次压实验证全部 blob"],a:1,exp:"垃圾占比超过阈值才反向找到引用这批文件的 SST 标记成强压对象；默认 1.0 等于关闭该机制。"},
+{q:"哪种负载最不该开 blob 文件？",opts:["写多读少、值大、更新率低","值普遍几百字节到 1KB、点查极热——min_blob_size 划不出有意义的线，多一层间接是纯亏","大 JSON 文档切片"],a:1,exp:"小值切出去省的写放大抵不过每个值多一层寻址；热键每读一次都要过 blob cache 一道，没配 blob cache 更是每次多一次盘读。"}];
+var WP=[[0,150,168],[76,150,168],[92,185,225],[176,185,225],[192,520,165],[262,520,165],[278,860,205],[350,860,205],[366,116,366],[442,116,366],[458,259,366],[532,259,366],[548,622,410],[622,622,410],[638,842,447],[720,842,447]];
+var WP2=[[0,62,71],[176,62,71],[192,62,71],[262,244,71],[278,607,164],[350,607,164],[366,62,71],[442,110,71],[458,607,164],[532,607,164],[548,244,71],[720,244,71]];
+var PERIOD=6000,basePeriod=PERIOD,PHASE_MAX=720,STEP_DUR=600;
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,stepIdx=-1,dots=[],ticking=false,chipEls={};
+function $(id){return document.getElementById(id);}
+function setText(id,s){var n=$(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setOp(id,v){var n=$(id);if(n)n.setAttribute('opacity',Math.max(0,Math.min(1,v)).toFixed(2));}
+function setAttr(id,k,v){var n=$(id);if(n)n.setAttribute(k,v);}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){t=clamp(t,0,1);return t*t*(3-2*t);}
+function ramp(th,a,b){return clamp((th-a)/((b-a)||1),0,1);}
+function win(pr,a,b){return clamp(ramp(pr,a,a+6)*(1-ramp(pr,b-6,b)),0,1);}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function lerpPts(pts,th){
+  if(th<=pts[0][0])return[pts[0][1],pts[0][2]];
+  for(var i=0;i<pts.length-1;i++){if(th<pts[i+1][0]){var t=smooth((th-pts[i][0])/(pts[i+1][0]-pts[i][0]));return[pts[i][1]+(pts[i+1][1]-pts[i][1])*t,pts[i][2]+(pts[i+1][2]-pts[i][2])*t];}}
+  return[pts[pts.length-1][1],pts[pts.length-1][2]];
+}
+function setChip(k,v){var n=chipEls[k];if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',/^(已|完成|命中|切出|追加|盘读|搬迁|读)/.test(v));n.classList.toggle('off',/^(待命|—|无|未|0|提货)/.test(v));}
+function stageIdx(pr){var s=0;for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)s=i;}return s;}
+function pageRender(pr,si){
+  setOp('dec',win(pr,90,190)+0.25);
+  setOp('yeBr',pr>=100?1:0.55);
+  setOp('sstIdx',win(pr,180,278)+0.3);
+  setOp('bix',win(pr,180,278)+0.3);
+  setOp('recVal',win(pr,270,366)+0.3);
+  setOp('recHead',pr>=270?1:0.55);
+  setOp('r1',win(pr,360,458)+0.3);
+  setOp('rcache',win(pr,440,548)+0.3);
+  setOp('rfile',win(pr,458,548)+0.3);
+  setOp('f10',win(pr,540,638)+0.3);
+  setOp('f10ok',pr>=540?1:0.25);
+  setOp('brA',pr>=630?0.55:1);
+  setOp('brB',win(pr,630,720)+0.3);
+  setOp('rv2',win(pr,458,548)+0.3);
+  setText('roSize',pr<180?'2MB（memtable 原值）':'8B（BlobIndex）');
+  setText('roOffset',pr<270?'—':'71 = 30+32+9');
+  setText('roGC',pr<540?'—':(pr<630?'有效 20MB / 垃圾 80%':'搬迁 20MB → 清空可删'));
+  setChip('route',pr<90?'待命':'已切出');
+  setChip('sst',pr<180?'原值 2MB':'提货单 8B');
+  setChip('blob',pr<270?'待命':'已追加 record');
+  setChip('read',pr<360?'待命':pr<450?'命中 index':pr<540?'盘读 1 次':'—');
+  setChip('gc',pr<540?'待命':pr<630?'垃圾 80%':'搬迁中');
+}
+function render(th){
+  var pr=norm(th);
+  setText('roPhase',Math.round(pr)+'°');
+  var si=stageIdx(pr);if(mode==='step'&&stepIdx>=0)si=stepIdx;
+  setText('roStep',STEPS[si]?STEPS[si].t:'—');
+  setText('roKey',STEPS[si]?STEPS[si].k:'—');
+  pageRender(pr,si);
+  var p=lerpPts(WP,pr);setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));
+  var q=lerpPts(WP2,pr);setAttr('tok2','cx',q[0].toFixed(1));setAttr('tok2','cy',q[1].toFixed(1));
+}
+function tick(now){
+  ticking=false;
+  var dt=Math.min(50,now-last);last=now;
+  if(run&&mode==='auto')phase=(phase+dt/PERIOD*PHASE_MAX)%PHASE_MAX;
+  if(mode==='step'&&stepTo!==null){
+    stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);var p=stepElapsed/STEP_DUR,e=smooth(p);
+    phase=stepFrom+(stepTo-stepFrom)*e;if(p>=1){phase=stepTo;stepTo=null;}
+  }
+  render(phase);
+  if(run||stepTo!==null){ticking=true;requestAnimationFrame(tick);}
+}
+function wake(){if(ticking)return;ticking=true;last=performance.now();requestAnimationFrame(tick);}
+function setAuto(on){
+  mode='auto';run=on;stepTo=null;var b=$('engBtn');if(b)b.textContent=on?'暂停':'播放';
+  if(on){stepIdx=-1;dots.forEach(function(d){d.classList.remove('on');});
+  setText('stepT','自动运转模式');setText('stepX','点下方步骤点可切换到分步演示，随你点击定格。');wake();}
+}
+window.goStep=function(i){
+  stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+  var target=STEPS[stepIdx].d;
+  if(reduced||Math.abs(target-norm(phase))>180){phase=target;stepTo=null;}
+  else{stepFrom=phase;stepTo=target;stepElapsed=0;}
+  render(phase);wake();
+  var b=$('engBtn');if(b)b.textContent='继续自动运转';
+  dots.forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+  setText('stepT','第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t);
+  setText('stepX',STEPS[stepIdx].x);
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+CHIPS.forEach(function(c){var box=$('stateChips');var s=document.createElement('span');s.className='chip';s.innerHTML=c.l+' <b>--</b>';box.appendChild(s);chipEls[c.k]=s;});
+var stepBar=$('stepBar');
+STEPS.forEach(function(s,n){var b=document.createElement('button');b.className='stepnode';b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+s.t+'</span>';b.onclick=function(){goStep(n);};stepBar.appendChild(b);dots.push(b);});
+var engBtn=$('engBtn');engBtn.textContent=run?'暂停':'播放';
+engBtn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+var spd=$('engSpd');
+if(spd){spd.oninput=function(){speed=parseFloat(spd.value);$('engSpdV').textContent=speed+'×';PERIOD=basePeriod/speed;};}
+document.querySelectorAll('.part').forEach(function(btn){btn.onclick=function(){var ids=(PARTS[btn.dataset.part]||[]);document.querySelectorAll('#eng .hl,#eng2 .hl').forEach(function(n){n.classList.remove('hl');});ids.forEach(function(id){var n=$(id);if(n)n.classList.add('hl');});};});
+var quizBox=$('quiz');QUIZ.forEach(function(q,n){var d=document.createElement('div');d.className='q';var html='<div class="qt">'+(n+1)+'. '+q.q+'</div>';q.opts.forEach(function(o,j){html+='<button class="opt" data-q="'+n+'" data-o="'+j+'">'+o+'</button>';});html+='<div class="exp"><b>答案：</b>'+q.opts[q.a]+'<br>'+q.exp+'</div>';d.innerHTML=html;quizBox.appendChild(d);});
+quizBox.querySelectorAll('.opt').forEach(function(b){b.onclick=function(){var q=QUIZ[+b.dataset.q];var box=b.closest('.q');if(box.classList.contains('done'))return;box.classList.add('done');b.classList.add(+b.dataset.o===q.a?'right':'wrong');box.querySelectorAll('.opt').forEach(function(o){if(+o.dataset.o===q.a)o.classList.add('right');});};});
+if(reduced){run=false;phase=0;render(0);engBtn.textContent='播放';}else{wake();}
+</script>
+</body>
+</html>

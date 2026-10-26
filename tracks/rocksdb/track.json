@@ -216,5 +216,10 @@
   "codeRoots": [],
   "assets": [
     "assets"
-  ]
+  ],
+  "lab": {
+    "title": "RocksDB 互动原理实验室",
+    "subtitle": "十二章动态图解：从一条 KV 的进来与出去、Memtable 与 WAL、读取合并，到压实三本账、SST 布局与块排版、Blob 安家、缓存分层与内存总账。每页都能自动运转，也能按步骤定格。",
+    "route": "/rocksdb/lab"
+  }
 }

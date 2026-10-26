@@ -1,0 +1,242 @@
+{
+  "id": "clickhouse",
+  "title": "分析引擎 · 读 ClickHouse 源码",
+  "subtitle": "沿着一条实时分析 SQL 的解析、计划、执行与落盘，把列式存储、MergeTree、复制共识与分布式查询读成一套能复述的 OLAP 引擎",
+  "order": 60,
+  "status": "active",
+  "accent": "amber",
+  "tags": [
+    "ClickHouse",
+    "OLAP",
+    "列式存储",
+    "MergeTree",
+    "向量化执行",
+    "分布式"
+  ],
+  "toolchain": "ClickHouse 26.11.1.1-testing（本地源码快照）",
+  "verifiedAt": "2026-10-25",
+  "outline": [
+    "架构概述：一条分析 SQL 的进来与出去",
+    "SQL 解析器与 AST：先把句子拆成树",
+    "查询分析器与优化器：把树修成能执行的形状",
+    "查询计划与处理器执行：从步骤树到流水线",
+    "MergeTree 引擎家族：不可变 part 与后台合并",
+    "ReplicatedMergeTree 与共识机制：副本之间怎么对齐",
+    "分布式表引擎：一条查询如何打到整个集群",
+    "外部存储集成：不搬数据也能查",
+    "列式存储与压缩：只读三列，凭什么这么快",
+    "数据类型与列：内存里的列长什么样",
+    "MergeTree 索引与投影：先看小抄，再翻账本",
+    "ClickHouse Keeper：集群的公共记事本",
+    "集群拓扑、复制与容错：坏一台之后发生什么"
+  ],
+  "sections": [
+    {
+      "id": "overview",
+      "title": "架构概述",
+      "path": "tutorial/overview",
+      "order": 10,
+      "pages": [
+        {
+          "file": "01-架构概述.md",
+          "slug": "01-architecture",
+          "title": "架构概述：一条分析 SQL 的进来与出去",
+          "tags": [
+            "OLAP",
+            "列式存储",
+            "向量化执行",
+            "MergeTree",
+            "查询生命周期"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "query",
+      "title": "查询处理管线",
+      "path": "tutorial/query",
+      "order": 20,
+      "pages": [
+        {
+          "file": "01-SQL解析器与AST.md",
+          "slug": "01-parser-ast",
+          "title": "SQL 解析器与 AST：先把句子拆成树",
+          "tags": [
+            "Lexer",
+            "Parser",
+            "AST",
+            "ASTSelectQuery",
+            "语法分析"
+          ]
+        },
+        {
+          "file": "02-查询分析器与优化器.md",
+          "slug": "02-analyzer-optimizer",
+          "title": "查询分析器与优化器：把树修成能执行的形状",
+          "tags": [
+            "QueryAnalyzer",
+            "QueryTree",
+            "谓词下推",
+            "投影裁剪",
+            "QueryPlan"
+          ]
+        },
+        {
+          "file": "03-查询计划与处理器执行.md",
+          "slug": "03-plan-processors",
+          "title": "查询计划与处理器执行：从步骤树到流水线",
+          "tags": [
+            "QueryPlan",
+            "QueryPipeline",
+            "Processor",
+            "PipelineExecutor",
+            "Chunk"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "storage",
+      "title": "存储引擎系统",
+      "path": "tutorial/storage",
+      "order": 30,
+      "pages": [
+        {
+          "file": "01-MergeTree引擎家族.md",
+          "slug": "01-mergetree-family",
+          "title": "MergeTree 引擎家族：不可变 part 与后台合并",
+          "tags": [
+            "MergeTree",
+            "Part",
+            "Partition",
+            "ReplacingMergeTree",
+            "后台合并"
+          ]
+        },
+        {
+          "file": "02-ReplicatedMergeTree与共识.md",
+          "slug": "02-replication-consensus",
+          "title": "ReplicatedMergeTree 与共识机制：副本之间怎么对齐",
+          "tags": [
+            "ReplicatedMergeTree",
+            "Keeper",
+            "复制日志",
+            "Quorum",
+            "去重"
+          ]
+        },
+        {
+          "file": "03-分布式表引擎.md",
+          "slug": "03-distributed-table",
+          "title": "分布式表引擎：一条查询如何打到整个集群",
+          "tags": [
+            "Distributed",
+            "分片",
+            "两阶段聚合",
+            "GLOBAL JOIN",
+            "internal_replication"
+          ]
+        },
+        {
+          "file": "04-外部存储集成.md",
+          "slug": "04-external-storage",
+          "title": "外部存储集成：不搬数据也能查",
+          "tags": [
+            "S3",
+            "Kafka",
+            "MySQL",
+            "PostgreSQL",
+            "Iceberg",
+            "谓词下推"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "data",
+      "title": "核心数据层",
+      "path": "tutorial/data",
+      "order": 40,
+      "pages": [
+        {
+          "file": "01-列式存储与压缩.md",
+          "slug": "01-columnar-storage",
+          "title": "列式存储与压缩：只读三列，凭什么这么快",
+          "tags": [
+            "列式存储",
+            "Mark",
+            "Granule",
+            "LZ4",
+            "ZSTD",
+            "CODEC"
+          ]
+        },
+        {
+          "file": "02-数据类型与列.md",
+          "slug": "02-data-types",
+          "title": "数据类型与列：内存里的列长什么样",
+          "tags": [
+            "IDataType",
+            "ColumnVector",
+            "Nullable",
+            "LowCardinality",
+            "JSON"
+          ]
+        },
+        {
+          "file": "03-MergeTree索引与投影.md",
+          "slug": "03-index-projection",
+          "title": "MergeTree 索引与投影：先看小抄，再翻账本",
+          "tags": [
+            "稀疏索引",
+            "主键",
+            "Skip Index",
+            "Projection",
+            "EXPLAIN indexes"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "distributed",
+      "title": "分布式基础设施",
+      "path": "tutorial/distributed",
+      "order": 50,
+      "pages": [
+        {
+          "file": "01-ClickHouse-Keeper.md",
+          "slug": "01-keeper",
+          "title": "ClickHouse Keeper：集群的公共记事本",
+          "tags": [
+            "Keeper",
+            "Raft",
+            "Session",
+            "Watch",
+            "ZooKeeper"
+          ]
+        },
+        {
+          "file": "02-集群拓扑复制与容错.md",
+          "slug": "02-cluster-replication",
+          "title": "集群拓扑、复制与容错：坏一台之后发生什么",
+          "tags": [
+            "Cluster",
+            "Shard",
+            "Replica",
+            "故障转移",
+            "一致性"
+          ]
+        }
+      ]
+    }
+  ],
+  "codeRoots": [],
+  "assets": [
+    "assets"
+  ],
+  "lab": {
+    "title": "ClickHouse 互动原理实验室",
+    "subtitle": "十三章动态图解：从一条 SQL 的解析、计划与流水线，到 MergeTree part、副本共识、分布式两阶段聚合、外部存储、列式压缩、索引投影与 Keeper。每页都能自动运转，也能按步骤定格。",
+    "route": "/clickhouse/lab"
+  }
+}

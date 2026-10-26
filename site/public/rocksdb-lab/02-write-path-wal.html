@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>写入路径与 WAL：一次 Put 要过几道关 · RocksDB 互动原理实验室 第 3 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#fff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:960px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#fff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:38px 0 22px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:710px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#fff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:500;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:11.5px;fill:#3B3A34}
+.tn{font-size:12.5px;font-weight:500;fill:#1F1E1A}
+.tag{font-size:10px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.modebar{display:flex;align-items:center;gap:8px;margin:6px 4px 0;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.modebar .mlabel{font-weight:600;color:#3B3A34}
+.modebtn{padding:5px 12px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:12.5px;cursor:pointer;font-family:inherit}
+.modebtn:hover{border-color:#888780}
+.modebtn.on{background:#FFF6E8;border-color:#EF9F27;color:#854F0B;font-weight:600}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:68px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+section{padding:34px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .arr{color:#C46A0A;font-weight:600}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.figcap b{color:#3B3A34;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:13.5px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 9px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#scene [opacity],#scene2 [opacity]{transition:opacity .22s ease}
+#eng .hl,#eng2 .hl{stroke:#D96C06 !important;stroke-width:2.2 !important}
+.subview{margin:8px 0 4px;background:#fff;border:1px dashed #D3D1C7;border-radius:10px;padding:8px 10px}
+.subview .viewtitle{font-size:12px;font-weight:600;color:#854F0B;margin-bottom:4px}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+@media (prefers-reduced-motion: reduce){#scene [opacity],#scene2 [opacity]{transition:none}}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：写入路径与 WAL：一次 Put 要过几道关</a>
+  <span class="idx">第 3 / 12 章</span>
+</div>
+<div class="page">
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · 写入路径</div>
+<h1>一次 Put 要过几道关：组提交、WAL 与 sync 分支</h1>
+<p>写进来的每一笔都要过一串关卡：建 WriteBatch → 排队 → 组车 → 停顿检查 → 写 WAL → 写 memtable → 发布 seq → 返回。任何一关都可能成为 P99 的来源。这页把每道关放电影，sync=false 与 sync=true 两条分支都画出来。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span><span class="mnode">② 静态分解</span><span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span><span class="mnode">⑤ 环境场景</span><span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 590" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>组提交：三个写合成一辆车</title><defs><marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="g" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="r" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker></defs><text class="th" x="500" y="22" text-anchor="middle">组提交：三个写合成一辆车——一次 WAL 追加，至多一次 fsync</text><text class="ts" x="500" y="40" text-anchor="middle">主图 = WriteThread 状态机与 sync 分支；副图 = WAL 32KB 块内布局；可切 sync=false / sync=true</text><text class="tag" x="958" y="22" text-anchor="end">琥珀 = 写请求 / 组车</text><text class="tag" x="958" y="38" text-anchor="end">绿 = 持久化 / 完成 · 红 = 停顿 / 丢弃</text><g id="scene">
+<rect id="laneA" x="40" y="52" width="920" height="146" rx="10" fill="#FBFAF6" stroke="#ECEAE2"/><text class="tn" x="52" y="72">① 排队（JoinBatchGroup）→ ② 组车（EnterAsBatchGroupLeader）</text><rect id="cardA" x="52" y="82" width="180" height="34" rx="6" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/><text class="tb" x="64" y="96">A · Put device_47 (28B)</text><text id="syncA" class="tag" x="64" y="111">sync=false · WriteBatch 1 条</text><rect id="cardB" x="52" y="122" width="180" height="34" rx="6" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/><text class="tb" x="64" y="136">B · Put device_12</text><text id="syncB" class="tag" x="64" y="151">sync=false · WriteBatch 1 条</text><rect id="cardC" x="52" y="162" width="180" height="34" rx="6" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/><text class="tb" x="64" y="176">C · Put device_99</text><text id="syncC" class="tag" x="64" y="191">sync=false · WriteBatch 1 条</text><line x1="234" y1="99" x2="260" y2="109" stroke="#C46A0A" stroke-width="1.2" marker-end="url(#a)"/><line x1="234" y1="139" x2="260" y2="137" stroke="#C46A0A" stroke-width="1.2" marker-end="url(#a)"/>
+<line x1="234" y1="179" x2="260" y2="165" stroke="#C46A0A" stroke-width="1.2" marker-end="url(#a)"/><rect id="queueBox" x="262" y="76" width="150" height="120" rx="8" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/><text class="tb" x="337" y="92" text-anchor="middle">WriteThread 队列</text><rect id="qa" x="276" y="98" width="122" height="22" rx="4" fill="#F5F4EF" stroke="#D3D1C7" stroke-width="1" opacity="0"/><text class="tag" x="337" y="113" text-anchor="middle">A · STATE_INIT</text><rect id="qb" x="276" y="126" width="122" height="22" rx="4" fill="#F5F4EF" stroke="#D3D1C7" stroke-width="1" opacity="0"/><text class="tag" x="337" y="141" text-anchor="middle">B · STATE_INIT</text><rect id="qc" x="276" y="154" width="122" height="22" rx="4" fill="#F5F4EF" stroke="#D3D1C7" stroke-width="1" opacity="0"/><text class="tag" x="337" y="169" text-anchor="middle">C · STATE_INIT</text><text class="tag" x="337" y="190" text-anchor="middle">等状态机宣判 leader</text><line x1="414" y1="136" x2="438" y2="136" stroke="#C46A0A" stroke-width="1.4" marker-end="url(#a)"/>
+<rect id="leaderBox" x="442" y="76" width="200" height="120" rx="8" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/><text class="tb" x="542" y="94" text-anchor="middle">② leader 组车</text><text class="tag" x="454" y="112">收编上限 1MB</text><text class="tag" x="454" y="128">leader &lt;128KB → 组上限收紧</text><text id="syncIso" class="tag" x="454" y="144" fill="#854F0B">sync 绝不与非 sync 同车</text><text class="tag" x="454" y="160">STATE_GROUP_LEADER</text><text class="tag" x="454" y="182" fill="#E24B4A">高峰期这里还藏着闸机 →</text><line x1="644" y1="136" x2="668" y2="136" stroke="#C46A0A" stroke-width="1.4" marker-end="url(#a)"/><rect id="trainBox" x="672" y="76" width="276" height="120" rx="8" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/><text class="tb" x="810" y="94" text-anchor="middle">WriteGroup（MergeBatch 首尾拼接）</text><rect id="mA" x="690" y="104" width="72" height="26" rx="4" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1" opacity="0"/><text class="tag" x="726" y="121" text-anchor="middle">batch A</text>
+<rect id="mB" x="766" y="104" width="72" height="26" rx="4" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1" opacity="0"/><text class="tag" x="802" y="121" text-anchor="middle">batch B</text><rect id="mC" x="842" y="104" width="72" height="26" rx="4" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1" opacity="0"/><text class="tag" x="878" y="121" text-anchor="middle">batch C</text><text class="tag" x="684" y="150">整趟车：1 次 Append，至多 1 次 fsync；3 个请求分摊一次「车次」</text><text class="tag" x="684" y="166">seq 一次性领一串：[current, last]</text><rect id="laneB" x="40" y="208" width="920" height="144" rx="10" fill="#FBFAF6" stroke="#ECEAE2"/><text class="tn" x="52" y="228">办杂事与停顿检查（PreprocessWrite）→ ③ 写 WAL → ④ sync 分支</text><rect id="gateBox" x="52" y="242" width="180" height="64" rx="7" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.2"/><text class="tb" x="142" y="262" text-anchor="middle">停顿检查（闸机）</text><text class="tag" x="142" y="278" text-anchor="middle">信用制限速 · 默认上限 32MB/s</text><text class="tag" x="142" y="294" text-anchor="middle">immutable≥2 → 直接停写</text>
+<line x1="234" y1="274" x2="268" y2="274" stroke="#C46A0A" stroke-width="1.4" marker-end="url(#a)"/><text class="tag" x="250" y="264" text-anchor="middle">放行</text><rect id="walBox" x="272" y="242" width="190" height="64" rx="7" fill="#EFF6FF" stroke="#2563EB" stroke-width="1.2"/><text class="tb" x="367" y="262" text-anchor="middle">③ 追加 WAL 000011.log</text><text class="tag" x="367" y="278" text-anchor="middle">1 次 Append · 32KB 块</text><text class="tag" x="367" y="294" text-anchor="middle">7 字节头：CRC4 + len2 + type1</text><g id="brFalseG"><line x1="464" y1="266" x2="494" y2="258" stroke="#C46A0A" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#a)"/><rect id="pcBox" x="498" y="236" width="210" height="44" rx="7" fill="#FFFFFF" stroke="#C46A0A" stroke-width="1.2" stroke-dasharray="5 4"/><text class="tb" x="603" y="254" text-anchor="middle">Flush → page cache</text><text class="tag" x="603" y="270" text-anchor="middle">进程崩不丢 · 掉电丢 · fsync 0 次</text></g><g id="brTrueG"><line x1="464" y1="282" x2="494" y2="312" stroke="#639922" stroke-width="1.4" marker-end="url(#g)"/>
+<rect id="syncBox" x="498" y="290" width="210" height="44" rx="7" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/><text class="tb" x="603" y="308" text-anchor="middle">fdatasync ×1</text><text class="tag" x="603" y="324" text-anchor="middle">掉电也不丢 · 整组分摊一次</text></g><rect id="syncNote" x="730" y="236" width="218" height="98" rx="8" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1" stroke-dasharray="4 3"/><text class="tag" x="742" y="256" fill="#854F0B">sync 写绝不和非 sync 写同车</text><text class="tag" x="742" y="274">sync=false：等价一次 write()</text><text class="tag" x="742" y="290">进程崩不丢，掉电（OS 崩）丢</text><text class="tag" x="742" y="306">sync=true：write() + fdatasync()</text><text class="tag" x="742" y="322">首次 sync 前先对 WAL 目录 sync</text><path d="M603 336 L603 357 L167 357 L167 392" fill="none" stroke="#B4B2A9" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#a)"/><rect id="laneC" x="40" y="362" width="920" height="108" rx="10" fill="#FBFAF6" stroke="#ECEAE2"/><text class="tn" x="52" y="382">⑤ 各写 memtable → ⑥ 发布 seq、唤醒返回（日志串行、内存并行）</text>
+<rect id="mtBox" x="52" y="396" width="230" height="52" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/><text class="tb" x="167" y="414" text-anchor="middle">写 memtable：InsertInto</text><text class="tag" x="167" y="430" text-anchor="middle">逐 batch 分配 seq 插跳表</text><text class="tag" x="167" y="444" text-anchor="middle">并行写：各插各的 batch</text><line x1="284" y1="422" x2="308" y2="422" stroke="#C46A0A" stroke-width="1.4" marker-end="url(#a)"/><rect id="seqBox" x="312" y="396" width="200" height="52" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/><text class="tb" x="412" y="414" text-anchor="middle">SetLastSequence</text><text class="tag" x="412" y="430" text-anchor="middle">seq 区间 [current, last]</text><text class="tag" x="412" y="444" text-anchor="middle">这批写对读者可见</text><line x1="514" y1="422" x2="538" y2="422" stroke="#639922" stroke-width="1.4" marker-end="url(#g)"/><rect id="exitBox" x="542" y="396" width="230" height="52" rx="7" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/><text class="tb" x="657" y="414" text-anchor="middle">ExitAsBatchGroupLeader</text>
+<text class="tag" x="657" y="430" text-anchor="middle">逐个唤醒 · STATE_COMPLETED</text><text class="tag" x="657" y="444" text-anchor="middle">同车线程一起返回</text><rect id="statNote" x="802" y="396" width="146" height="52" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1" stroke-dasharray="4 3"/><text class="tag" x="875" y="414" text-anchor="middle">搭车率看计数：</text><text class="tag" x="875" y="430" text-anchor="middle">WRITE_DONE_BY_SELF</text><text class="tag" x="875" y="446" text-anchor="middle">WRITE_DONE_BY_OTHER</text><rect id="laneD" x="40" y="480" width="920" height="96" rx="10" fill="#FBFAF6" stroke="#ECEAE2"/><text class="tn" x="52" y="500">⑦ 块满切换 · ⑧ 崩溃恢复（WAL 重放）</text><rect id="switchBox" x="52" y="510" width="410" height="58" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1" stroke-dasharray="4 3"/><text class="tag" x="64" y="528">块尾连 7 字节头都放不下 → 补零跳到下一块；大记录拆 FIRST/MIDDLE/LAST（见副图）</text><text class="tag" x="64" y="544">日志总量超 max_total_wal_size → 封口、开新文件（多列族等所有 flush 跟上才能换）</text><text class="tag" x="64" y="560">配 recycle_log_file_num 则改名复用：头从 7 字节变 11 字节，防旧记录被误读</text>
+<rect id="r1" x="492" y="514" width="130" height="40" rx="6" fill="#EFF6FF" stroke="#2563EB" stroke-width="1.1"/><text class="tb" x="557" y="530" text-anchor="middle">WAL 32KB 块序列</text><text class="tag" x="557" y="546" text-anchor="middle">000011.log</text><line x1="624" y1="534" x2="634" y2="534" stroke="#C46A0A" stroke-width="1.3" marker-end="url(#a)"/><rect id="r2" x="636" y="514" width="150" height="40" rx="6" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/><text class="tb" x="711" y="530" text-anchor="middle">逐块读 + 逐片验 CRC</text><text class="tag" x="711" y="546" text-anchor="middle">log_reader</text><line x1="788" y1="534" x2="798" y2="534" stroke="#C46A0A" stroke-width="1.3" marker-end="url(#a)"/><rect id="r3" x="800" y="514" width="148" height="40" rx="6" fill="#EAF3DE" stroke="#639922" stroke-width="1.1"/><text class="tb" x="874" y="530" text-anchor="middle">重放进 memtable</text><text class="tag" x="874" y="546" text-anchor="middle">seq 赋回去，数据回来</text><text class="tag" x="492" y="570" fill="#854F0B">坏块之后按「未写入」处理——损坏边界就是 32KB 块边界；memtable 写失败则把 WAL 截回 prev_size</text></g>
+<circle id="tok" cx="142" cy="99" r="7" fill="#EF9F27" stroke="#D97E06" stroke-width="1.4"/>
+</svg>
+
+<div class="subview">
+<div class="viewtitle">第二视图 · WAL 32KB 块内布局：FULL / FIRST / MIDDLE / LAST 分片 + CRC（与主图同一相位）</div>
+<svg id="eng2" viewBox="0 0 1000 210" role="img" xmlns="http://www.w3.org/2000/svg">
+<g id="scene2"><text class="tn" x="40" y="24">WAL 的 32KB 块内布局（kBlockSize=32768，每片 7 字节头：CRC4 + len2 + type1）</text><text class="tag" x="40" y="44">块 N：FULL 记录 + 一条大记录的开头（示意，非按字节比例）</text><rect x="40" y="52" width="100" height="44" rx="5" fill="#EFF6FF" stroke="#2563EB" stroke-width="1.1"/><text class="tb" x="90" y="70" text-anchor="middle">FULL · 49B</text><text class="tag" x="90" y="86" text-anchor="middle">len=0x31</text><rect x="144" y="52" width="110" height="44" rx="5" fill="#EFF6FF" stroke="#2563EB" stroke-width="1.1"/><text class="tb" x="199" y="70" text-anchor="middle">FULL · 62B</text><text class="tag" x="199" y="86" text-anchor="middle">下一条 batch</text><rect id="fragFirst" x="258" y="52" width="200" height="44" rx="5" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/><text class="tb" x="358" y="70" text-anchor="middle">FIRST · 20KB</text><text class="tag" x="358" y="86" text-anchor="middle">50KB 大记录的开头</text>
+<rect x="462" y="52" width="120" height="44" rx="5" fill="#F5F4EF" stroke="#B4B2A9" stroke-width="1.1" stroke-dasharray="4 3"/><text class="tb" x="522" y="70" text-anchor="middle">补零 → 块尾</text><text class="tag" x="522" y="86" text-anchor="middle">连 7B 头都放不下</text><rect x="586" y="52" width="114" height="44" rx="5" fill="#FFFFFF" stroke="#D3D1C7" stroke-width="1" stroke-dasharray="4 3"/><text class="tag" x="643" y="78" text-anchor="middle">…下一块</text><rect x="720" y="52" width="240" height="44" rx="6" fill="#FFFFFF" stroke="#D3D1C7" stroke-width="1.1"/><text class="tag" x="840" y="70" text-anchor="middle">每片 CRC 覆盖「类型 + 载荷」；</text><text class="tag" x="840" y="86" text-anchor="middle">读端逐片验 CRC，不完整即截断重放</text><text class="tag" x="44" y="112">偏移 0</text><text class="tag" x="148" y="112">56</text><text class="tag" x="262" y="112">125</text><text class="tag" x="466" y="112">块尾</text><text class="tag" x="40" y="134">50KB 大记录跨块：FIRST → MIDDLE → LAST，恢复时拼回一条、逐片校验</text>
+<rect x="40" y="142" width="180" height="36" rx="5" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1"/><text class="tb" x="130" y="164" text-anchor="middle">…FIRST 20KB</text><line x1="222" y1="160" x2="246" y2="160" stroke="#C46A0A" stroke-width="1.3" marker-end="url(#a)"/><rect id="fragMid" x="250" y="142" width="260" height="36" rx="5" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/><text class="tb" x="380" y="164" text-anchor="middle">MIDDLE 32KB（整块）</text><line x1="512" y1="160" x2="536" y2="160" stroke="#C46A0A" stroke-width="1.3" marker-end="url(#a)"/><rect x="540" y="142" width="180" height="36" rx="5" fill="#EAF3DE" stroke="#639922" stroke-width="1.1"/><text class="tb" x="630" y="164" text-anchor="middle">LAST ~4KB</text><rect x="750" y="142" width="210" height="36" rx="5" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1" stroke-dasharray="4 3"/><text class="tag" x="855" y="157" text-anchor="middle">块满切换：超 max_total_wal_size</text><text class="tag" x="855" y="172" text-anchor="middle">封口当前日志、开新文件</text></g><circle id="tok2" cx="90" cy="74" r="6" fill="#2563EB" stroke="#1D4ED8" stroke-width="1.4"/>
+</svg>
+</div>
+
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.5" max="2" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm">默认 ≈ 6 秒 / 轮</span>
+</div>
+<div class="modebar">
+<span class="mlabel">sync 分支</span>
+<button class="modebtn on" id="mFalse">sync=false（默认 · page cache）</button>
+<button class="modebtn" id="mTrue">sync=true（fdatasync ×1）</button>
+</div>
+<div class="readout">
+<span class="ro">进度 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">读数 <b id="roKey">--</b></span>
+<span class="ro">队列长度 <b id="roQ">--</b></span>
+<span class="ro">本组合并 <b id="roG">--</b></span>
+<span class="ro">fsync 次数 <b id="roF">--</b></span>
+<span class="ro">WAL 块内偏移 <b id="roOff">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav"><button class="btn" onclick="prevStep()">‹ 上一步</button><button class="btn warn" onclick="nextStep()">下一步 ›</button></span>
+</div>
+<p class="figcap">进度 0° = 第一个写线程挂进队列，720° = WAL 重放完成、memtable 补回。切到 sync=true 后重播第 ④ 步，看分支怎么切换、fsync 读数怎么从 0 变 1。<br>口径：RocksDB 11.13.0；组上限 1MB（options.h:1473）、小写保护 128KB、sync 隔离（write_thread.cc:443-530）；kBlockSize=32768、7 字节头（log_format.h:54-57）；块内字节数与分片大小为示意值。</p>
+</div>
+</div>
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：P99 抬到 80 ms，慢在哪一关</h2></div>
+<p class="sec-sub">先不拆关卡，只看它对外表现出什么。</p>
+<div class="quote">「观察一个系统，先分清它的静态结构、动态过程和外部依赖。」</div>
+<p>大促当晚写入 P99 从 2 ms 抬到 80 ms，日志反复出现 <code>Stopping writes because we have 2 immutable memtables</code>。盘很闲、线程也不忙——是 compaction 跟不上，RocksDB 在写路径上主动踩了刹车。要读懂它，得先知道一次 Put 不是「写进去」一个动作，而是一串关卡。</p>
+<div class="flow">
+<span class="node">Put</span><span class="arr">→</span><span class="node">WriteBatch 组包</span><span class="arr">→</span><span class="node box">排队 + 组车</span><span class="arr">→</span><span class="node">停顿检查</span><span class="arr">→</span><span class="node box">写 WAL</span><span class="arr">→</span><span class="node">写 memtable</span><span class="arr">→</span><span class="node">发布 seq 返回</span>
+</div>
+<p>一句话本质：<b>进站上火车</b>——领票（WriteBatch）、候车（WriteThread）、组车（组提交）、闸机（写停顿）、打孔（写 WAL）、搬行李（写 memtable）、开车（发布 seq）。链上每段都有独立计时器（write_wal_time、write_memtable_time、write_delay_time……），P99 一拆就知道慢在哪一关。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：WriteBatch 与状态机四站</h2></div>
+<p class="sec-sub">点部件卡片，动画里对应的结构会亮起。</p>
+<div class="quote">「分解要 MECE：同一层粒度一致，不重不漏。」</div>
+<div class="figure"><svg viewBox="0 0 920 200" role="img" xmlns="http://www.w3.org/2000/svg"><text x="460" y="20" font-size="13" fill="#1F1E1A" text-anchor="middle" font-weight="600">WriteBatch 字节布局（write_batch.cc:10-37）与 Writer 状态机四站（write_thread.h:34-82）</text><rect x="40" y="40" width="150" height="44" rx="6" fill="#EFF6FF" stroke="#2563EB"/><text x="115" y="58" font-size="11" fill="#3B3A34" text-anchor="middle">12 字节头（固定）</text><text x="115" y="74" font-size="10" fill="#6B695F" text-anchor="middle">8 seq 占位 + 4 条数</text><rect x="194" y="40" width="90" height="44" rx="6" fill="#FFF6E8" stroke="#EF9F27"/><text x="239" y="58" font-size="11" fill="#3B3A34" text-anchor="middle">01</text><text x="239" y="74" font-size="10" fill="#6B695F" text-anchor="middle">kTypeValue</text><rect x="288" y="40" width="150" height="44" rx="6" fill="#FFF6E8" stroke="#EF9F27"/><text x="363" y="58" font-size="11" fill="#3B3A34" text-anchor="middle">09 device_47</text><text x="363" y="74" font-size="10" fill="#6B695F" text-anchor="middle">长度前缀式键</text><rect x="442" y="40" width="110" height="44" rx="6" fill="#EAF3DE" stroke="#639922"/><text x="497" y="58" font-size="11" fill="#3B3A34" text-anchor="middle">04 61.2</text><text x="497" y="74" font-size="10" fill="#6B695F" text-anchor="middle">长度前缀式值</text><text x="40" y="104" font-size="10.5" fill="#6B695F">总长 = 12 + 1 + (1+9) + (1+4) = 28 字节；带列族多一个 varint32；protection_bytes_per_key 可选逐条校验（默认关）</text><rect x="640" y="40" width="250" height="30" rx="6" fill="#FFFFFF" stroke="#3B3A34"/><text x="652" y="60" font-size="10.5" fill="#3B3A34">STATE_INIT：挂进队列，等</text><rect x="640" y="76" width="250" height="30" rx="6" fill="#FFF6E8" stroke="#EF9F27"/><text x="652" y="96" font-size="10.5" fill="#3B3A34">STATE_GROUP_LEADER：队头，负责开车</text><rect x="640" y="112" width="250" height="30" rx="6" fill="#FFFFFF" stroke="#3B3A34"/><text x="652" y="132" font-size="10.5" fill="#3B3A34">STATE_PARALLEL_MEMTABLE_WRITER：各写各的</text><rect x="640" y="148" width="250" height="30" rx="6" fill="#EAF3DE" stroke="#639922"/><text x="652" y="168" font-size="10.5" fill="#3B3A34">STATE_COMPLETED：完成，返回</text><text x="40" y="140" font-size="10.5" fill="#854F0B" font-weight="600">组提交收编规则（write_thread.cc:443-530）</text><text x="40" y="158" font-size="10.5" fill="#6B695F">组字节上限 1MB；leader 自己 &lt;128KB 时上限收紧为「自己 + 128KB」；sync 写绝不与非 sync 写同车。</text><text x="40" y="180" font-size="10.5" fill="#6B695F">同车 &gt;1 人且允许并发时，leader 释放大家并行写 memtable——日志串行、内存并行。</text></svg></div>
+<p class="figcap">静态标注图：WriteBatch 怎么拼字节、每个线程在状态机里走哪四站。与下方部件卡、动画结构一致。</p>
+<div class="partgroup"><div class="gname">排队与组车</div><div class="parts">
+<button class="part" data-part="queue"><b>WriteThread 队列</b><span>每个写线程构造 Writer 节点挂进队列，STATE_INIT 等 leader。</span></button>
+<button class="part" data-part="leader"><b>leader 组车</b><span>EnterAsBatchGroupLeader 沿链收编：1MB 上限、128KB 小写保护、sync 隔离。</span></button>
+<button class="part" data-part="group"><b>WriteGroup</b><span>MergeBatch 把同车 batch 首尾拼成一条；seq 一次性领一串。</span></button>
+</div></div>
+<div class="partgroup"><div class="gname">落账与恢复</div><div class="parts">
+<button class="part" data-part="gate"><b>停顿检查（闸机）</b><span>WriteController 信用制限速：immutable / L0 / 压实积压三类触发源。</span></button>
+<button class="part" data-part="wal"><b>WAL Writer</b><span>整车一次 Append 进 000011.log；32KB 块 + 7 字节头分片。</span></button>
+<button class="part" data-part="mt"><b>写 memtable</b><span>InsertInto 逐 batch 插跳表；同车 &gt;1 人时并行各写各的。</span></button>
+<button class="part" data-part="recov"><b>崩溃恢复 log_reader</b><span>逐块读入、逐片验 CRC、重放进 memtable；坏块之后按未写入处理。</span></button>
+</div></div>
+<p class="hint">第 ④ 步有两条岔路：sync 走不走 fsync？切控制条下方的 sync 分支再重播，看读数怎么变。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：一辆车的 8 个相位</h2></div>
+<p class="sec-sub">第一遍看主图橙点走到第 ④ 步时哪条分支亮；第二遍同时看副图的写指针怎么在 32KB 块内推进。</p>
+<div class="quote">「动态分析看的是时间轴上的顺序、状态变化和因果链。」</div>
+<table class="grid">
+<tr><th>相位</th><th>阶段</th><th>关键动作</th><th>读数</th></tr>
+<tr><td>0–90°</td><td>三个写排队</td><td>A、B、C 挂进队列，STATE_INIT 等 leader</td><td>队列 3</td></tr>
+<tr><td>90–180°</td><td>leader 组车</td><td>收编 B、C；1MB 上限 / 128KB 保护 / sync 隔离</td><td class="hot">WriteGroup 3 条</td></tr>
+<tr><td>180–270°</td><td>追加 WAL 块</td><td>MergeBatch 拼接，1 次 Append 进 32KB 块</td><td class="hot">1 次 Append</td></tr>
+<tr><td>270–360°</td><td>sync 分支</td><td class="hot">sync=false → page cache；sync=true → fdatasync ×1</td><td class="hot">fsync 0 或 1 次</td></tr>
+<tr><td>360–450°</td><td>各写 memtable</td><td>逐 batch 分配 seq 插跳表，可并行</td><td>memtable ×3</td></tr>
+<tr><td>450–540°</td><td>发布 seq 返回</td><td>SetLastSequence + 逐个唤醒同车线程</td><td class="hot">3 个请求 1 趟车</td></tr>
+<tr><td>540–630°</td><td>块满切换</td><td>补零跳块；FIRST/MIDDLE/LAST；超限封口开新文件</td><td class="hot">三片分片</td></tr>
+<tr><td>630–720°</td><td>崩溃恢复回放</td><td>逐块逐片验 CRC → 重放进 memtable</td><td class="hot">块边界即损坏边界</td></tr>
+</table>
+<p>相位零点：0° = 第一个写线程挂进队列；720° = WAL 重放完成、memtable 补回。值得分步细看的两处：第 ④ 步切 sync 分支看读数；第 ⑦ 步看 50KB 大记录怎么被切成三片。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件 × 阶段</h2></div>
+<p class="sec-sub">竖看是一个阶段的全体协同，横看是一个部件的完整职责。</p>
+<div class="quote">「把部件放回阶段里，才能看清谁在什么时候接力。」</div>
+<table class="grid">
+<tr><th>部件</th><th>排队/组车</th><th>WAL + sync</th><th>memtable</th><th>返回</th><th>崩溃恢复</th></tr>
+<tr><td>WriteThread 队列</td><td class="hot">挂链、等宣判</td><td>—</td><td>—</td><td class="act">被逐个唤醒</td><td>—</td></tr>
+<tr><td>leader</td><td class="hot">收编、办杂事</td><td class="hot">合批、Append、按需 Sync</td><td class="act">驱动 InsertInto</td><td class="hot">SetLastSequence</td><td>—</td></tr>
+<tr><td>WAL 文件</td><td>—</td><td class="hot">32KB 块内追加</td><td>—</td><td>—</td><td class="hot">逐片验 CRC 重放</td></tr>
+<tr><td>WriteController</td><td class="act">过闸机</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>memtable</td><td>—</td><td>—</td><td class="hot">并行插跳表</td><td class="act">seq 可见</td><td class="act">被重放重建</td></tr>
+</table>
+<p><b>涌现属性：</b>「N 个请求只付一次 fsync」不属于任何单个部件——它是队列的到达率、leader 的收编规则和 sync 隔离三者叠加的结果。反过来，sync 混杂会把车拆散：监控上 WRITE_DONE_BY_OTHER 掉下来，就是组提交失效的信号。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：关卡之外还有什么</h2></div>
+<p class="sec-sub">拆掉任何一个外部依赖，前面看到的行为都会变。</p>
+<div class="quote">「环境属性 = 外在关系 + 依赖 + 失效后果。」</div>
+<div class="envcards">
+<div class="env"><b>调用方 WriteOptions</b><span>sync / disableWAL / no_slowdown / low_pri：写路径的「公平」是业务自己声明的。</span></div>
+<div class="env"><b>OS page cache</b><span>sync=false 只保证数据进 page cache：进程崩不丢，掉电丢——承诺边界由它决定。</span></div>
+<div class="env"><b>文件系统 fdatasync</b><span>真正落盘的动作；use_fsync 可切换成连元数据一起刷的 fsync。</span></div>
+<div class="env"><b>max_total_wal_size</b><span>日志切换的判据：单列族在 memtable 满时切，多列族要等所有 flush 跟上。</span></div>
+<div class="env"><b>WriteBufferManager</b><span>多库共享内存预算时的全局闸机：超预算拦下所有写，等 flush 降水位。</span></div>
+<div class="env"><b>监控计数器</b><span>WAL_FILE_SYNCED 对比 sync 写 QPS 看 fsync 分摊；STALL_MICROS 是 P99 的头号嫌疑。</span></div>
+</div>
+<p class="figcap">边界：本页画的是默认路径（三模式开关全关）与 3 线程小 demo；two_write_queues / pipelined_write / unordered_write 的拓扑变化本页不展开。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">能说清「sync 丢什么、组提交省什么」，才算真的懂写路径。</p>
+<div class="quote">「用自己的话能讲清楚，才算真的懂。」</div>
+<div id="quiz"></div>
+</section>
+
+<div class="summary">
+<h2>一页带走</h2>
+<p class="chant">组车分摊 fsync，先打孔再搬行李。</p>
+<p>· 关卡序列：WriteBatch → 排队 → 组车 → 停顿检查 → 写 WAL → 写 memtable → SetLastSequence → 返回；P99 沿这条链找最慢的一关。</p>
+<p>· 组提交：同车的写合成一次 Append、至多一次 fsync；sync 写绝不和非 sync 写同车。</p>
+<p>· WAL：32KB 块 + 7 字节头（CRC+len+type）；大记录拆 FIRST/MIDDLE/LAST；sync=false 进程崩不丢、掉电丢。</p>
+<p>· 写停顿：immutable ≥ 2 直接停（默认没有渐进段）；恢复按 1.4 倍逐步回松。</p>
+<p>· 边界与简化：块内字节数与分片大小为示意值；三种进阶写模式与 WBM 全局闸机本页不展开。</p>
+</div>
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+<script>
+var STEPS=[
+{d:0,t:"① 三个写排队",x:"A、B、C 各自构造 Writer 节点，JoinBatchGroup 挂进 WriteThread 队列：STATE_INIT，等状态机宣判谁是 leader。",k:"队列 3"},
+{d:90,t:"② leader 组车",x:"队头 A 自封 leader，沿链收编兼容的 B、C：组上限 1MB；leader 自己小于 128KB 时上限收紧到「自己+128KB」，小写不被大写拖住；sync 写绝不和非 sync 同车。",k:"WriteGroup 3 条"},
+{d:180,t:"③ 追加 WAL 块",x:"MergeBatch 把三个 batch 首尾拼成一条，一次 Append 写进 000011.log。32KB 块内每片 7 字节头：CRC(4)+len(2)+type(1)，块尾放不下就补零跳块。",k:"1 次 Append"},
+{d:270,t:"④ sync 分支",x:"sync=false（默认）：只 Flush 到 page cache——进程崩不丢，掉电丢，fsync 0 次。sync=true：整组分摊一次 fdatasync，首次之前先对 WAL 目录做一次 sync，掉电也不丢。",k:"fsync 0 或 1 次"},
+{d:360,t:"⑤ 各写 memtable",x:"InsertInto 驱动 MemTableInserter 逐 batch 分配 seq 插跳表。允许并发且同车 >1 人时，leader 放大家各写各的 batch——日志串行、内存并行。",k:"memtable ×3 并行"},
+{d:450,t:"⑥ 发布 seq 返回",x:"SetLastSequence 让 [current, last] 区间对本批可见，ExitAsBatchGroupLeader 逐个唤醒同车线程。WRITE_DONE_BY_OTHER 记下谁搭了车——搭车率低要查 sync 混杂。",k:"3 个请求 1 趟车"},
+{d:540,t:"⑦ 块满切换",x:"块尾连 7 字节头都放不下就补零跳到下一块；一条 50KB 的大记录拆成 FIRST/MIDDLE/LAST 三片逐块放。日志总量超 max_total_wal_size 就封口、开新文件。",k:"FULL→FIRST/MIDDLE/LAST"},
+{d:630,t:"⑧ 崩溃恢复回放",x:"重启后 log_reader 按同样的块规则逐块读入、逐片验 CRC，完整记录交给 MemTableInserter 重放进 memtable，seq 赋回去。坏块之后按「未写入」处理——损坏边界就是 32KB 块边界。",k:"WAL 回放 · 块边界"}];
+var CHIPS=[{k:"sync",l:"sync 模式"},{k:"queue",l:"队列"},{k:"group",l:"本组"},{k:"fsync",l:"fsync"},{k:"mem",l:"memtable"},{k:"recov",l:"恢复"}];
+var PARTS={"queue":["queueBox","qa","qb","qc"],"leader":["leaderBox"],"group":["trainBox","mA","mB","mC"],"gate":["gateBox"],"wal":["walBox"],"branch":["brFalseG","brTrueG","syncNote"],"mt":["mtBox"],"seq":["seqBox"],"exit":["exitBox"],"recov":["r1","r2","r3"],"blk":["walBox","switchBox"]};
+var QUIZ=[
+{q:"sync=false 的写，进程崩了丢不丢？掉电呢？",opts:["都丢","进程崩不丢（数据在 OS page cache），掉电丢","都不丢"],a:1,exp:"sync=false 等价一次 write()：数据进了 page cache，进程崩了 OS 还在、不丢；机器或 OS 崩了才丢。sync=true 等价 write()+fdatasync()，掉电也不丢。"},
+{q:"为什么 sync 写绝不和非 sync 写同车？",opts:["省事","sync 语义按请求承诺：混车会把不承诺持久化的写一起 fsync，或反过来","性能一定更差"],a:1,exp:"组提交按「整组一次 fsync」分摊成本。混车要么让不需要持久化承诺的写陪跑 fsync，要么让承诺了 sync 的写混进不 sync 的组——两种都破坏语义。"},
+{q:"组提交到底省的是什么？",opts:["memtable 写入次数","WAL 的 fsync 次数：N 个并发写分摊一次 Append 和至多一次 fsync","seq 的分配次数"],a:1,exp:"WAL 最贵的操作不是写，是 fsync。让每个并发写各自 fsync 会把磁盘切成小请求；合成一辆车后，N 个请求分摊一次「车次」。"},
+{q:"WAL 文件中途损坏，恢复时丢多少？",opts:["整个文件","只丢最后没写完整的那几条：按块读取、逐片验 CRC，坏块之后按未写入处理","丢第一条"],a:1,exp:"读取端按 32KB 块逐块解析、逐片验 CRC，读到不完整或 CRC 不对的片就截断重放——WAL 的损坏边界就是块边界。"},
+{q:"默认 max_write_buffer_number=2，为什么写停顿「一停就全停」？",opts:["bug","stop 线是 immutable ≥ 2 直接停，而 delay 线要求 max > 3：默认配置没有渐进段","因为 L0 太厚"],a:1,exp:"memtable 触发源里，delay 线要求 max_write_buffer_number > 3 才存在；默认值 2 时第二个 immutable 一出现写入瞬间归零。想要渐进减速，把它调到 4 以上。"},
+{q:"一条 50KB 的 batch 在 WAL 里怎么放？",opts:["一条 FULL 记录","拆片：当前块放 FIRST，后续整块 MIDDLE，最后 LAST；恢复时拼回一条逐片校验","放不下就丢弃"],a:1,exp:"块尾放不下就从当前块切 FIRST，之后的 32KB 整块是 MIDDLE，尾巴是 LAST；每片独立 CRC，恢复时把三片拼回一条。"}];
+var WBASE=[[0,142,99],[20,337,109],[40,337,137],[60,337,165],[90,337,165],[110,542,136],[140,810,136],[180,810,136],[200,142,274],[220,367,274],[270,367,274],[290,480,270]];
+var WTAIL=[[400,167,422],[430,167,422],[450,412,422],[480,657,422],[540,657,422],[560,257,539],[630,257,539],[650,557,534],[680,711,534],[700,874,534],[720,874,534]];
+var WPF=WBASE.concat([[310,603,258],[360,603,258]],WTAIL);
+var WPT=WBASE.concat([[310,603,312],[360,603,312]],WTAIL);
+var WP2=[[0,90,74],[180,90,74],[196,199,74],[224,358,74],[252,522,74],[540,522,74],[548,380,160],[560,630,160],[640,380,160],[660,130,160],[680,90,74],[720,90,74]];
+var PERIOD=6000,basePeriod=PERIOD,PHASE_MAX=720,STEP_DUR=600;
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,stepIdx=-1,dots=[],ticking=false,chipEls={},syncMode=false;
+function $(id){return document.getElementById(id);}
+function setText(id,s){var n=$(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setOp(id,v){var n=$(id);if(n)n.setAttribute('opacity',Math.max(0,Math.min(1,v)).toFixed(2));}
+function setAttr(id,k,v){var n=$(id);if(n)n.setAttribute(k,v);}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){t=clamp(t,0,1);return t*t*(3-2*t);}
+function ramp(th,a,b){return clamp((th-a)/((b-a)||1),0,1);}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function lerpPts(pts,th){
+  if(th<=pts[0][0])return[pts[0][1],pts[0][2]];
+  for(var i=0;i<pts.length-1;i++){if(th<pts[i+1][0]){var t=smooth((th-pts[i][0])/(pts[i+1][0]-pts[i][0]));return[pts[i][1]+(pts[i+1][1]-pts[i][1])*t,pts[i][2]+(pts[i+1][2]-pts[i][2])*t];}}
+  return[pts[pts.length-1][1],pts[pts.length-1][2]];
+}
+function setChip(k,v){var n=chipEls[k];if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',/^(已|完成|命中|进行|回放|放行|并行|同车)/.test(v));n.classList.toggle('off',/^(待命|—|无|未|0)/.test(v));}
+function stageIdx(pr){var s=0;for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)s=i;}return s;}
+function pageRender(pr,si){
+  var q=pr<20?'0':pr<40?'1':pr<60?'2':pr<480?'3':'0';
+  setText('roQ',q);
+  var g=pr<96?'0':pr<116?'1':pr<136?'2':'3';
+  setText('roG',g+' 条');
+  var f=pr<270?'0':(syncMode?'1':'0');
+  setText('roF',f+' 次');
+  var off=pr<196?'0':pr<224?'56':pr<252?'125':pr<540?'块尾（补零）':pr<630?'20612+（分片）':'回放中';
+  setText('roOff',off);
+  setOp('qa',ramp(pr,14,20));setOp('qb',ramp(pr,34,40));setOp('qc',ramp(pr,54,60));
+  setOp('mA',ramp(pr,104,114));setOp('mB',ramp(pr,116,126));setOp('mC',ramp(pr,128,138));
+  var act=syncMode?1:0.28,ina=syncMode?0.28:1;
+  setOp('brFalseG',pr<180?0.55:ina);
+  setOp('brTrueG',pr<180?0.55:act);
+  setOp('gateBox',0.55+0.45*ramp(pr,198,210));
+  setOp('walBox',0.55+0.45*ramp(pr,216,228));
+  setOp('mtBox',0.55+0.45*ramp(pr,366,378));
+  setOp('seqBox',0.55+0.45*ramp(pr,456,468));
+  setOp('exitBox',0.55+0.45*ramp(pr,470,482));
+  setOp('switchBox',0.5+0.5*ramp(pr,546,560));
+  setOp('r1',0.5+0.5*ramp(pr,636,650));
+  setOp('r2',0.5+0.5*ramp(pr,664,678));
+  setOp('r3',0.5+0.5*ramp(pr,692,706));
+  setText('syncA','sync='+(syncMode?'true':'false')+' · WriteBatch 1 条');
+  setText('syncB','sync='+(syncMode?'true':'false')+' · WriteBatch 1 条');
+  setText('syncC','sync='+(syncMode?'true':'false')+' · WriteBatch 1 条');
+  setChip('sync',syncMode?'sync=true':'sync=false');
+  setChip('queue',q);
+  setChip('group',pr<90?'候车中':'3 条同车');
+  setChip('fsync',pr<270?'0 次':(syncMode?'1 次':'0 次'));
+  setChip('mem',pr<360?'待命':pr<540?'并行写中':'已返回');
+  setChip('recov',pr<630?'待命':pr<710?'回放中':'完成');
+}
+function render(th){
+  var pr=norm(th);
+  setText('roPhase',Math.round(pr)+'°');
+  var si=stageIdx(pr);if(mode==='step'&&stepIdx>=0)si=stepIdx;
+  setText('roStep',STEPS[si]?STEPS[si].t:'—');
+  setText('roKey',STEPS[si]?STEPS[si].k:'—');
+  pageRender(pr,si);
+  var pts=syncMode?WPT:WPF;
+  var p=lerpPts(pts,pr);setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));
+  var q2=lerpPts(WP2,pr);setAttr('tok2','cx',q2[0].toFixed(1));setAttr('tok2','cy',q2[1].toFixed(1));
+}
+function tick(now){
+  ticking=false;
+  var dt=Math.min(50,now-last);last=now;
+  if(run&&mode==='auto')phase=(phase+dt/PERIOD*PHASE_MAX)%PHASE_MAX;
+  if(mode==='step'&&stepTo!==null){
+    stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);var p=stepElapsed/STEP_DUR,e=smooth(p);
+    phase=stepFrom+(stepTo-stepFrom)*e;if(p>=1){phase=stepTo;stepTo=null;}
+  }
+  render(phase);
+  if(run||stepTo!==null){ticking=true;requestAnimationFrame(tick);}
+}
+function wake(){if(ticking)return;ticking=true;last=performance.now();requestAnimationFrame(tick);}
+function setAuto(on){
+  mode='auto';run=on;stepTo=null;var b=$('engBtn');if(b)b.textContent=on?'暂停':'播放';
+  if(on){stepIdx=-1;dots.forEach(function(d){d.classList.remove('on');});
+  setText('stepT','自动运转模式');setText('stepX','点下方步骤点可切换到分步演示，随你点击定格。');wake();}
+}
+window.goStep=function(i){
+  stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+  var target=STEPS[stepIdx].d;
+  if(reduced||Math.abs(target-norm(phase))>180){phase=target;stepTo=null;}
+  else{stepFrom=phase;stepTo=target;stepElapsed=0;}
+  render(phase);wake();
+  var b=$('engBtn');if(b)b.textContent='继续自动运转';
+  dots.forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+  setText('stepT','第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t);
+  setText('stepX',STEPS[stepIdx].x);
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+function setSync(v){
+  syncMode=v;
+  var mf=$('mFalse'),mt=$('mTrue');
+  if(mf)mf.classList.toggle('on',!v);if(mt)mt.classList.toggle('on',v);
+  render(phase);wake();
+}
+CHIPS.forEach(function(c){var box=$('stateChips');var s=document.createElement('span');s.className='chip';s.innerHTML=c.l+' <b>--</b>';box.appendChild(s);chipEls[c.k]=s;});
+var stepBar=$('stepBar');
+STEPS.forEach(function(s,n){var b=document.createElement('button');b.className='stepnode';b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+s.t+'</span>';b.onclick=function(){goStep(n);};stepBar.appendChild(b);dots.push(b);});
+var engBtn=$('engBtn');engBtn.textContent=run?'暂停':'播放';
+engBtn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+var spd=$('engSpd');
+if(spd){spd.oninput=function(){speed=parseFloat(spd.value);$('engSpdV').textContent=speed+'×';PERIOD=basePeriod/speed;};}
+var mF=$('mFalse'),mT=$('mTrue');
+if(mF)mF.onclick=function(){setSync(false);};
+if(mT)mT.onclick=function(){setSync(true);};
+document.querySelectorAll('.part').forEach(function(btn){btn.onclick=function(){var ids=(PARTS[btn.dataset.part]||[]);document.querySelectorAll('#eng .hl,#eng2 .hl').forEach(function(n){n.classList.remove('hl');});ids.forEach(function(id){var n=$(id);if(n)n.classList.add('hl');});};});
+var quizBox=$('quiz');QUIZ.forEach(function(q,n){var d=document.createElement('div');d.className='q';var html='<div class="qt">'+(n+1)+'. '+q.q+'</div>';q.opts.forEach(function(o,j){html+='<button class="opt" data-q="'+n+'" data-o="'+j+'">'+o+'</button>';});html+='<div class="exp"><b>答案：</b>'+q.opts[q.a]+'<br>'+q.exp+'</div>';d.innerHTML=html;quizBox.appendChild(d);});
+quizBox.querySelectorAll('.opt').forEach(function(b){b.onclick=function(){var q=QUIZ[+b.dataset.q];var box=b.closest('.q');if(box.classList.contains('done'))return;box.classList.add('done');b.classList.add(+b.dataset.o===q.a?'right':'wrong');box.querySelectorAll('.opt').forEach(function(o){if(+o.dataset.o===q.a)o.classList.add('right');});};});
+if(reduced){run=false;phase=0;render(0);engBtn.textContent='播放';}else{wake();}
+</script>
+</body>
+</html>

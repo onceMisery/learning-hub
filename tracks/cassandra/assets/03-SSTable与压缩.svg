@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 700" width="1000" height="700" font-family="Microsoft YaHei, sans-serif">
+<defs>
+<marker id="cmpW" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="cmpG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="cmpR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<rect x="0" y="0" width="1000" height="700" fill="#ffffff"/>
+<text x="500" y="34" font-size="20" fill="#1F1E1A" text-anchor="middle" font-weight="600">SSTable 与压缩：磁盘上的不可变账本，怎么被后台并账收敛</text>
+<text x="500" y="56" font-size="12" fill="#6B695F" text-anchor="middle" font-weight="400">跟随 id=47：阿福(1001)、阿福2(1005)、age=32(3002)、删除(4008) 共 4 份痕迹散在 3 本账里，压缩把它们收敛，墓碑要等 gc_grace</text>
+<text x="976" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">橙色：数据流 / 触发</text>
+<text x="976" y="42" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色：落盘 / 账本</text>
+<text x="976" y="58" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">蓝色：读路径相关部件</text>
+<text x="976" y="74" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">红色：墓碑 / 删除</text>
+
+<!-- ============ 第一条：flush 流水线 ============ -->
+<text x="28" y="96" font-size="13" fill="#C46A0A" text-anchor="start" font-weight="600">flush 流水线：封账 → 整本落盘 → 一本不可变的新账（①②③）</text>
+<rect x="28" y="108" width="164" height="66" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="40" y="130" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">① Memtable 满</text>
+<text x="40" y="148" font-size="10.5" fill="#6B695F" text-anchor="start">switchMemtable 封账换新账</text>
+<text x="40" y="164" font-size="10.5" fill="#6B695F" text-anchor="start">新写入改走新账</text>
+
+<path d="M192 141 L232 141" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#cmpW)"/>
+
+<rect x="236" y="108" width="200" height="66" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="248" y="130" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">② 整本顺序写出</text>
+<text x="248" y="148" font-size="10.5" fill="#6B695F" text-anchor="start">按键有序，只追加不回改</text>
+<text x="248" y="164" font-size="10.5" fill="#6B695F" text-anchor="start">崩了就扔半成品，旧账无损</text>
+
+<path d="M436 141 L476 141" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#cmpW)"/>
+
+<rect x="480" y="108" width="230" height="66" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="492" y="130" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">③ SSTable-00002 上岗</text>
+<text x="492" y="148" font-size="10.5" fill="#6B695F" text-anchor="start">文件名 nb-2-big-*：id=2 新于 id=1</text>
+<text x="492" y="164" font-size="10.5" fill="#6B695F" text-anchor="start">写完即不可变（Descriptor.java:56）</text>
+
+<!-- 组件文件清单 -->
+<rect x="740" y="90" width="236" height="158" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="752" y="110" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">一本账 = 一组组件文件</text>
+<text x="752" y="127" font-size="10" fill="#6B695F" text-anchor="start">TOC.txt 先点名，才知带齐了谁</text>
+<text x="752" y="146" font-size="10.5" fill="#3B3A34" text-anchor="start">Data.db　　正文（数据本体）</text>
+<text x="752" y="162" font-size="10.5" fill="#3B3A34" text-anchor="start">Index.db　　页码表（键→位置）</text>
+<text x="752" y="178" font-size="10.5" fill="#3B3A34" text-anchor="start">Summary.db　堆内粗读书签（1/128 抽样）</text>
+<text x="752" y="194" font-size="10.5" fill="#3B3A34" text-anchor="start">Filter.db　　门口访客名单（布隆）</text>
+<text x="752" y="210" font-size="10.5" fill="#3B3A34" text-anchor="start">Statistics.db 版权页（min/max 时间戳）</text>
+<text x="752" y="226" font-size="10.5" fill="#3B3A34" text-anchor="start">TOC.txt　　 目录卡（SSTableFormat.java:158-170）</text>
+
+<!-- 三本账现状 -->
+<text x="28" y="200" font-size="11.5" fill="#6B695F" text-anchor="start" font-weight="600">t4 之后，id=47 的 4 份痕迹散在 3 本账里：</text>
+<rect x="28" y="210" width="200" height="38" rx="6" fill="#FBFAF6" stroke="#639922" stroke-width="1"/>
+<text x="38" y="226" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="600">SSTable-00001（第2章 flush）</text>
+<text x="38" y="242" font-size="10" fill="#3B3A34" text-anchor="start">47「阿福」@1001 · 47「阿福2」@1005 · 48@2001</text>
+<rect x="240" y="210" width="200" height="38" rx="6" fill="#FBFAF6" stroke="#639922" stroke-width="1"/>
+<text x="250" y="226" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="600">SSTable-00002（t3 flush）</text>
+<text x="250" y="242" font-size="10" fill="#3B3A34" text-anchor="start">47 age=32 @3002 · 其他行…</text>
+<rect x="452" y="210" width="200" height="38" rx="6" fill="#FBFAF6" stroke="#E24B4A" stroke-width="1.2"/>
+<text x="462" y="226" font-size="10.5" fill="#1F1E1A" text-anchor="start" font-weight="600">SSTable-00003（t4 flush）</text>
+<text x="462" y="242" font-size="10" fill="#E24B4A" text-anchor="start">47 的删除墓碑 @4008 · 其他行…</text>
+<text x="672" y="232" font-size="10.5" fill="#6B695F" text-anchor="start">读 id=47：问 3 本账才知「已删除」</text>
+
+<!-- ============ 第二条：压缩流水线 ============ -->
+<text x="28" y="288" font-size="13" fill="#639922" text-anchor="start" font-weight="600">压缩流水线：后台并账，读写不阻塞（④⑤⑥）</text>
+<rect x="28" y="300" width="180" height="72" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="40" y="322" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">④ 派活</text>
+<text x="40" y="340" font-size="10.5" fill="#6B695F" text-anchor="start">CompactionManager.submitBackground</text>
+<text x="40" y="356" font-size="10.5" fill="#6B695F" text-anchor="start">StrategyManager 委托策略选输入</text>
+
+<path d="M208 336 L248 336" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#cmpG)"/>
+
+<rect x="252" y="292" width="430" height="96" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="264" y="314" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">⑤ CompactionIterator 归并（CompactionIterator.java:148）</text>
+<text x="264" y="334" font-size="10.5" fill="#3B3A34" text-anchor="start">逐键归并三本账；同一 cell 时间戳新的压过旧的</text>
+<text x="264" y="352" font-size="10.5" fill="#3B3A34" text-anchor="start">47@1001 / 47@1005 / 47@3002 → 被更新的版本压住 → 丢弃</text>
+<text x="264" y="370" font-size="10.5" fill="#E24B4A" text-anchor="start">47 的墓碑@4008 → gc_grace 未过，只能搬进新账不能清</text>
+
+<path d="M682 336 L722 336" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#cmpG)"/>
+
+<rect x="726" y="300" width="246" height="72" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="738" y="322" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">⑥ 原子替换换账</text>
+<text x="738" y="340" font-size="10.5" fill="#6B695F" text-anchor="start">SSTable-00004 上岗（只剩墓碑等）</text>
+<text x="738" y="356" font-size="10.5" fill="#6B695F" text-anchor="start">00001~00003 整本退役回收</text>
+
+<!-- 策略对比条 -->
+<rect x="28" y="404" width="466" height="86" rx="8" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/>
+<text x="40" y="424" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">图纸 A：STCS（默认）— 按大小凑批</text>
+<text x="40" y="442" font-size="10.5" fill="#6B695F" text-anchor="start">min/max_threshold = 4 / 32（CompactionParams.java:82-83）</text>
+<text x="40" y="458" font-size="10.5" fill="#6B695F" text-anchor="start">相似 = 大小同处 0.5~1.5 倍带；凑满 4 本并一本，越并越大</text>
+<text x="40" y="474" font-size="10.5" fill="#6B695F" text-anchor="start">写放大低、读放大高：同键散在多本大小各异的账里</text>
+<rect x="506" y="404" width="466" height="86" rx="8" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/>
+<text x="518" y="424" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">图纸 B：LCS — 按层并账</text>
+<text x="518" y="442" font-size="10.5" fill="#6B695F" text-anchor="start">sstable_size_in_mb = 160、fanout_size = 10（LCS.java:72-73）</text>
+<text x="518" y="458" font-size="10.5" fill="#6B695F" text-anchor="start">L1+ 层内不重叠：点查每层至多问 1 本（lcs.adoc:14）</text>
+<text x="518" y="474" font-size="10.5" fill="#6B695F" text-anchor="start">L0 特殊：攒超 32 本触发保护性 STCS（LeveledManifest.java:63）</text>
+<text x="28" y="508" font-size="10.5" fill="#6B695F" text-anchor="start">另有 TWCS（按时间窗、TTL 整本过期直接丢）与 UCS（5.0+ 的统一策略，target 1GiB，CEP-26）；选账 = 选读放大与写放大的分配。</text>
+
+<!-- ============ 第三条：墓碑时间轴 ============ -->
+<text x="28" y="546" font-size="13" fill="#E24B4A" text-anchor="start" font-weight="600">墓碑时间轴：删除的「物理完成」要过 gc_grace（默认 864000s = 10 天）</text>
+<line x1="60" y1="600" x2="950" y2="600" stroke="#3B3A34" stroke-width="1.6" marker-end="url(#cmpW)"/>
+<circle cx="120" cy="600" r="5" fill="#E24B4A"/>
+<text x="120" y="588" font-size="10.5" fill="#E24B4A" text-anchor="middle" font-weight="600">10-25 14:00</text>
+<text x="120" y="622" font-size="10" fill="#6B695F" text-anchor="middle">DELETE id=47 (ts=4008)</text>
+<text x="120" y="638" font-size="10" fill="#6B695F" text-anchor="middle">localDeletionTime 在账上</text>
+<rect x="200" y="566" width="380" height="26" rx="6" fill="#FFF6E8" stroke="#E24B4A" stroke-width="1"/>
+<text x="390" y="584" font-size="10.5" fill="#E24B4A" text-anchor="middle" font-weight="600">10 天窗口：压缩只搬运墓碑（gcBefore 还没过线）</text>
+<text x="390" y="622" font-size="10" fill="#6B695F" text-anchor="middle">gcBefore = now − 864000s（ColumnFamilyStore.java:2071）</text>
+<text x="390" y="638" font-size="10" fill="#6B695F" text-anchor="middle">给失联副本留 hint / 修复的归队时间，防「僵尸复活」</text>
+<circle cx="700" cy="600" r="5" fill="#639922"/>
+<text x="700" y="588" font-size="10.5" fill="#639922" text-anchor="middle" font-weight="600">11-04 14:01 起</text>
+<rect x="620" y="608" width="320" height="46" rx="6" fill="#EAF3DE" stroke="#639922" stroke-width="1"/>
+<text x="780" y="626" font-size="10" fill="#1F1E1A" text-anchor="middle">gcBefore 过线 + 归并输入覆盖全部更老数据</text>
+<text x="780" y="644" font-size="10" fill="#639922" text-anchor="middle" font-weight="600">墓碑与旧版本一起消失：id=47 盘上收敛为 0 份</text>
+
+<!-- 底部总结 -->
+<rect x="28" y="658" width="944" height="38" rx="8" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.2"/>
+<text x="44" y="675" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="600">一句话：flush 产出不可变账本，压缩后台归并收敛旧版本，墓碑的清除多等一个 gc_grace——写时乱、读时拼、压缩负责还债。</text>
+<text x="44" y="691" font-size="9" fill="#B4B2A9" text-anchor="start">数据来源：io/sstable/format/SSTableFormat.java:158-170 · db/compaction/CompactionIterator.java:148 · db/ColumnFamilyStore.java:2071（apache/cassandra 7.0-SNAPSHOT，2026-08）</text>
+</svg>

@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 710" width="1000" height="710" font-family="Microsoft YaHei, sans-serif">
+<defs>
+<marker id="pA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="pB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="pG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<rect x="0" y="0" width="1000" height="710" fill="#ffffff"/>
+<text x="500" y="34" font-size="20" fill="#1F1E1A" text-anchor="middle" font-weight="600">原生协议传输：一条 TCP 连接上的帧往返</text>
+<text x="500" y="56" font-size="12" fill="#6B695F" text-anchor="middle" font-weight="400">跟随 cqlsh → node3:9042 的 UPDATE id=47（ts=1005）：握手四步、QUERY/RESULT 字节账、stream id 复用与压缩开关（字节数为示意量级）</text>
+<text x="976" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">橙色：客户端 → 服务器</text>
+<text x="976" y="42" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">蓝色：服务器 → 客户端</text>
+<text x="976" y="58" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色：字节数 / 结构拆解</text>
+
+<!-- ============ A. 连接的一生：时序图 ============ -->
+<rect x="28" y="76" width="944" height="212" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.3"/>
+<text x="44" y="98" font-size="13" fill="#C46A0A" text-anchor="start" font-weight="600">连接的一生（ServerConnection.java:84-122：未初始化只认 OPTIONS / STARTUP）</text>
+<rect x="150" y="110" width="150" height="34" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="225" y="132" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">客户端 cqlsh</text>
+<rect x="560" y="110" width="150" height="34" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="635" y="132" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">node3 :9042</text>
+<line x1="225" y1="144" x2="225" y2="272" stroke="#B4B2A9" stroke-width="1.2" stroke-dasharray="5 5"/>
+<line x1="635" y1="144" x2="635" y2="272" stroke="#B4B2A9" stroke-width="1.2" stroke-dasharray="5 5"/>
+<path d="M225 162 L631 162" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#pA)"/>
+<text x="240" y="156" font-size="11" fill="#3B3A34" text-anchor="start" font-weight="600">① OPTIONS「你会什么」</text>
+<text x="718" y="166" font-size="11" fill="#639922" text-anchor="start" font-weight="600">9 B</text>
+<path d="M635 184 L229 184" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#pB)"/>
+<text x="240" y="178" font-size="11" fill="#3B3A34" text-anchor="start" font-weight="600">② SUPPORTED：CQL 3.4.8｜snappy,lz4｜v3/v4/v5/6-beta</text>
+<text x="718" y="188" font-size="11" fill="#639922" text-anchor="start" font-weight="600">≈119 B</text>
+<path d="M225 206 L631 206" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#pA)"/>
+<text x="240" y="200" font-size="11" fill="#3B3A34" text-anchor="start" font-weight="600">③ STARTUP：v5 + CQL_VERSION（压缩在这里谈）</text>
+<text x="718" y="210" font-size="11" fill="#639922" text-anchor="start" font-weight="600">33 B</text>
+<path d="M635 228 L229 228" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#pB)"/>
+<text x="240" y="222" font-size="11" fill="#3B3A34" text-anchor="start" font-weight="600">④ READY —— v5 从下一帧起换 CRC 帧衣（InitialConnectionHandler:115）</text>
+<text x="718" y="232" font-size="11" fill="#639922" text-anchor="start" font-weight="600">9 B</text>
+<path d="M225 250 L631 250" fill="none" stroke="#C46A0A" stroke-width="1.8" marker-end="url(#pA)"/>
+<text x="240" y="244" font-size="11" fill="#854F0B" text-anchor="start" font-weight="600">⑤ QUERY stream=1：UPDATE users SET name='阿福2' WHERE id=47</text>
+<text x="718" y="254" font-size="11" fill="#639922" text-anchor="start" font-weight="600">59 B</text>
+<path d="M635 270 L229 270" fill="none" stroke="#2F6FA8" stroke-width="1.8" marker-end="url(#pB)"/>
+<text x="240" y="264" font-size="11" fill="#2F6FA8" text-anchor="start" font-weight="600">⑥ RESULT stream=1（RESULT.Void）</text>
+<text x="718" y="274" font-size="11" fill="#639922" text-anchor="start" font-weight="600">13 B</text>
+<text x="44" y="122" font-size="10.5" fill="#6B695F" text-anchor="start">开场舞合计 ≈242 B，</text>
+<text x="44" y="140" font-size="10.5" fill="#6B695F" text-anchor="start">其中有用负载仅查询</text>
+<text x="44" y="158" font-size="10.5" fill="#6B695F" text-anchor="start">文本 43 B——长连的</text>
+<text x="44" y="176" font-size="10.5" fill="#6B695F" text-anchor="start">理由都在这笔账里。</text>
+<text x="44" y="200" font-size="10.5" fill="#6B695F" text-anchor="start">心跳：任意时刻可再发</text>
+<text x="44" y="218" font-size="10.5" fill="#6B695F" text-anchor="start">OPTIONS（9 B 换一个来回）；</text>
+<text x="44" y="236" font-size="10.5" fill="#6B695F" text-anchor="start">idle 裁剪默认 0=不裁</text>
+<text x="44" y="254" font-size="10.5" fill="#6B695F" text-anchor="start">（Config.java:147-148）</text>
+
+<!-- ============ B. 9 字节帧头拆解 ============ -->
+<rect x="28" y="298" width="600" height="182" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.3"/>
+<text x="44" y="320" font-size="13" fill="#639922" text-anchor="start" font-weight="600">信封 = 9 字节头 + body（Envelope.java:52-59、139）：QUERY 帧的前 9 个字节</text>
+<g font-family="Consolas, Microsoft YaHei, monospace">
+<rect x="44" y="334" width="58" height="34" rx="5" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="73" y="356" font-size="14" fill="#854F0B" text-anchor="middle" font-weight="600">05</text>
+<rect x="102" y="334" width="58" height="34" rx="5" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="131" y="356" font-size="14" fill="#1F1E1A" text-anchor="middle" font-weight="600">00</text>
+<rect x="160" y="334" width="118" height="34" rx="5" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="219" y="356" font-size="14" fill="#1F1E1A" text-anchor="middle" font-weight="600">00 01</text>
+<rect x="278" y="334" width="58" height="34" rx="5" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="307" y="356" font-size="14" fill="#854F0B" text-anchor="middle" font-weight="600">07</text>
+<rect x="336" y="334" width="182" height="34" rx="5" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="427" y="356" font-size="14" fill="#1F1E1A" text-anchor="middle" font-weight="600">00 00 00 32</text>
+<text x="536" y="356" font-size="13" fill="#6B695F" text-anchor="start">┃ body</text>
+</g>
+<line x1="73" y1="368" x2="73" y2="384" stroke="#C46A0A" stroke-width="1.1"/>
+<text x="73" y="398" font-size="10.5" fill="#854F0B" text-anchor="middle" font-weight="600">version 1B</text>
+<text x="73" y="414" font-size="10" fill="#6B695F" text-anchor="middle">0x05=v5 请求</text>
+<text x="73" y="430" font-size="10" fill="#6B695F" text-anchor="middle">应答最高位+1→0x85</text>
+<line x1="131" y1="368" x2="131" y2="384" stroke="#639922" stroke-width="1.1"/>
+<text x="131" y="398" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">flags 1B</text>
+<text x="131" y="414" font-size="10" fill="#6B695F" text-anchor="middle">0x01压缩 0x02追踪</text>
+<text x="131" y="430" font-size="10" fill="#6B695F" text-anchor="middle">0x08警告 0x10 beta</text>
+<line x1="219" y1="368" x2="219" y2="384" stroke="#2F6FA8" stroke-width="1.1"/>
+<text x="219" y="398" font-size="10.5" fill="#2F6FA8" text-anchor="middle" font-weight="600">stream 2B</text>
+<text x="219" y="414" font-size="10" fill="#6B695F" text-anchor="middle">1 号；应答还 1 号</text>
+<text x="219" y="430" font-size="10" fill="#6B695F" text-anchor="middle">负号段留给 EVENT(-1)</text>
+<line x1="307" y1="368" x2="307" y2="384" stroke="#C46A0A" stroke-width="1.1"/>
+<text x="307" y="398" font-size="10.5" fill="#854F0B" text-anchor="middle" font-weight="600">opcode 1B</text>
+<text x="307" y="414" font-size="10" fill="#6B695F" text-anchor="middle">0x07=QUERY</text>
+<text x="307" y="430" font-size="10" fill="#6B695F" text-anchor="middle">17 种（Message.java:91）</text>
+<line x1="427" y1="368" x2="427" y2="384" stroke="#639922" stroke-width="1.1"/>
+<text x="427" y="398" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">length 4B</text>
+<text x="427" y="414" font-size="10" fill="#6B695F" text-anchor="middle">0x32=50：body 字节数</text>
+<text x="427" y="430" font-size="10" fill="#6B695F" text-anchor="middle">=(4+43)+2+1（QUORUM）</text>
+<text x="44" y="456" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">整帧 9+50=59 B；服务器回 RESULT.Void：85 00 00 01 08 00 00 00 04，共 13 B。全协议大端序。</text>
+<text x="44" y="472" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">v5 握手后信封外加 CRC 帧衣：6B 头 + 载荷(≤128KiB) + 4B CRC32，大信封自动拆帧序列。</text>
+
+<!-- ============ C. stream id 复用 ============ -->
+<rect x="640" y="298" width="332" height="182" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.3"/>
+<text x="806" y="320" font-size="13" fill="#2F6FA8" text-anchor="middle" font-weight="600">stream id：一条连接跑多路并发</text>
+<path d="M676 344 L880 344" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#pA)"/>
+<text x="676" y="338" font-size="10.5" fill="#3B3A34" text-anchor="start" font-weight="600">QUERY#1(id=47)</text>
+<path d="M676 362 L880 362" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#pA)"/>
+<text x="676" y="356" font-size="10.5" fill="#3B3A34" text-anchor="start" font-weight="600">QUERY#2(id=48)</text>
+<path d="M880 380 L676 380" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#pB)"/>
+<text x="676" y="374" font-size="10.5" fill="#2F6FA8" text-anchor="start" font-weight="600">RESULT#2 先回（名单不同，乱序是常态）</text>
+<path d="M880 398 L676 398" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#pB)"/>
+<text x="676" y="392" font-size="10.5" fill="#2F6FA8" text-anchor="start" font-weight="600">RESULT#1 后回；1 号随即回收可复用</text>
+<text x="656" y="424" font-size="10.5" fill="#6B695F" text-anchor="start">规则：在途号不重；应答保证同号（spec 2.4.1.3）。</text>
+<text x="656" y="442" font-size="10.5" fill="#6B695F" text-anchor="start">正号段 32768 路；服务器主动推送 EVENT 用 -1。</text>
+<text x="656" y="460" font-size="10.5" fill="#6B695F" text-anchor="start">取餐号类比：做好哪杯叫哪杯，不必开新柜台。</text>
+
+<!-- ============ D. 压缩与上限 ============ -->
+<rect x="28" y="490" width="600" height="150" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.3"/>
+<text x="44" y="512" font-size="13" fill="#C46A0A" text-anchor="start" font-weight="600">压缩两种形态 + 单帧体积上限（STARTUP 谈妥才算数）</text>
+<rect x="44" y="524" width="280" height="100" rx="8" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.2"/>
+<text x="58" y="546" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">v4 及以前：信封级</text>
+<text x="58" y="566" font-size="10.5" fill="#3B3A34" text-anchor="start">整段 body 压缩后替换，flags 打 0x01 位</text>
+<text x="58" y="584" font-size="10.5" fill="#3B3A34" text-anchor="start">算法二选一：snappy（Compressor.java:57）/ lz4（:150）</text>
+<text x="58" y="602" font-size="10.5" fill="#6B695F" text-anchor="start">lz4 前 4 字节写原始长度（大端，:175-178）</text>
+<text x="58" y="618" font-size="10.5" fill="#854F0B" text-anchor="start" font-weight="600">铁律：STARTUP 永不压缩（Envelope.java:567）</text>
+<rect x="340" y="524" width="272" height="100" rx="8" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.2"/>
+<text x="354" y="546" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">v5：帧级（READY 后换装）</text>
+<text x="354" y="566" font-size="10.5" fill="#3B3A34" text-anchor="start">压缩做在帧层，只支持 lz4（PipelineConfigurator:391）</text>
+<text x="354" y="584" font-size="10.5" fill="#3B3A34" text-anchor="start">逐帧可选：小帧不压（compressed length=0）</text>
+<text x="354" y="602" font-size="10.5" fill="#6B695F" text-anchor="start">握手消息天然免疫（不穿帧衣）</text>
+<text x="354" y="618" font-size="10.5" fill="#639922" text-anchor="start" font-weight="600">解压长度护栏：≤ 帧上限（Compressor.java:44）</text>
+<rect x="44" y="630" width="568" height="0" fill="none"/>
+<text x="44" y="634" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">上限：native_transport_max_frame_size 默认 16MiB（Config.java:354-355）；超限进 discard 模式丢字节再报「Request is too big」（Envelope.java:444-455）</text>
+
+<!-- ============ E. Netty 一句话 ============ -->
+<rect x="640" y="490" width="332" height="150" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.3"/>
+<text x="806" y="512" font-size="13" fill="#639922" text-anchor="middle" font-weight="600">服务器接货：Netty 管线（Server.java:72）</text>
+<text x="656" y="536" font-size="10.5" fill="#3B3A34" text-anchor="start">EventLoop 轮转组（epoll/NIO）负责字节收发</text>
+<text x="656" y="554" font-size="10.5" fill="#3B3A34" text-anchor="start">每连接一条 handler 流水线（限流→空闲→编码→握手）</text>
+<text x="656" y="572" font-size="10.5" fill="#3B3A34" text-anchor="start">解出的请求交 Native-Transport-Requests 线程池</text>
+<text x="656" y="590" font-size="10.5" fill="#3B3A34" text-anchor="start">（Dispatcher.java:62）——收货与干活分家</text>
+<text x="656" y="614" font-size="10.5" fill="#639922" text-anchor="start" font-weight="600">零拷贝：body 切片引用传递（Envelope.java:464）</text>
+<text x="656" y="632" font-size="10.5" fill="#639922" text-anchor="start" font-weight="600">+ 池化直接内存（CBUtil.java:67）</text>
+
+<!-- ============ 底部总结 ============ -->
+<rect x="28" y="650" width="944" height="44" rx="8" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="44" y="668" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">一张图的一句话：CQL 在线上 = 9 字节信封 + body，stream id 让一条连接多路复用；握手谈协议谈压缩，READY 后干活。RocksDB 没有这层——Put 是函数调用，零信封零握手。</text>
+<text x="44" y="686" font-size="11" fill="#6B695F" text-anchor="start">数据来源：transport/Envelope.java:52-59、139（信封与帧头）· transport/Message.java:91-109（opcode 表）· config/Config.java:354-355（16MiB 帧上限）· 字节数为示意量级</text>
+</svg>

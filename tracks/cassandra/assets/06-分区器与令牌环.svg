@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 700" width="1000" height="700" font-family="Microsoft YaHei, sans-serif">
+<defs>
+<marker id="pA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="pG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<rect x="0" y="0" width="1000" height="700" fill="#ffffff"/>
+<text x="500" y="34" font-size="20" fill="#1F1E1A" text-anchor="middle" font-weight="600">Cassandra 分区器与令牌环：一行数据摊给谁</text>
+<text x="500" y="56" font-size="12" fill="#6B695F" text-anchor="middle" font-weight="400">跟随 id=47：主键分层 → murmur3 变 token → 环上顺时针数 3 个 → 自然副本 {node2, node4, node5}</text>
+<text x="976" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">橙色：分区键 / 哈希</text>
+<text x="976" y="42" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色：token / 副本落位</text>
+<text x="976" y="58" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">灰色：与本行无关的节点</text>
+
+<!-- ============ 第一条：主键三层 ============ -->
+<rect x="28" y="88" width="944" height="128" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.3"/>
+<text x="44" y="110" font-size="13" fill="#C46A0A" text-anchor="start" font-weight="600">主键三层：分区键定位到节点，聚簇列分区内排序，普通列只能暴力筛</text>
+
+<rect x="44" y="124" width="300" height="76" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="194" y="146" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">users：PRIMARY KEY (id)</text>
+<text x="194" y="166" font-size="10.5" fill="#3B3A34" text-anchor="middle">分区键 = id → 一分区一行</text>
+<text x="194" y="184" font-size="10.5" fill="#6B695F" text-anchor="middle">WHERE id=47 秒回；WHERE name 要 ALLOW FILTERING</text>
+
+<rect x="364" y="124" width="300" height="76" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="514" y="146" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">events：PRIMARY KEY ((tenant, device_id), ts)</text>
+<text x="514" y="166" font-size="10.5" fill="#3B3A34" text-anchor="middle">分区键=(tenant, device_id)，聚簇列=ts</text>
+<text x="514" y="184" font-size="10.5" fill="#6B695F" text-anchor="middle">分区内按 ts 排序——范围查唯一的高效形态</text>
+
+<rect x="684" y="124" width="272" height="76" rx="8" fill="#ffffff" stroke="#B4B2A9" stroke-width="1.2" stroke-dasharray="6 4"/>
+<text x="820" y="146" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">token() 自查摊位</text>
+<text x="820" y="166" font-size="10.5" fill="#6B695F" text-anchor="middle">SELECT token(id) FROM users WHERE id=47</text>
+<text x="820" y="184" font-size="10.5" fill="#6B695F" text-anchor="middle">TokenFct.java:33</text>
+
+<!-- ============ 第二条：分区器 ============ -->
+<rect x="28" y="228" width="944" height="118" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.3"/>
+<text x="44" y="250" font-size="13" fill="#C46A0A" text-anchor="start" font-weight="600">分区器：任意字节串 → 环上一个 64 位点（Murmur3Partitioner，yaml:420 默认，建集群定死不可改）</text>
+
+<rect x="44" y="264" width="180" height="62" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="134" y="288" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">分区键字节串</text>
+<text x="134" y="308" font-size="10.5" fill="#6B695F" text-anchor="middle">"47"（0x34 0x37）</text>
+
+<path d="M224 295 L244 295" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#pA)"/>
+
+<rect x="248" y="264" width="290" height="62" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="393" y="288" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">MurmurHash3 x64 128（种子 0）</text>
+<text x="393" y="308" font-size="10.5" fill="#6B695F" text-anchor="middle">getHash（Murmur3Partitioner.java:404-414），得 hash[0]、hash[1]</text>
+
+<path d="M538 295 L558 295" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#pA)"/>
+
+<rect x="562" y="264" width="200" height="62" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="662" y="288" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">token = hash[0]</text>
+<text x="662" y="308" font-size="10.5" fill="#6B695F" text-anchor="middle">LongToken ≈ -9.0×10^18（示意）</text>
+
+<path d="M762 295 L782 295" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#pG)"/>
+
+<rect x="786" y="264" width="170" height="62" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="871" y="288" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">DecoratedKey</text>
+<text x="871" y="308" font-size="10.5" fill="#6B695F" text-anchor="middle">原始键+token 打包（:102-105）</text>
+
+<text x="44" y="340" font-size="10.5" fill="#6B695F" text-anchor="start">非加密哈希：要快要均匀（雪崩），不要抗碰撞——相邻键 user_1/user_2 落在环上毫不相干的位置；空分区键 → MINIMUM（:318-319）。</text>
+
+<!-- ============ 第三条：令牌环 ============ -->
+<rect x="28" y="358" width="944" height="204" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.3"/>
+<text x="44" y="380" font-size="13" fill="#639922" text-anchor="start" font-weight="600">令牌环：从 token 顺时针数 RF=3 个，就是这行数据的全部副本（Token 全序，Token.java:43）</text>
+
+<circle cx="330" cy="466" r="88" fill="none" stroke="#3B3A34" stroke-width="1.6"/>
+<text x="330" y="352" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">-2^63（顶）顺时针 → +2^63 回到顶</text>
+
+<circle cx="322.2" cy="378.4" r="26" fill="#EAF3DE" stroke="#639922" stroke-width="1.6"/>
+<text x="322.2" y="374" font-size="11" fill="#1F1E1A" text-anchor="middle" font-weight="600">node5</text>
+<text x="322.2" y="388" font-size="9" fill="#6B695F" text-anchor="middle">-22.1</text>
+
+<circle cx="417" cy="491.3" r="7" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/>
+<text x="440" y="488" font-size="11" fill="#C46A0A" text-anchor="start" font-weight="600">token(47) = -9.0</text>
+<text x="440" y="503" font-size="9.5" fill="#6B695F" text-anchor="start">本行数据的落点</text>
+<line x1="330" y1="466" x2="410.5" y2="486.8" stroke="#C46A0A" stroke-width="1" stroke-dasharray="4 3"/>
+
+<circle cx="283.7" cy="545.1" r="26" fill="#EAF3DE" stroke="#639922" stroke-width="1.6"/>
+<text x="283.7" y="541" font-size="11" fill="#1F1E1A" text-anchor="middle" font-weight="600">node2</text>
+<text x="283.7" y="555" font-size="9" fill="#6B695F" text-anchor="middle">+3.7</text>
+
+<circle cx="240.2" cy="461.7" r="26" fill="#EAF3DE" stroke="#639922" stroke-width="1.6"/>
+<text x="240.2" y="457" font-size="11" fill="#1F1E1A" text-anchor="middle" font-weight="600">node4</text>
+<text x="240.2" y="471" font-size="9" fill="#6B695F" text-anchor="middle">+11.2</text>
+
+<circle cx="296.3" cy="384.6" r="26" fill="#ffffff" stroke="#B4B2A9" stroke-width="1.4"/>
+<text x="296.3" y="380" font-size="11" fill="#6B695F" text-anchor="middle" font-weight="600">node1</text>
+<text x="296.3" y="394" font-size="9" fill="#6B695F" text-anchor="middle">+18.9</text>
+
+<path d="M414.6 499.5 A 88 88 0 0 1 305 533.8" fill="none" stroke="#639922" stroke-width="2" marker-end="url(#pG)"/>
+<text x="373" y="545" font-size="10" fill="#639922" text-anchor="middle" font-weight="600">① node2</text>
+<path d="M275.3 527.5 A 88 88 0 0 1 243.3 486.6" fill="none" stroke="#639922" stroke-width="2" marker-end="url(#pG)"/>
+<text x="216" y="520" font-size="10" fill="#639922" text-anchor="middle" font-weight="600">② node4</text>
+<path d="M244.6 439.4 A 88 88 0 0 1 305.5 380.4" fill="none" stroke="#639922" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#pG)"/>
+<text x="222" y="408" font-size="10" fill="#639922" text-anchor="middle" font-weight="600">③ node5（跨零点）</text>
+
+<text x="560" y="416" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">顺时针数 3 个：node2 → node4 → node5</text>
+<text x="560" y="438" font-size="10.5" fill="#3B3A34" text-anchor="start">node1 排第 4，与这行数据无关——环上座次决定的，不是负载决定的。</text>
+<text x="560" y="462" font-size="10.5" fill="#3B3A34" text-anchor="start">换把钥匙验证：token(48)=+7.2 落在 node2 与 node4 之间</text>
+<text x="580" y="482" font-size="10.5" fill="#6B695F" text-anchor="start">→ 顺时针：node4 → node1 → node5（同表两行，名单差两台）</text>
+<text x="560" y="508" font-size="10.5" fill="#3B3A34" text-anchor="start">SimpleStrategy：全环顺时针数（SimpleStrategy.java:82-89）</text>
+<text x="560" y="528" font-size="10.5" fill="#3B3A34" text-anchor="start">NetworkTopologyStrategy：每 DC 独立数 + rack 均摊（:217-221）</text>
+<text x="560" y="552" font-size="10.5" fill="#6B695F" text-anchor="start">7.0 的环账本：TokenMetadata 已移除，由 ClusterMetadata.tokenMap 接管</text>
+
+<!-- ============ 第四条：vnodes ============ -->
+<rect x="28" y="574" width="944" height="66" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.3"/>
+<text x="44" y="596" font-size="13" fill="#C46A0A" text-anchor="start" font-weight="600">vnodes：每节点 16 段（yaml:42），失败负载摊 16 份；智能分配补均匀（allocate RF=3，yaml:59）</text>
+<rect x="44" y="606" width="440" height="22" rx="5" fill="#ffffff" stroke="#B4B2A9" stroke-width="1"/>
+<text x="264" y="621" font-size="10" fill="#6B695F" text-anchor="middle">单 token 时代：node4 挂 → 一整段全压给顺时针下一个节点</text>
+<rect x="504" y="606" width="440" height="22" rx="5" fill="#ffffff" stroke="#639922" stroke-width="1"/>
+<g>
+<rect x="504" y="612" width="12" height="12" fill="#639922" opacity="0.85"/><rect x="516" y="612" width="12" height="12" fill="#2F6FA8" opacity="0.85"/><rect x="528" y="612" width="12" height="12" fill="#C46A0A" opacity="0.85"/><rect x="540" y="612" width="12" height="12" fill="#E24B4A" opacity="0.85"/><rect x="552" y="612" width="12" height="12" fill="#639922" opacity="0.85"/><rect x="564" y="612" width="12" height="12" fill="#2F6FA8" opacity="0.85"/><rect x="576" y="612" width="12" height="12" fill="#C46A0A" opacity="0.85"/><rect x="588" y="612" width="12" height="12" fill="#E24B4A" opacity="0.85"/><rect x="600" y="612" width="12" height="12" fill="#639922" opacity="0.85"/><rect x="612" y="612" width="12" height="12" fill="#2F6FA8" opacity="0.85"/><rect x="624" y="612" width="12" height="12" fill="#E24B4A" opacity="0.85"/><rect x="636" y="612" width="12" height="12" fill="#C46A0A" opacity="0.85"/><rect x="648" y="612" width="12" height="12" fill="#639922" opacity="0.85"/><rect x="660" y="612" width="12" height="12" fill="#E24B4A" opacity="0.85"/><rect x="672" y="612" width="12" height="12" fill="#2F6FA8" opacity="0.85"/><rect x="684" y="612" width="12" height="12" fill="#C46A0A" opacity="0.85"/><rect x="696" y="612" width="12" height="12" fill="#639922" opacity="0.85"/><rect x="708" y="612" width="12" height="12" fill="#2F6FA8" opacity="0.85"/><rect x="720" y="612" width="12" height="12" fill="#C46A0A" opacity="0.85"/><rect x="732" y="612" width="12" height="12" fill="#E24B4A" opacity="0.85"/><rect x="744" y="612" width="12" height="12" fill="#2F6FA8" opacity="0.85"/><rect x="756" y="612" width="12" height="12" fill="#C46A0A" opacity="0.85"/><rect x="768" y="612" width="12" height="12" fill="#639922" opacity="0.85"/><rect x="780" y="612" width="12" height="12" fill="#E24B4A" opacity="0.85"/><rect x="792" y="612" width="12" height="12" fill="#639922" opacity="0.85"/><rect x="804" y="612" width="12" height="12" fill="#C46A0A" opacity="0.85"/><rect x="816" y="612" width="12" height="12" fill="#2F6FA8" opacity="0.85"/><rect x="828" y="612" width="12" height="12" fill="#E24B4A" opacity="0.85"/><rect x="840" y="612" width="12" height="12" fill="#C46A0A" opacity="0.85"/><rect x="852" y="612" width="12" height="12" fill="#639922" opacity="0.85"/><rect x="864" y="612" width="12" height="12" fill="#2F6FA8" opacity="0.85"/><rect x="876" y="612" width="12" height="12" fill="#E24B4A" opacity="0.85"/><rect x="888" y="612" width="12" height="12" fill="#C46A0A" opacity="0.85"/><rect x="900" y="612" width="12" height="12" fill="#639922" opacity="0.85"/><rect x="912" y="612" width="12" height="12" fill="#2F6FA8" opacity="0.85"/><rect x="924" y="612" width="12" height="12" fill="#E24B4A" opacity="0.85"/>
+</g>
+<text x="724" y="621" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="600">16 段/节点 × 5 = 80 段交错（示意）</text>
+
+<!-- ============ 底部总结 ============ -->
+<rect x="28" y="650" width="944" height="38" rx="8" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="44" y="674" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">一张图的一句话：分区键经 murmur3 落到环上一个点，顺时针数 RF 个就是全部副本；分区内有序、分区间无序——建模永远围着分区键设计。</text>
+<text x="44" y="690" font-size="11" fill="#6B695F" text-anchor="start">数据来源：dht/Murmur3Partitioner.java:315-317、404-414（哈希与取 token）· locator/SimpleStrategy.java:82-89（顺时针取副本）· conf/cassandra.yaml:42、59（vnode 与智能分配）</text>
+</svg>

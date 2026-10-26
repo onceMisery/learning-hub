@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>基于 Trie 的存储格式 · Cassandra 互动原理实验室 第 4 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:960px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:720px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:600;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:12px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:600;fill:#1F1E1A}
+.tag{font-size:10.5px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:66px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+.modebar{display:flex;align-items:center;gap:8px;margin:6px 4px 0;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.modebar .mlabel{font-weight:600;color:#3B3A34}
+.modebtn{padding:5px 12px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:12.5px;cursor:pointer;font-family:inherit}
+.modebtn:hover{border-color:#888780}
+.modebtn.on{background:#FFF6E8;border-color:#EF9F27;color:#854F0B;font-weight:600}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .outbranch{display:inline-flex;flex-direction:column;align-items:flex-start;gap:6px}
+.flow .outline{display:inline-flex;align-items:center;gap:8px}
+.flow .flownote{font-size:12px;color:#6B695F;font-weight:600;margin-right:4px}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 10px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+#eng [opacity]{transition:opacity .28s ease}
+#eng2 [opacity]{transition:opacity .28s ease}
+@media (prefers-reduced-motion: reduce){#eng [opacity],#eng2 [opacity]{transition:none}}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:8px 4px 0;font-size:12px;color:#6B695F}
+.legend i{display:inline-block;width:18px;height:0;border-top:2px solid #C46A0A;vertical-align:middle;margin-right:5px}
+.legend i.g{border-color:#639922}
+.legend i.r{border-color:#E24B4A}
+.legend i.dash{border-top-style:dashed}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：基于 Trie 的存储格式：TrieMemtable 与 BTI</a>
+  <span class="idx">第 4 / 15 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · TRIE &amp; BTI FORMAT</div>
+<h1>内存 Trie 与盘上 BTI 是同一棵树</h1>
+<p>5 个分区键逐字节走进 TrieMemtable 的前缀树，flush 时印成盘上 BTI 的主索引；点查 device_47 在 bti 与 big 两种格式下各走一条路——trie 的本钱是共享前缀，bti 的红利是打开账本不进堆。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span>
+<span class="mnode">② 静态分解</span>
+<span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span>
+<span class="mnode">⑤ 环境场景</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 560" role="img" xmlns="http://www.w3.org/2000/svg"><title>基于 Trie 的存储格式</title><defs><marker id="flw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="flwG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker></defs><text class="th" x="500" y="22" text-anchor="middle">逐字节走进 trie，印到盘上当索引</text><text class="ts" x="500" y="40" text-anchor="middle">左：内存 TrieMemtable（5 个键共享前缀 device_）；右上：盘上 bti 主索引；右下：big 对照；底部：堆账单与版本谱系</text><text x="990" y="22" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">橙色：贯穿案例 device_47</text><text x="990" y="38" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色：盘上 / 落盘结构</text><text x="990" y="54" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">蓝色：索引部件</text><g id="treePanel"><rect x="28" y="52" width="462" height="256" rx="9" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/><text x="40" y="74" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">内存端 TrieMemtable（InMemoryTrie.java:48）</text><text x="40" y="92" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">分片单写、读并发；树近 2GB 上限先封账（:46-58）</text><g id="treeChain"><line x1="68" y1="140" x2="96" y2="140" stroke="#3B3A34" stroke-width="1.3"/><line x1="104" y1="140" x2="128" y2="140" stroke="#3B3A34" stroke-width="1.3"/><line x1="136" y1="140" x2="160" y2="140" stroke="#3B3A34" stroke-width="1.3"/><line x1="168" y1="140" x2="192" y2="140" stroke="#3B3A34" stroke-width="1.3"/><line x1="200" y1="140" x2="224" y2="140" stroke="#3B3A34" stroke-width="1.3"/><line x1="232" y1="140" x2="256" y2="140" stroke="#3B3A34" stroke-width="1.3"/><line x1="264" y1="140" x2="288" y2="140" stroke="#3B3A34" stroke-width="1.3"/><circle cx="64" cy="140" r="8" fill="#ffffff" stroke="#3B3A34" stroke-width="1.4"/><text x="64" y="144" font-size="9" fill="#1F1E1A" text-anchor="middle" font-weight="400">根</text><circle cx="100" cy="140" r="8" fill="#ffffff" stroke="#3B3A34" stroke-width="1.3"/><text x="100" y="144" font-size="9" fill="#1F1E1A" text-anchor="middle" font-weight="400">d</text><circle cx="132" cy="140" r="8" fill="#ffffff" stroke="#3B3A34" stroke-width="1.3"/><text x="132" y="144" font-size="9" fill="#1F1E1A" text-anchor="middle" font-weight="400">e</text><circle cx="164" cy="140" r="8" fill="#ffffff" stroke="#3B3A34" stroke-width="1.3"/><text x="164" y="144" font-size="9" fill="#1F1E1A" text-anchor="middle" font-weight="400">v</text><circle cx="196" cy="140" r="8" fill="#ffffff" stroke="#3B3A34" stroke-width="1.3"/><text x="196" y="144" font-size="9" fill="#1F1E1A" text-anchor="middle" font-weight="400">i</text><circle cx="228" cy="140" r="8" fill="#ffffff" stroke="#3B3A34" stroke-width="1.3"/><text x="228" y="144" font-size="9" fill="#1F1E1A" text-anchor="middle" font-weight="400">c</text><circle cx="260" cy="140" r="8" fill="#ffffff" stroke="#3B3A34" stroke-width="1.3"/><text x="260" y="144" font-size="9" fill="#1F1E1A" text-anchor="middle" font-weight="400">e</text><circle cx="292" cy="140" r="8" fill="#ffffff" stroke="#3B3A34" stroke-width="1.3"/><text x="292" y="144" font-size="9" fill="#1F1E1A" text-anchor="middle" font-weight="400">_</text></g><text x="166" y="118" font-size="9.5" fill="#6B695F" text-anchor="middle" font-weight="400">共享前缀 device_：5 个键只存一遍</text><g id="n47"><line x1="300" y1="135" x2="322" y2="122" stroke="#3B3A34" stroke-width="1.3"/><line x1="300" y1="140" x2="322" y2="140" stroke="#3B3A34" stroke-width="1.3"/><line x1="300" y1="145" x2="322" y2="158" stroke="#3B3A34" stroke-width="1.3"/><line x1="300" y1="148" x2="322" y2="178" stroke="#3B3A34" stroke-width="1.3"/><circle cx="330" cy="119" r="8" fill="#ffffff" stroke="#3B3A34" stroke-width="1.3"/><text x="330" y="123" font-size="9" fill="#1F1E1A" text-anchor="middle" font-weight="400">1</text><circle cx="368" cy="119" r="9" fill="#EAF3DE" stroke="#639922" stroke-width="1.4"/><text x="368" y="123" font-size="9" fill="#1F1E1A" text-anchor="middle" font-weight="400">2</text><line x1="338" y1="119" x2="359" y2="119" stroke="#3B3A34" stroke-width="1.3"/><text x="384" y="123" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">device_12</text><circle cx="330" cy="140" r="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.6"/><text x="330" y="144" font-size="9" fill="#1F1E1A" text-anchor="middle" font-weight="400">4</text><circle cx="368" cy="140" r="9" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.6"/><text x="368" y="144" font-size="9" fill="#1F1E1A" text-anchor="middle" font-weight="400">7</text><line x1="338" y1="140" x2="359" y2="140" stroke="#C46A0A" stroke-width="1.5"/><text x="384" y="144" font-size="9.5" fill="#C46A0A" text-anchor="start" font-weight="600">device_47</text><circle cx="330" cy="161" r="8" fill="#ffffff" stroke="#3B3A34" stroke-width="1.3"/><text x="330" y="165" font-size="9" fill="#1F1E1A" text-anchor="middle" font-weight="400">5</text><circle cx="372" cy="154" r="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.4"/><text x="372" y="158" font-size="8" fill="#1F1E1A" text-anchor="middle" font-weight="400">完</text><line x1="338" y1="159" x2="364" y2="155" stroke="#3B3A34" stroke-width="1.3"/><text x="386" y="158" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">device_5</text><circle cx="372" cy="172" r="9" fill="#EAF3DE" stroke="#639922" stroke-width="1.4"/><text x="372" y="176" font-size="9" fill="#1F1E1A" text-anchor="middle" font-weight="400">1</text><line x1="338" y1="164" x2="363" y2="170" stroke="#3B3A34" stroke-width="1.3"/><text x="386" y="176" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">device_51</text><circle cx="330" cy="184" r="9" fill="#EAF3DE" stroke="#639922" stroke-width="1.4"/><text x="330" y="188" font-size="9" fill="#1F1E1A" text-anchor="middle" font-weight="400">6</text><text x="344" y="200" font-size="9.5" fill="#6B695F" text-anchor="start" font-weight="400">device_6</text></g><text id="treeNote" x="40" y="228" font-size="10" fill="#1F1E1A" text-anchor="start" font-weight="600">5 键成树：最长的独占路径只有两三个字节，其余全是共享。</text><text x="40" y="246" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">查 device_47 走 9 步（每步一个字节）；查不存在的 device_99</text><text x="40" y="262" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">走到 device_9 就断头。叶子 = 分区数据家当（BTreePartitionData）。</text><text x="40" y="290" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">判满换尺子：树体量近 2GB 阈值 → 封账 flush（树 32 位指针硬上限）。</text></g><g id="btiPanel"><rect x="510" y="52" width="462" height="146" rx="9" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="522" y="74" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">盘上 BTI：Partitions.db（PartitionIndex.java:57-71）</text><g id="pageRoot"><rect x="522" y="86" width="92" height="56" rx="7" fill="#ffffff" stroke="#639922" stroke-width="1.3"/><text x="568" y="110" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">根页</text><text x="568" y="128" font-size="9" fill="#6B695F" text-anchor="middle" font-weight="400">DENSE 直算</text></g><g id="pageInner"><rect x="624" y="86" width="92" height="56" rx="7" fill="#ffffff" stroke="#639922" stroke-width="1.3"/><text x="670" y="110" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">非叶页</text><text x="670" y="128" font-size="9" fill="#6B695F" text-anchor="middle" font-weight="400">常驻页缓存</text></g><g id="pageLeaf"><rect x="726" y="86" width="100" height="56" rx="7" fill="#ffffff" stroke="#639922" stroke-width="1.3"/><text x="776" y="110" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">叶页·payload</text><text x="776" y="128" font-size="9" fill="#6B695F" text-anchor="middle" font-weight="400">位置+hash 低位</text></g><path id="btiArrow" d="M826 114 L856 114" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flwG)"/><g id="dataPage"><rect x="860" y="86" width="100" height="56" rx="7" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="910" y="110" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">Data.db</text><text x="910" y="128" font-size="9" fill="#6B695F" text-anchor="middle" font-weight="400">分区数据页</text></g><text x="522" y="160" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">打开账本 = 只读文件尾 3 个 long（PartitionIndex.java:199-215）；节点装进 4096B 页。</text><text id="rowsNote" x="522" y="180" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">Rows.db：分区内行按 16KB 块索引，块间存最短分隔符（RowIndexReader.java:38-50）。</text><text x="522" y="196" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">叶子 payload：行索引位置（正）或直达数据位置（取反），符号位区分。</text></g><g id="bigPanel"><rect x="510" y="208" width="462" height="100" rx="9" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/><text x="522" y="230" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">big 对照：Index.db + Summary.db 双层索引</text><g id="bigSummary"><rect x="522" y="240" width="130" height="44" rx="7" fill="#ffffff" stroke="#2F6FA8" stroke-width="1.2"/><text x="587" y="260" font-size="10" fill="#1F1E1A" text-anchor="middle" font-weight="600">Summary.db（堆内）</text><text x="587" y="276" font-size="8.5" fill="#6B695F" text-anchor="middle" font-weight="400">1/128 抽样书签</text></g><path id="bigArrow1" d="M652 262 L674 262" fill="none" stroke="#2F6FA8" stroke-width="1.4" marker-end="url(#flw)"/><g id="bigIndex"><rect x="678" y="240" width="120" height="44" rx="7" fill="#ffffff" stroke="#2F6FA8" stroke-width="1.2"/><text x="738" y="260" font-size="10" fill="#1F1E1A" text-anchor="middle" font-weight="600">Index.db 二分</text><text x="738" y="276" font-size="8.5" fill="#6B695F" text-anchor="middle" font-weight="400">BigTableReader.java:313</text></g><path id="bigArrow2" d="M798 262 L820 262" fill="none" stroke="#2F6FA8" stroke-width="1.4" marker-end="url(#flw)"/><g id="bigData"><rect x="824" y="240" width="120" height="44" rx="7" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/><text x="884" y="260" font-size="10" fill="#1F1E1A" text-anchor="middle" font-weight="600">Data.db</text><text x="884" y="276" font-size="8.5" fill="#6B695F" text-anchor="middle" font-weight="400">数据页</text></g><text x="522" y="300" font-size="10" fill="#6B695F" text-anchor="start" font-weight="400">打开账本要装摘要进堆（TableParams.java:450），受 index_summary_capacity 预算（yaml:1000）。</text></g><g id="costPanel"><rect x="28" y="318" width="462" height="148" rx="9" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/><text x="40" y="340" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">打开一本账的堆账单（2 万本 SSTable 的冷启动）</text><text x="40" y="364" font-size="10.5" fill="#3B3A34" text-anchor="start">big：每本装一份 Summary 摘要 → 堆里持续在册，重启重装；</text><text x="40" y="382" font-size="10.5" fill="#3B3A34" text-anchor="start">装不下时压缩取样，点查多问几页。</text><text x="40" y="406" font-size="10.5" fill="#639922" text-anchor="start" font-weight="600">bti：每本只读 3 个 long → 不查几乎不占堆；</text><text x="40" y="424" font-size="10.5" fill="#639922" text-anchor="start" font-weight="600">索引页按需进页缓存，代价摊到真实查询上。</text><text x="40" y="448" font-size="10" fill="#6B695F" text-anchor="start">同一思想 RocksDB 走中间路线：索引放块缓存、</text><text x="40" y="464" font-size="10" fill="#6B695F" text-anchor="start">partitioned index 分层装载——三家各画一条预算线。</text></g><g id="verPanel"><rect x="510" y="318" width="462" height="148" rx="9" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/><text x="522" y="340" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">版本字母表（文件名前缀就是格式内版本）</text><text x="522" y="364" font-size="10.5" fill="#3B3A34" text-anchor="start">big：ma/mb/me（3.0 系）→ na/nb（4.0 系）→ oa（5.0）→ pa（6.0）</text><text x="522" y="382" font-size="10.5" fill="#3B3A34" text-anchor="start">NONE 兼容模式下新写 = pa（BigFormat.java:436-437）</text><text x="522" y="404" font-size="10.5" fill="#639922" text-anchor="start" font-weight="600">bti：da（5.0 初版）→ ea（6.0 加压缩字典元数据）</text><text x="522" y="422" font-size="10.5" fill="#639922" text-anchor="start" font-weight="600">（BtiFormat.java:290-295）</text><text x="522" y="446" font-size="10" fill="#6B695F" text-anchor="start">默认 selected_format = big（Config.java:458）；</text><text x="522" y="462" font-size="10" fill="#6B695F" text-anchor="start">切 bti 只影响新建账本，nodetool upgradesstables 逐本换血。</text></g><text id="viewNote" x="28" y="490" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">读法：左树看「字节步进 + 前缀共享」；右上看 bti 的页导航；右下看 big 的双层索引；点查 device_47 时，bti 亮叶页、big 亮摘要——两条路终点相同，堆账单不同。</text><text x="28" y="510" font-size="9.5" fill="#B4B2A9" text-anchor="start" font-weight="400">源码：db/memtable/TrieMemtable.java:81-91 · db/tries/InMemoryTrie.java:46-58 · io/sstable/format/bti/PartitionIndex.java:57-71、199-215 · io/sstable/format/bti/BtiFormat.java:290-295（7.0-SNAPSHOT）</text><text x="28" y="528" font-size="9.5" fill="#B4B2A9" text-anchor="start" font-weight="400">口径：默认内存账本 SkipListMemtable、默认格式 big；bti 的 1000 万键索引量级为按源码注释推演（约 2n 节点），非实测数字。</text><text x="28" y="546" font-size="9.5" fill="#B4B2A9" text-anchor="start" font-weight="400">O(log n) 跳转针对哈希分布的分区键（BtiFormat.md「Trimming the fat」）；key 高度倾斜时树会变深。</text><circle id="tok" cx="-20" cy="-20" r="8" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/></svg>
+<svg id="eng2" viewBox="0 0 1000 180" role="img" xmlns="http://www.w3.org/2000/svg"><text x="40" y="26" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">相位总线：自动与分步共用同一进度</text><text x="960" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">0° → 720°</text><rect id="seg0" x="40" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="89.1" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">写 47</text><text x="89.1" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">0°</text><rect id="seg1" x="142.2" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="191.3" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">再插 4 键</text><text x="191.3" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">80°</text><rect id="seg2" x="244.4" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="293.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">成树</text><text x="293.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">160°</text><rect id="seg3" x="346.7" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="395.8" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">flush 建树</text><text x="395.8" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">240°</text><rect id="seg4" x="448.9" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="498" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">行索引</text><text x="498" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">320°</text><rect id="seg5" x="551.1" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="600.2" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">bti 点查</text><text x="600.2" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">400°</text><rect id="seg6" x="653.3" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="702.4" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">big 对照</text><text x="702.4" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">480°</text><rect id="seg7" x="755.6" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="804.7" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">堆账单</text><text x="804.7" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">560°</text><rect id="seg8" x="857.8" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="906.9" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">换格式</text><text x="906.9" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">640°</text><line id="subNow" x1="40" y1="44" x2="40" y2="126" stroke="#C46A0A" stroke-width="2"/><text x="500" y="152" font-size="11" fill="#6B695F" text-anchor="middle" font-weight="400">每格是一个可定格的关键时刻；分步时所有视图冻结到同一相位。</text></svg>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 轮 / 6.6 秒</span>
+</div>
+
+<div class="modebar">
+<span class="mlabel">快速跳转：</span>
+<button class="modebtn on" id="vMem">内存 trie（建树）</button>
+<button class="modebtn" id="vBti">bti 盘上点查</button>
+<button class="modebtn" id="vBig">big 对照</button>
+<span id="viewHint">同一棵树的两端：先看内存里怎么长，再看盘上怎么查。</span>
+</div>
+
+<div class="readout">
+<span class="ro">相位 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">device_47 查找 <b id="roLookup">--</b></span>
+<span class="ro">索引进堆 <b id="roHeap">--</b></span>
+<span class="ro">格式 <b id="roFmt">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav">
+<button class="btn" onclick="prevStep()">‹ 上一步</button>
+<button class="btn warn" onclick="nextStep()">下一步 ›</button>
+</span>
+</div>
+<div class="legend"><span><i></i>写入 / 贯穿案例</span><span><i class="g"></i>盘上 trie / 落盘</span><span><i class="r"></i>big 蓝色对照</span><span><i class="dash"></i>共享前缀</span></div>
+<p class="figcap">进度 0° = device_47 逐字节走进 trie，720° = 换格式收尾；分步定格的是关键时刻，不代表真实耗时。<br>口径：apache/cassandra master（7.0-SNAPSHOT）；默认内存账本 SkipListMemtable、默认格式 big；bti 索引量级为按源码注释推演（唯一前缀约 2n 节点），非实测。</p>
+</div>
+</div>
+
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：先把它当黑盒</h2></div>
+<p class="sec-sub">不急着拆类，只看它对外表现出什么。</p>
+<div class="quote"><i>先把系统当黑盒：只看输入、输出和边界，不急着解释内部。</i></div>
+
+<p>站在使用者的角度，这两个新词对外的表现是两句话：<b>换了内存账本的表，写入更稳、GC 更安静</b>；<b>换了盘上格式的表，账本开得再多，堆内存也不跟着涨</b>。而读写接口、CQL、压缩语义一概不变——这是格式层的换代，不是引擎的换代。</p>
+<div class="flow">
+<span class="node">分区键（字节序列）</span><span class="arr">→</span>
+<span class="node box">逐字节走进 trie（内存）</span>
+<span class="outbranch">
+<span class="outline"><span class="arr">→</span><span class="node">flush 印成盘上 trie（Partitions.db）</span></span>
+<span class="outline"><span class="arr">↳</span><span class="node">点查：逐字节导航 → 叶页 → 数据页</span></span>
+</span>
+</div>
+<p>黑盒承诺：前缀共享让键规整的负载省内存；打开账本的堆账单在 bti 上结构性变小。它不承诺「任何负载都更快」——写入高度倾斜时，分片单写者反而排队。</p>
+<p>先记住一个反直觉的点：<b>内存里那棵树和盘上那棵索引树是同一个思想的两半</b>。下一节拆开看两边各长什么样。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：部件各管什么</h2></div>
+<p class="sec-sub">先把结构钉住，再让时间进来。点下面的部件卡，动画里对应部分会亮起。</p>
+<div class="quote"><i>结构分解要 MECE：同一层只放同一粒度的部件。</i></div>
+<div class="figure"><svg viewBox="0 0 920 250" role="img" xmlns="http://www.w3.org/2000/svg"><text x="460" y="22" font-size="15" fill="#1F1E1A" text-anchor="middle" font-weight="600">一棵树的两端：内存 Trie 与盘上 BTI</text><text x="460" y="42" font-size="11.5" fill="#6B695F" text-anchor="middle" font-weight="400">内存按字节步进分片单写；盘上唯一前缀按页打包；big 对照是一套双层抽样索引</text><rect x="20" y="62" width="280" height="100" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="34" y="86" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">① TrieMemtable（内存）</text><text x="34" y="106" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">InMemoryTrie：leaf/chain/sparse/split/prefix</text><text x="34" y="122" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">分片单写、读并发（TrieMemtable.java:108-121）</text><text x="34" y="138" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">2GB 树上限，快满先封账（InMemoryTrie.java:46-58）</text><text x="34" y="154" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">启用：memtable 配置 + 表属性 memtable='trie'</text><rect x="330" y="62" width="280" height="100" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="344" y="86" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">② BTI 盘上索引（5.0，da）</text><text x="344" y="106" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">Partitions.db：分区键唯一前缀 → 位置</text><text x="344" y="122" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">Rows.db：分区内 16KB 行块的最短分隔符</text><text x="344" y="138" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">4096B 按页打包；打开只读 3 个 long</text><text x="344" y="154" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">BtiFormat.java:75-76、PartitionIndex.java:199-215</text><rect x="640" y="62" width="260" height="100" rx="10" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/><text x="654" y="86" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">③ big 对照（默认格式）</text><text x="654" y="106" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">Index.db 主索引 + Summary.db 堆内书签</text><text x="654" y="122" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">点查二分（BigTableReader.java:313）</text><text x="654" y="138" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">版本谱系 ma→pa；默认 selected_format=big</text><text x="654" y="154" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">Config.java:458</text><path d="M300 112 L326 112" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><path d="M610 112 L636 112" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><rect x="20" y="180" width="880" height="52" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.2"/><text x="460" y="202" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">贯穿案例：device_12 / device_47 / device_5 / device_51 / device_6 ——共享前缀 device_ 在两端都只存一遍</text><text x="460" y="222" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">内存树叶子挂分区数据家当；盘上树叶子挂「行索引位置或数据位置 + 哈希低位」，符号位区分两种去处。</text></svg></div>
+<div class="partgroup"><div class="gname">内存端</div><div class="parts"><button class="part" data-part="tree"><b>1. 内存 trie</b><span>5 个分区键的前缀树；查 device_47 走 9 步字节。</span></button><button class="part" data-part="n47"><b>2. device_47 路径</b><span>贯穿案例：d-e-v-i-c-e-_-4-7，琥珀高亮。</span></button></div></div><div class="partgroup"><div class="gname">盘上端</div><div class="parts"><button class="part" data-part="bti"><b>3. Partitions.db</b><span>分区 trie：根页 → 非叶页 → 叶页 payload → 数据页。</span></button><button class="part" data-part="rows"><b>4. Rows.db</b><span>分区内行块索引，16KB 粒度、最短分隔符。</span></button><button class="part" data-part="big"><b>5. big 对照</b><span>Summary（堆内）+ Index.db 二分 + Data.db。</span></button></div></div><div class="partgroup"><div class="gname">运维视图</div><div class="parts"><button class="part" data-part="cost"><b>6. 堆账单</b><span>打开 2 万本账：big 装摘要 vs bti 读 3 个 long。</span></button><button class="part" data-part="ver"><b>7. 版本谱系</b><span>big ma→pa、bti da→ea；默认 big，切 bti 换新账。</span></button></div></div>
+<p class="hint">静态图与动画共用同一套编号和口径；把动画暂停，它就是一张可打印的结构图。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：一步一停看顺序</h2></div>
+<p class="sec-sub">重点不是记住箭头，而是记住每一步「谁在等谁」。</p>
+<div class="quote"><i>动态分析看三件事：顺序、状态、触发条件。</i></div>
+
+<table class="grid">
+<tr><th>相位</th><th>谁在等谁</th><th>失败会怎样</th></tr>
+<tr><td>写 47 / 再插 4 键</td><td>写线程等所属分片的写锁</td><td>热点全砸一个分区 → 单写排队（数据建模问题）</td></tr>
+<tr><td>成树</td><td>树近 2GB → 请求封账</td><td>封账失败 → 继续用旧树，观察下次触发</td></tr>
+<tr><td class="hot">flush 建树</td><td>Builder 等有序键流逐键写入</td><td>写一半崩溃 → 半成品作废，重 flush</td></tr>
+<tr><td>行索引</td><td>Rows.db 随 flush 同步生成</td><td>块粒度选小 → 索引变大、读更准</td></tr>
+<tr><td class="hot">bti 点查</td><td>读线程逐页导航（页缓存）</td><td>非叶页不在缓存 → 多一次盘读，仍正确</td></tr>
+<tr><td>big 对照</td><td>读线程问 Summary → Index.db</td><td>摘要被压缩取样 → 二分多读几页</td></tr>
+<tr><td>堆账单 / 换格式</td><td>upgradesstables 逐本重写</td><td>中断可重跑；读写服务不中断</td></tr>
+</table>
+<p>这张表里最值得盯的是两行高亮：「flush 建树」是内存树与盘上树的交接——有序键流决定唯一前缀的形状；「bti 点查」是本章的核心动作——逐字节导航，跳转大多落在已缓存的非叶页里。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件 × 阶段</h2></div>
+<p class="sec-sub">同一部件在不同阶段扮演不同角色，这张矩阵是排障时的索引。</p>
+<div class="quote"><i>把部件放回阶段里，才能看清谁在什么时候接力。</i></div>
+
+<table class="grid">
+<tr><th>部件</th><th>写入</th><th>flush</th><th>bti 点查</th><th>big 点查</th></tr>
+<tr><td>内存 trie</td><td class="hot">逐字节补节点</td><td>整棵有序遍历输出</td><td>——</td><td>——</td></tr>
+<tr><td>Partitions.db</td><td>——</td><td class="hot">自底向上按页写</td><td class="hot">逐字节导航</td><td>——</td></tr>
+<tr><td>Rows.db</td><td>——</td><td>随分区写块</td><td>定位行块起点</td><td>——</td></tr>
+<tr><td>Summary/Index.db</td><td>——</td><td>big 才有</td><td>——</td><td class="hot">摘要定位+二分</td></tr>
+<tr><td>堆内存</td><td>trie 缓冲</td><td>转页缓存</td><td>bti：几乎不占</td><td class="hot">Summary 在册</td></tr>
+</table>
+<p>注意「堆内存」这一行：写入时它属于 trie，flush 后把位置让给页缓存，点查时两种格式的差别才显形——big 的摘要在册，bti 的索引随用随取。同一笔内存预算，在三段生命周期里换了三次主人。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：它依赖什么才能成立</h2></div>
+<p class="sec-sub">拆掉任意一个外部依赖，前面看到的行为都会变。</p>
+<div class="quote"><i>任何机制都有环境前提；拆掉外部依赖，它就不再成立。</i></div>
+<div class="envcards">
+<div class="env"><b>键分布均匀</b><span>分片单写模型的前提；写集中少数分区时收益变负（yaml:826-834 的官方警告）。</span></div>
+<div class="env"><b>memtable 配置</b><span>yaml 定义 skiplist/trie，表属性 memtable 按表选择；默认 default 继承 skiplist。</span></div>
+<div class="env"><b>sstable.selected_format</b><span>默认 big（Config.java:458）；bti 只影响新建账本，upgradesstables 换血。</span></div>
+<div class="env"><b>页缓存</b><span>bti 的性能假设：非叶页常驻；冷账本靠布隆 + 预取兜底（BtiFormat.md）。</span></div>
+<div class="env"><b>column_index_size</b><span>行块粒度：big 默认 64KB、bti 默认 16KB（yaml:1245 注释）；调小索引变大读更准。</span></div>
+</div>
+<p class="figcap">边界：本页画的是单节点、单表视角；1000 万键的索引量级为推演。trie 的 O(log n) 跳转针对哈希分布的分区键，键名高度倾斜时树会变深。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">六个问题，检查你是否能在边界上做判断。</p>
+<div class="quote"><i>自测不是复述结论，而是检查你能否在边界上做判断。</i></div>
+<div id="quiz"></div>
+</section>
+
+
+<div class="summary">
+<h2>一页带走</h2>
+
+<p class="chant">前缀共享省内存，逐字节步进；盘上 trie 走页缓存，打开只读三个数。</p>
+<p>· 内存端 TrieMemtable：按字节步进、分片单写、树近 2GB 封账——默认仍是跳表，表属性 memtable 按表切换。</p>
+<p>· 盘上端 BTI：与 big 同一套数据文件，主索引换成 Partitions.db/Rows.db 两棵盘上 trie，没有 Summary.db。</p>
+<p>· 点查 device_47：bti 逐字节导航 + 叶页确认；big 摘要定位 + Index.db 二分——终点相同，打开账本的堆账单不同。</p>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+</div>
+
+<script>
+(function(){
+var PERIOD=6600,PHASE_MAX=720;
+var STEPS=[{"d":0,"t":"写 47","x":"device_47 进 TrieMemtable：token 定位分片，按字节 d-e-v-i-c-e-_-4-7 逐字节步进插入。"},{"d":80,"t":"再插 4 键","x":"device_12/5/51/6 依次进树：共享前缀 device_ 的节点全部复用，只补各自的尾巴。"},{"d":160,"t":"成树","x":"5 键成树：最长独占路径两三个字节；叶子挂分区数据家当，树近 2GB 阈值先封账。"},{"d":240,"t":"flush 建树","x":"PartitionIndexBuilder 按有序键流增量建树：只存最短区分前缀，自底向上装进 4096B 页 → Partitions.db。"},{"d":320,"t":"行索引","x":"Rows.db 同步生成：分区内行按 16KB 块索引，块间存最短分隔符（如 son）。"},{"d":400,"t":"bti 点查","x":"查 device_47：布隆 → 根页逐字节导航 → 叶页 payload（hash 低位比对）→ 数据页确认，非叶页常驻页缓存。"},{"d":480,"t":"big 对照","x":"同一本账用 big：Summary（1/128 抽样进堆）定位 → Index.db 二分 → Data.db；打开账本还要先装摘要。"},{"d":560,"t":"堆账单","x":"2 万本账冷启动：big 的 Summary 持续在册（index_summary_capacity 预算）；bti 只读 3 个 long，不查几乎不占。"},{"d":640,"t":"换格式","x":"默认仍 big（Config.java:458）；切 bti 只影响新建账本，nodetool upgradesstables 逐本换血，读写不中断。"}];
+var PARTS={"tree":["treePanel","treeChain","treeNote"],"n47":["n47"],"bti":["btiPanel","pageRoot","pageInner","pageLeaf","dataPage","btiArrow"],"rows":["rowsNote"],"big":["bigPanel","bigSummary","bigIndex","bigData"],"cost":["costPanel"],"ver":["verPanel"]};
+var CHIPS=[{"k":"tree","l":"内存树"},{"k":"bti","l":"Partitions.db"},{"k":"big","l":"Summary"},{"k":"fmt","l":"格式"}];
+var QUIZ=[{"q":"TrieMemtable 里查找一个分区键，比较的粒度是？","opts":["整个键一次比较","一个字节，逐步走边","一个 token"],"a":1,"exp":"trie 把键拆成字节序列逐字节步进（OSS50 字节序表示）；查 device_47 走 9 步，查不存在的键在断头处提前出局。"},{"q":"7.0 master 的出厂默认内存账本与 SSTable 格式分别是？","opts":["TrieMemtable + bti","SkipListMemtable + big","TrieMemtable + big"],"a":1,"exp":"默认 memtable 工厂是 SkipListMemtableFactory（MemtableParams.java:99），默认 selected_format=big（Config.java:458）；两个都要显式切换。"},{"q":"bti 打开一本 SSTable 要做什么？","opts":["把整个 Partitions.db 装进堆","只读文件尾 3 个 long，索引走页缓存按需取页","重建 Summary 摘要"],"a":1,"exp":"PartitionIndex.load 只读 footer（最小/最大键位置、键数、根位置）；索引本体在页缓存里按需导航——这是 bti「打开不进堆」的核心。"},{"q":"bti 为什么可以没有 Summary.db？","opts":["因为它没有布隆过滤器","分区索引本身是盘上 trie：唯一前缀 + 按页打包，无需抽样摘要","因为分区数总是很少"],"a":1,"exp":"big 需要摘要是因为 Index.db 要二分、先用粗书签定段；bti 的 trie 天然支持逐字节导航，非叶页规模小且稳定，直接常驻页缓存。"},{"q":"Partitions.db 叶子节点的 payload 存的是什么？","opts":["分区的全部行","行索引位置（正数）或直达数据位置（按位取反）+ 键哈希低位","下一个分区的键"],"a":1,"exp":"符号位区分两种去处；payload 还捎带哈希低位用于不开文件就排除错配——两种位置都以完整键比对收尾。"},{"q":"把节点 yaml 改成 bti 并重启后，已有的 pa-big 账本会怎样？","opts":["启动时自动重写成 bti","原样继续读；只有新 flush/压缩产出 bti，存量靠 upgradesstables 换血","无法读取，必须先降级"],"a":1,"exp":"读路径认格式认版本，新旧混存无碍；切换只影响新建账本。nodetool upgradesstables（StorageService.java:2787）可逐本重写，代价等同压缩。"}];
+var WP=[[0,64,140],[15,100,140],[30,196,140],[45,292,140],[60,330,140],[70,368,140],[80,330,119],[100,330,184],[115,330,161],[125,372,154],[160,368,140],[200,368,140],[235,560,114],[260,670,114],[300,726,114],[335,776,114],[370,670,114],[400,776,114],[430,910,114],[455,910,114],[470,587,262],[500,738,262],[530,884,262],[550,884,262],[560,259,390],[630,259,390],[645,741,390],[720,741,390]];
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var vMem=document.getElementById('vMem'),vBti=document.getElementById('vBti'),vBig=document.getElementById('vBig'),viewHint=document.getElementById('viewHint');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,STEP_DUR=650;
+var stepIdx=-1;
+var el={};
+document.querySelectorAll('#eng [id],#eng2 [id]').forEach(function(n){el[n.id]=n;});
+function setOp(id,v){var n=typeof id==='string'?el[id]:id;if(n)n.setAttribute('opacity',v.toFixed(2));}
+function setText(id,s){var n=el[id]||document.getElementById(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setAttr(id,k,v){var n=el[id];if(n)n.setAttribute(k,v);}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){return t*t*(3-2*t);}
+function posOn(wp,th){
+  if(!wp||wp.length<2)return null;
+  var p=norm(th);var i=0;while(i<wp.length-2&&p>wp[i+1][0])i++;
+  var a=wp[i],b=wp[i+1];var t=(p-a[0])/((b[0]-a[0])||1);t=clamp(t,0,1);
+  return [a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+}
+function band(id,a,b,lo,hi){setOp(id,(pr>=a&&pr<b)?(hi===undefined?1:hi):(lo===undefined?0.2:lo));}
+var pr=0;
+function setChip(k,v,on){var n=document.querySelector('#stateChips .chip[data-k="'+k+'"]');if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',!!on);n.classList.toggle('off',!on);}
+
+function renderScene(){
+  band('treePanel',0,720,0.9,1);
+  setOp('treeChain',pr>=15?1:0.35);
+  setOp('n47',pr>=0?1:0.2);
+  setOp('treeNote',pr>=160?1:0.3);
+  setOp('btiPanel',pr>=200?1:0.45);
+  setOp('pageRoot',pr>=240?1:0.4);
+  setOp('pageInner',pr>=240?1:0.4);
+  setOp('pageLeaf',(pr>=240&&pr<480)?0.55:(pr>=400?1:0.4));
+  setOp('btiArrow',pr>=400?1:0.3);
+  setOp('dataPage',(pr>=400&&pr<480)?1:0.45);
+  setOp('rowsNote',pr>=320?1:0.35);
+  setOp('bigPanel',pr>=480?1:0.4);
+  setOp('bigSummary',(pr>=480&&pr<560)?1:0.45);
+  setOp('bigIndex',pr>=480?1:0.45);
+  setOp('bigData',pr>=480?0.8:0.4);
+  setOp('bigArrow1',pr>=480?1:0.3);setOp('bigArrow2',pr>=480?1:0.3);
+  band('costPanel',560,640,0.5,1);
+  band('verPanel',640,720,0.5,1);
+  var lookup='未开始';
+  if(pr>=480&&pr<560)lookup='big：摘要定位 + 数页二分';
+  else if(pr>=400)lookup='bti：9 步字节导航 + 叶页确认';
+  else if(pr>=240)lookup='建索引中';
+  else if(pr>=0)lookup='建树中（写入同路）';
+  setText('roLookup',lookup);
+  var heap='0（bti 只读 3 long）';
+  if(pr>=480&&pr<640)heap='Summary 常驻（big）';
+  else if(pr>=560)heap='对比见左下：big 在册 vs bti 近零';
+  setText('roHeap',heap);
+  var fmt='big（默认）';
+  if(pr>=640)fmt='big → bti（新建起）';
+  setText('roFmt',fmt);
+  setChip('tree',pr>=160?'5 键成树':pr>=15?'建树中':'空树',pr>=15);
+  setChip('bti',pr>=240?'已建好':pr>=200?'建树中':'未生成',pr>=240);
+  setChip('big',pr>=480?'在册':'不适用',pr>=480&&pr<560);
+  setChip('fmt',fmt.slice(0,9),pr>=640);
+}
+
+function renderSub(th){
+  var p=norm(th); var si=0;
+  for(var i=0;i<STEPS.length;i++){if(p>=STEPS[i].d)si=i;}
+  for(var i=0;i<STEPS.length;i++){setOp('seg'+i,i===si?1:0.35);}
+  var x=40+(p/PHASE_MAX)*920;
+  setAttr('subNow','x1',x.toFixed(1)); setAttr('subNow','x2',x.toFixed(1));
+}
+
+function render(th){
+  pr=norm(th);
+  setText('roPhase',Math.round(pr)+'°');
+  var si=0;for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)si=i;}
+  if(mode==='step'&&stepIdx>=0)si=stepIdx;
+  setText('roStep',STEPS[si]?STEPS[si].t:'—');
+  var p=posOn(WP,th);
+  if(p){setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));setOp('tok',1);}else{setOp('tok',0);}
+  renderScene();
+  if(typeof renderSub==='function')renderSub(th,pr,si);
+}
+function tick(now){
+  var dt=Math.min(50,now-last);last=now;
+  if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+  if(mode==='step'&&stepTo!==null){
+    stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);
+    var p=stepElapsed/STEP_DUR;var e=smooth(p);
+    phase=stepFrom+(stepTo-stepFrom)*e;
+    if(p>=1){phase=((stepTo%PERIOD)+PERIOD)%PERIOD;stepTo=null;}
+  }
+  render(phase/PERIOD*PHASE_MAX);
+  requestAnimationFrame(tick);
+}
+function setAuto(on){
+  mode='auto';run=on;stepTo=null;btn.textContent=on?'暂停':'播放';
+  if(on){stepIdx=-1;document.querySelectorAll('.stepnode').forEach(function(d){d.classList.remove('on');});
+  stepT.textContent='自动运转模式';stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格。';}
+}
+window.goStep=function(i){
+  stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+  var target=STEPS[stepIdx].d/PHASE_MAX*PERIOD;var delta=target-phase;
+  if(reduced||Math.abs(delta)>PERIOD/3){phase=target;stepTo=null;render(target/PERIOD*PHASE_MAX+0.01);}
+  else{stepFrom=phase;stepTo=phase+delta;stepElapsed=0;render(phase/PERIOD*PHASE_MAX+0.01);}
+  btn.textContent='继续自动运转';
+  document.querySelectorAll('.stepnode').forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+  stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+  stepX.textContent=STEPS[stepIdx].x;
+  syncViewBtns(STEPS[stepIdx].d);
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+function syncViewBtns(d){
+  vMem.classList.toggle('on',d<200);
+  vBti.classList.toggle('on',d>=200&&d<480);
+  vBig.classList.toggle('on',d>=480);
+}
+function jumpTo(deg,hint){
+  mode='step';run=false;stepIdx=null;
+  var target=deg/PHASE_MAX*PERIOD;
+  phase=target;stepTo=null;
+  render(target/PERIOD*PHASE_MAX+0.01);
+  btn.textContent='继续自动运转';
+  document.querySelectorAll('.stepnode').forEach(function(d){d.classList.remove('on');});
+  var si=0;for(var i=0;i<STEPS.length;i++){if(deg>=STEPS[i].d)si=i;}
+  stepT.textContent='跳转视图 · 相位 '+deg+'° · '+STEPS[si].t;
+  stepX.textContent=hint;
+  syncViewBtns(deg);
+}
+vMem.onclick=function(){jumpTo(0,'内存视图：看 5 个键怎么共享前缀、逐字节补节点；写与查走同一条路。');viewHint.textContent='内存视图：分片单写、读并发；树近 2GB 上限先封账。';};
+vBti.onclick=function(){jumpTo(400,'bti 视图：布隆 → 根页逐字节导航 → 叶页 payload → 数据页确认；非叶页常驻页缓存。');viewHint.textContent='bti 视图：打开账本只读 3 个 long，索引本体在页缓存。';};
+vBig.onclick=function(){jumpTo(480,'big 对照：Summary（1/128 抽样进堆）→ Index.db 二分 → Data.db；打开账本先装摘要。');viewHint.textContent='big 对照：双层抽样索引；打开账本要装 Summary 进堆。';};
+btn.textContent=run?'暂停':'播放';
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+for(var s=0;s<STEPS.length;s++){(function(n){
+  var b=document.createElement('button');b.className='stepnode';
+  b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+  b.onclick=function(){goStep(n);};stepBar.appendChild(b);
+})(s);}
+CHIPS.forEach(function(c){var sp=document.createElement('span');sp.className='chip';sp.setAttribute('data-k',c.k);sp.innerHTML=c.l+' <b>--</b>';document.getElementById('stateChips').appendChild(sp);});
+document.querySelectorAll('.part').forEach(function(b){
+  b.onclick=function(){
+    var ids=PARTS[b.getAttribute('data-part')]||[];
+    ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+    document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+    setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+  };
+});
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+  var d=document.createElement('div');d.className='q';
+  var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+  it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+  h+='<div class="exp">'+it.exp+'</div>';d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+  var b=e.target.closest('.opt');if(!b)return;var box2=b.parentElement;if(box2.classList.contains('done'))return;
+  box2.classList.add('done');
+  var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+  box2.querySelectorAll('.opt').forEach(function(x,n){x.classList.add(n===QUIZ[qi].a?'right':'wrong');});
+});
+var BASE=(location.pathname.split('/cassandra-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/cassandra/lab';
+document.getElementById('lnkArt').href=BASE+'/cassandra/engine/03-trie-formats';
+
+requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

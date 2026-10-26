@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>基于块的表内部机制：把 SST 拆成一块一块 · RocksDB 互动原理实验室 第 8 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#fff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:960px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#fff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:38px 0 22px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:710px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#fff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:500;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:11.5px;fill:#3B3A34}
+.tn{font-size:12.5px;font-weight:500;fill:#1F1E1A}
+.tag{font-size:10px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:68px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+section{padding:34px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .arr{color:#C46A0A;font-weight:600}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.figcap b{color:#3B3A34;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:13.5px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 9px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#scene [opacity]{transition:opacity .22s ease}
+#eng .hl,#eng2 .hl{stroke:#D96C06 !important;stroke-width:2.2 !important}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+@media (prefers-reduced-motion: reduce){#scene [opacity]{transition:none}}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：基于块的表内部机制：把 SST 拆成一块一块</a>
+  <span class="idx">第 8 / 12 章</span>
+</div>
+<div class="page">
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · 块内部机制</div>
+<h1>块里的排版：每行只写和上一行不同的部分</h1>
+<p>点查一个 40 字节的键，盘上却落了 4 KB 的读；把 <code>block_size</code> 调大到 64 KB 想少跑几趟，点查 P99 反而从 0.9 ms 涨到 3 ms——<code>sst_dump</code> 给出答案：块平均 63 KB，单次点查解压的字节翻了 15 倍。差别在块的内部编码：它决定了块内二分能不能成立，也决定了每次点查要背多少额外字节。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span><span class="mnode">② 静态分解</span><span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span><span class="mnode">⑤ 环境场景</span><span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 560" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>data block 内部编码：前缀压缩 + restart 路标</title><defs><marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="g" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="r" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker></defs><text class="th" x="500" y="22" text-anchor="middle">data block 内部：前缀压缩 + restart 路标</text><text class="ts" x="500" y="40" text-anchor="middle">主图 = 三个键逐个写入与满块路标；副图 = filter→index→data 三级定位链（同一相位）</text><text class="tag" x="958" y="22" text-anchor="end">琥珀 = 正在写入的键增量</text><text class="tag" x="958" y="38" text-anchor="end">绿 = 路标 / 放行 · 红 = 丢弃 / 拒绝</text>
+<g id="scene">
+<rect x="40" y="52" width="520" height="340" rx="10" fill="#FBFAF6" stroke="#ECEAE2"/><text class="tn" x="52" y="72">data block 内部：每行只写「和上一行不同的部分」</text>
+<text class="tag" x="73" y="88" text-anchor="middle" style="font-size:8.5px">shared</text><text class="tag" x="122" y="88" text-anchor="middle" style="font-size:8.5px">non_shared</text><text class="tag" x="168" y="88" text-anchor="middle" style="font-size:8.5px">value_len</text><text class="tag" x="251" y="88" text-anchor="middle">key_delta</text><text class="tag" x="340" y="88" text-anchor="middle">value</text>
+<g id="row1" opacity="0"><rect x="64" y="96" width="34" height="44" rx="5" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/><text class="tb" x="81" y="122" text-anchor="middle">00</text><rect x="102" y="96" width="38" height="44" rx="5" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/><text class="tb" x="121" y="122" text-anchor="middle">09</text><rect x="144" y="96" width="38" height="44" rx="5" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/><text class="tb" x="163" y="122" text-anchor="middle">02</text><rect x="186" y="96" width="130" height="44" rx="5" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/><text class="tb" x="251" y="122" text-anchor="middle">device_47</text><rect x="320" y="96" width="40" height="44" rx="5" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/><text class="tb" x="340" y="122" text-anchor="middle">值</text><text class="tag" x="368" y="122">← restart：完整键从此起算</text></g>
+<g id="row2" opacity="0"><rect x="64" y="148" width="34" height="44" rx="5" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/><text class="tb" x="81" y="174" text-anchor="middle">09</text><rect x="102" y="148" width="38" height="44" rx="5" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/><text class="tb" x="121" y="174" text-anchor="middle">06</text><rect x="144" y="148" width="38" height="44" rx="5" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/><text class="tb" x="163" y="174" text-anchor="middle">02</text><rect x="186" y="148" width="66" height="44" rx="5" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/><text class="tb" x="219" y="174" text-anchor="middle">:temp</text><rect x="256" y="148" width="40" height="44" rx="5" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/><text class="tb" x="276" y="174" text-anchor="middle">值</text><text class="tag" x="304" y="174">← 共享 9 字节，只存剩下 6B（省 9）</text></g>
+<g id="row3" opacity="0"><rect x="64" y="200" width="34" height="44" rx="5" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/><text class="tb" x="81" y="226" text-anchor="middle">08</text><rect x="102" y="200" width="38" height="44" rx="5" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/><text class="tb" x="121" y="226" text-anchor="middle">01</text><rect x="144" y="200" width="38" height="44" rx="5" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/><text class="tb" x="163" y="226" text-anchor="middle">02</text><rect x="186" y="200" width="30" height="44" rx="5" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/><text class="tb" x="201" y="226" text-anchor="middle">8</text><rect x="220" y="200" width="40" height="44" rx="5" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/><text class="tb" x="240" y="226" text-anchor="middle">值</text><text class="tag" x="268" y="226">← 与 device_47:temp 共享 8，只存 1B</text></g>
+<text id="savT" class="tb" x="52" y="268" fill="#854F0B" opacity="0">键材料 33B → 16B（省 52%）；代价：每个 entry 3 个 varint32 长度头，共享越少越不划算</text>
+<text class="tag" x="52" y="290">满块示意（64 键 · block_restart_interval=16 → 4 个路标，键 1 / 17 / 33 / 49）</text>
+<g id="rc1g" opacity="0"><rect id="rc1" x="64" y="300" width="100" height="40" rx="5" fill="#EAF3DE" stroke="#639922" stroke-width="1.1"/><text class="tag" x="114" y="316" text-anchor="middle">restart@键1</text><text class="tag" x="114" y="331" text-anchor="middle">键 1–16</text></g><g id="rc2g" opacity="0"><rect id="rc2" x="168" y="300" width="100" height="40" rx="5" fill="#FFFFFF" stroke="#B4B2A9" stroke-width="1.1"/><text class="tag" x="218" y="316" text-anchor="middle">restart@键17</text><text class="tag" x="218" y="331" text-anchor="middle">键 17–32</text></g><g id="rc3g" opacity="0"><rect id="rc3" x="272" y="300" width="100" height="40" rx="5" fill="#FFFFFF" stroke="#B4B2A9" stroke-width="1.1"/><text class="tag" x="322" y="316" text-anchor="middle">restart@键33</text><text class="tag" x="322" y="331" text-anchor="middle">键 33–48</text></g><g id="rc4g" opacity="0"><rect id="rc4" x="376" y="300" width="100" height="40" rx="5" fill="#FFFFFF" stroke="#B4B2A9" stroke-width="1.1"/><text class="tag" x="426" y="316" text-anchor="middle">restart@键49</text><text class="tag" x="426" y="331" text-anchor="middle">键 49–64</text>
+</g><g id="tailRg" opacity="0"><rect id="tailR" x="64" y="356" width="180" height="26" rx="5" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/><text class="tag" x="154" y="373" text-anchor="middle">restarts 数组（4 × uint32）</text></g><g id="tailNg" opacity="0"><rect id="tailN" x="252" y="356" width="106" height="26" rx="5" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/><text class="tag" x="305" y="373" text-anchor="middle">num_restarts = 4</text></g><g id="tailTg" opacity="0"><rect id="tailT" x="366" y="356" height="26" width="162" rx="5" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.1"/><text class="tag" x="447" y="373" text-anchor="middle">5B trailer：1B 压缩类型 + 4B 校验和</text>
+</g><rect x="580" y="52" width="380" height="340" rx="10" fill="#FBFAF6" stroke="#ECEAE2"/><text class="tn" x="592" y="72">三笔账：省字节 · 查找 · 封口</text>
+<text class="tag" x="592" y="92">键材料账（device_47 / device_47:temp / device_48）</text>
+<rect x="592" y="100" width="330" height="14" rx="3" fill="#ECEAE2"/><text class="tag" x="928" y="111" text-anchor="end">33B</text><rect id="encBar" x="592" y="120" width="0" height="14" rx="3" fill="#EF9F27"/><text id="encT" class="tag" x="592" y="150" fill="#854F0B">编码后 0B</text>
+<g id="seekAcc"><text class="tb" x="592" y="176">Seek("device_48")：对 4 个路标二分 ≈ 2 次比较</text><text class="tag" x="592" y="192">→ 落到键 33 的路标 → 线性扫 ≤16 个 entry</text><text class="tag" x="592" y="208">没有 restart：从头线性解 64 个 entry，每条都要先拼回前缀才能比</text></g>
+<text class="tag" x="592" y="234">interval=1：前缀压缩完全失效；interval=64：线性段长到 64 条</text><text class="tag" x="592" y="250">默认 16 =「压缩收益 × 块内扫描长度」的折中点</text>
+<text class="tag" x="592" y="276">封口按字节切：估计达 block_size=4096，或再塞就超且已超</text><text class="tag" x="592" y="292">4096×90%=3686 才切（block_size_deviation=10）</text><text class="tag" x="592" y="308">2MB 大值独占一块——块结构对大值的第一声警报（blob 引子）</text>
+<text class="tag" x="592" y="334">块内哈希索引 kDataBlockBinaryAndHash：默认关；</text><text class="tag" x="592" y="350">restart &gt; 253 或块 &gt; 64KB 自动放弃——省 CPU 比较不省 I/O</text>
+</g>
+<circle id="tok" cx="201" cy="112" r="7" fill="#EF9F27" stroke="#D97E06" stroke-width="1.4"/>
+</svg>
+
+<div class="subview">
+<div class="viewtitle">第二视图 · 同一相位下的三级定位链：先看小抄，再翻页</div>
+<svg id="eng2" viewBox="0 0 1000 220" role="img" xmlns="http://www.w3.org/2000/svg">
+<g id="scene2"><text class="tn" x="36" y="20" text-anchor="start">一次点查 = filter → index → data 三张小抄，各读一次（缓存热了全是内存操作）</text>
+<rect id="eF" x="52" y="36" width="270" height="64" rx="8" fill="#EFF6FF" stroke="#2563EB" stroke-width="1.2"/><text class="tb" x="187" y="60" text-anchor="middle">① filter block</text><text class="tag" x="187" y="78" text-anchor="middle">bloomfilter:9.9 ≈ 1% 误判 · 整块进缓存</text><line x1="324" y1="68" x2="372" y2="68" stroke="#639922" stroke-width="1.5" marker-end="url(#g)"/>
+<rect id="eI" x="380" y="36" width="270" height="64" rx="8" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/><text class="tb" x="515" y="60" text-anchor="middle">② index block</text><text class="tag" x="515" y="78" text-anchor="middle">缩短分隔键 → BlockHandle</text><line x1="652" y1="68" x2="700" y2="68" stroke="#639922" stroke-width="1.5" marker-end="url(#g)"/>
+<rect id="eD" x="708" y="36" width="240" height="64" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/><text class="tb" x="828" y="60" text-anchor="middle">③ data block</text><text class="tag" x="828" y="78" text-anchor="middle">块内二分 + 线性扫描</text>
+<rect id="eMiss" x="52" y="120" width="270" height="48" rx="8" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.1" stroke-dasharray="4 3" opacity="0"/><text class="tag" x="187" y="140" text-anchor="middle" fill="#B03030">布隆说不存在 → 到此为止：</text><text class="tag" x="187" y="156" text-anchor="middle" fill="#B03030">0 次数据读，整文件免读</text>
+<text class="tag" x="352" y="134">index 键用 FindShortestSeparator 缩短：device_47:temp 与 device_60 之间 → device_5</text><text class="tag" x="352" y="150">1GB 文件 ≈ 25 万项 ≈ 5MB；大文件用分区索引 kTwoLevelIndexSearch（metadata_block_size=4KB）</text><text class="tag" x="352" y="166">filter / index 常驻高优先缓存，data block 按 LRU 淘汰</text><text class="tag" x="352" y="186">最好情况 = 3 次内存查找；最坏 = 3 次盘读加解压——读取漏斗落到文件内部就是这三步</text></g>
+<circle id="tok2" cx="187" cy="68" r="6" fill="#639922" stroke="#4C7A1A" stroke-width="1.4" opacity="0"/>
+</svg>
+</div>
+
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.5" max="2" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm">默认 ≈ 6 秒 / 轮</span>
+</div>
+<div class="readout">
+<span class="ro">进度 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">读数 <b id="roKey">--</b></span>
+<span class="ro">原始键字节 <b id="roRaw">--</b></span>
+<span class="ro">编码后 <b id="roEnc">--</b></span>
+<span class="ro">restart 数 <b id="roRst">--</b></span>
+<span class="ro">布隆判定 <b id="roBloom">--</b></span>
+<span class="ro">I/O 次数 <b id="roIO">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav"><button class="btn" onclick="prevStep()">‹ 上一步</button><button class="btn warn" onclick="nextStep()">下一步 ›</button></span>
+</div>
+<p class="figcap">进度 0° = 第一个键写入，720° = 块内二分落定。前缀压缩算例与文章一致：device_47（9B）/ device_47:temp（15B）/ device_48（9B）→ 键材料 33B 压成 16B，省 52%；满块示意 64 键、4 个路标为文章算例。<br>口径：RocksDB 11.13.0；block_size=4096、block_size_deviation=10（→3686 线）、block_restart_interval=16、index_block_restart_interval=1、metadata_block_size=4096、bloomfilter:9.9 ≈1% 误判、Ribbon 同误判率省约 30% 空间。</p>
+</div>
+</div>
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：块是 I/O、缓存和压缩共同的最小单位</h2></div>
+<p class="sec-sub">先不拆编码，只看它对外表现出什么。</p>
+<div class="quote">「观察一个系统，先分清它的静态结构、动态过程和外部依赖。」</div>
+<p>同一个块结构，三件事都压在它身上：读它就是一次 I/O（块体 + 5 字节 trailer）；缓存它就是一个条目；压缩它就是一次独立实验（压不赢就原样落盘）。所以 <code>block_size</code> 调大到 64 KB，「一次多读点」的顺序扫收益，会被「点查解压字节 ×15」吃回去——块的平均大小就是点查的下限成本。</p>
+<div class="flow">
+<span class="node">键按序写入</span><span class="arr">→</span><span class="node box">前缀压缩：只存增量</span><span class="arr">→</span><span class="node box">restart：每 16 键存一次完整键</span><span class="arr">→</span><span class="node">块满封口（4096/3686 线）</span><span class="arr">→</span><span class="node">filter → index → data 三级定位</span>
+</div>
+<p>把 data block 想成一页只写连续账号的账页：每行只写「和上一行不同的部分」，但每隔 16 行重新誊一遍完整账号——翻页查账时，先看页边的行号目录（restart 数组）二分定位，再顺着誊清的行往下对。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：entry 格式与块尾路标</h2></div>
+<p class="sec-sub">点部件卡片，动画里对应的结构会亮起。</p>
+<div class="quote">「分解要 MECE：同一层粒度一致，不重不漏。」</div>
+<div class="figure"><svg viewBox="0 0 920 170" role="img" xmlns="http://www.w3.org/2000/svg"><text x="460" y="16" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">entry 格式（block_builder.cc:21-36）与块尾布局（:228-247）</text>
+<rect x="40" y="30" width="130" height="34" rx="5" fill="#EFF6FF" stroke="#2563EB"/><text x="105" y="51" font-size="11" fill="#3B3A34" text-anchor="middle">shared_bytes varint32</text><rect x="174" y="30" width="140" height="34" rx="5" fill="#EFF6FF" stroke="#2563EB"/><text x="244" y="51" font-size="11" fill="#3B3A34" text-anchor="middle">unshared_bytes varint32</text><rect x="318" y="30" width="130" height="34" rx="5" fill="#EFF6FF" stroke="#2563EB"/><text x="383" y="51" font-size="11" fill="#3B3A34" text-anchor="middle">value_length varint32</text><rect x="452" y="30" width="180" height="34" rx="5" fill="#FFF6E8" stroke="#EF9F27"/><text x="542" y="51" font-size="11" fill="#3B3A34" text-anchor="middle">key_delta（键增量字节）</text><rect x="636" y="30" width="120" height="34" rx="5" fill="#FFFFFF" stroke="#3B3A34"/><text x="696" y="51" font-size="11" fill="#3B3A34" text-anchor="middle">value（原始字节）</text>
+<rect x="40" y="76" width="300" height="30" rx="5" fill="#FBFAF6" stroke="#B4B2A9" stroke-dasharray="4 3"/><text x="190" y="95" font-size="10.5" fill="#6B695F" text-anchor="middle">… entries …（每 16 个键强制 shared=0 存一个完整键）</text><rect x="344" y="76" width="180" height="30" rx="5" fill="#EAF3DE" stroke="#639922"/><text x="434" y="95" font-size="10.5" fill="#3B3A34" text-anchor="middle">restarts 数组（每项 uint32）</text><rect x="528" y="76" width="110" height="30" rx="5" fill="#EAF3DE" stroke="#639922"/><text x="583" y="95" font-size="10.5" fill="#3B3A34" text-anchor="middle">num_restarts</text><rect x="642" y="76" width="114" height="30" rx="5" fill="#FFFFFF" stroke="#3B3A34"/><text x="699" y="95" font-size="10.5" fill="#3B3A34" text-anchor="middle">哈希索引（可选）</text><rect x="760" y="76" width="118" height="30" rx="5" fill="#FCEBEB" stroke="#E24B4A"/><text x="819" y="95" font-size="10.5" fill="#3B3A34" text-anchor="middle">块 footer + 5B trailer</text>
+<text x="40" y="130" font-size="10.5" fill="#854F0B" font-weight="600">索引项是特例：index_block_restart_interval=1 → 每项都是完整键；值部分 fv ≥ 4 起做 delta（相邻块背靠背，句柄只存「和上一块差多少」）。</text><text x="40" y="150" font-size="10.5" fill="#6B695F">读侧 Block::Iter：先读块尾拿 num_restarts、回推 restart 数组位置；BinarySeekRestartPointIndex 对路标二分，命中后线性推进。</text></svg></div>
+<p class="figcap">静态标注图：entry 三个 varint32 头 + 键增量 + 值；块尾是 restart 数组与 num_restarts。与下方部件卡、动画结构一致。</p>
+<div class="partgroup"><div class="gname">写入侧</div><div class="parts">
+<button class="part" data-part="entry"><b>entry 编码</b><span>shared / non_shared / value_len 三个 varint32 + 键增量 + 值；device_47 系列三个键 33B → 16B，省 52%。</span></button>
+<button class="part" data-part="restart"><b>restart point</b><span>每 block_restart_interval=16 个键强制 shared=0 存完整键，偏移记进块尾数组——第 N 键不再依赖第 N−1 键。</span></button>
+<button class="part" data-part="flush"><b>FlushBlockBySizePolicy</b><span>估计达 block_size=4096，或再塞就超且已超 3686 才切；2MB 大值独占一块。</span></button>
+</div></div>
+<div class="partgroup"><div class="gname">查找侧（三张小抄）</div><div class="parts">
+<button class="part" data-part="filter"><b>filter block</b><span>bloomfilter:9.9 ≈1% 误判；说不存在 → 0 次数据读。误判只发生在「键不存在」的查询上。</span></button>
+<button class="part" data-part="index"><b>index block</b><span>缩短分隔键（device_5）→ BlockHandle；1GB ≈ 25 万项 ≈ 5MB；更大用分区索引切片进缓存。</span></button>
+<button class="part" data-part="seek"><b>BinarySeekRestartPointIndex</b><span>对 restart 数组标准二分，命中后线性推进——64 键 4 路标 ≈ 2 次比较 + ≤16 线性。</span></button>
+</div></div>
+<p class="hint">这些部件怎么在一条时间轴上接力？切到分步模式，看三个键怎么省出 52%、查找怎么三级跳。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：写三个键 + 查一个键，8 个相位</h2></div>
+<p class="sec-sub">第一遍看写侧怎么省字节（0–450°）；第二遍看读侧三级定位（450–720°）——副图的绿点同步走。</p>
+<div class="quote">「动态分析看的是时间轴上的顺序、状态变化和因果链。」</div>
+<table class="grid">
+<tr><th>相位</th><th>阶段</th><th>关键动作</th><th>读数</th></tr>
+<tr><td>0–90°</td><td>① 写键 1（完整）</td><td>device_47 无前键可共享：shared=0 存全键，同时是第 1 个 restart</td><td>键材料 9B</td></tr>
+<tr><td>90–180°</td><td>② 写键 2（共享前缀）</td><td>device_47:temp 共享 9 字节，只存 6B——省 9B</td><td class="hot">累计 24B→15B</td></tr>
+<tr><td>180–270°</td><td>③ 写键 3 + 省字节账</td><td>device_48 共享 8 字节只存 1B；33B → 16B，省 52%</td><td class="hot">省 52%</td></tr>
+<tr><td>270–360°</td><td>④ 记 restart point</td><td>每 16 键强制 shared=0：64 键块 → 4 个路标（键 1/17/33/49）</td><td class="hot">restart ×4</td></tr>
+<tr><td>360–450°</td><td>⑤ 块满封口</td><td>4096/3686 线切块；块尾 restarts 数组 + num_restarts + 5B trailer</td><td class="hot">块尾就位</td></tr>
+<tr><td>450–540°</td><td>⑥ 布隆查询</td><td>bloomfilter:9.9 ≈1% 误判；说不存在 → 0 次数据读（分支）</td><td class="hot">放行 · I/O 1</td></tr>
+<tr><td>540–630°</td><td>⑦ index 定位</td><td>缩短分隔键 device_5 → BlockHandle；25 万项 ≈ 5MB</td><td class="hot">I/O 2</td></tr>
+<tr><td>630–720°</td><td>⑧ 块内二分 + 线性</td><td>4 路标二分 ≈2 次 → 落键 33 路标 → 线性扫 ≤16 个 entry</td><td class="hot">I/O 3 · 命中</td></tr>
+</table>
+<p>相位零点：0° = 第一个键写入；720° = Seek("device_48") 在块内落定。restart 数 1 → 4 与 I/O 0 → 3 是本页的两条计数轴。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件 × 阶段</h2></div>
+<p class="sec-sub">同一部件在写块和查块两个阶段各演一个角色。</p>
+<div class="quote">「动静融合的关键是映射：每个部件在每一步里负责什么。」</div>
+<table class="grid">
+<tr><th>部件</th><th>①–③ 写入</th><th>④⑤ 路标与封口</th><th>⑥ 布隆</th><th>⑦ index</th><th>⑧ 块内查找</th></tr>
+<tr><td>entry 前缀压缩</td><td class="hot">只存增量，33B→16B</td><td class="act">restart 处强制存全键</td><td>—</td><td>—</td><td class="act">还原靠前键接力</td></tr>
+<tr><td>restart 数组</td><td>—</td><td class="hot">每 16 键记一个偏移</td><td>—</td><td>—</td><td class="hot">二分的路标</td></tr>
+<tr><td>块尾 trailer</td><td>—</td><td class="hot">1B 压缩类型 + 4B 校验和</td><td>—</td><td>—</td><td class="act">逐块自证清白</td></tr>
+<tr><td>filter block</td><td>—</td><td>—</td><td class="hot">说不存在 → 0 次数据读</td><td>—</td><td>—</td></tr>
+<tr><td>index block</td><td>—</td><td>—</td><td>—</td><td class="hot">缩短键 → BlockHandle</td><td class="act">给出目标块</td></tr>
+<tr><td>Block::Iter</td><td>—</td><td>—</td><td>—</td><td>—</td><td class="hot">二分路标 + 线性 ≤16</td></tr>
+</table>
+<p><b>涌现属性：</b>「块内二分能成立」不属于任何单个部件——它是前缀压缩（省字节）+ restart（可定位）+ 排序写入（有序）三方协同的结果。乱序写入会让三件事同时失效，这就是 SST「键必须严格升序」的报错守在这里的原因。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：块之外还有什么</h2></div>
+<p class="sec-sub">拆掉任何一个外部依赖，前面看到的账都要重算。</p>
+<div class="quote">「环境属性 = 外在关系 + 依赖 + 失效后果。」</div>
+<div class="envcards">
+<div class="env"><b>块缓存</b><span>filter/index 属于「一次读反复用」，可常驻或高优先级；data block 按 LRU 淘汰——一次点查最好 3 次内存查找，最坏 3 次盘读。</span></div>
+<div class="env"><b>字典压缩</b><span>4KB 块彼此独立、键只有十几字节，单块练不出字典；用前面若干块训练 16KB 字典存成 meta block，小键值压缩比从聊胜于无到 2~3 倍。</span></div>
+<div class="env"><b>分区索引 / 分区布隆</b><span>大文件把索引和布隆按 metadata_block_size=4KB 切片按需进缓存；代价是点查各多一跳顶层查询。</span></div>
+<div class="env"><b>optimize_key_common_prefix</b><span>fv ≥ 8：整块所有键的公共前缀只在块头存一次，restart 键里也剥掉——device_47xxx 这类超级前缀还能再瘦一圈。</span></div>
+<div class="env"><b>迭代器自动预取</b><span>连续块读触发预取：8KB 起步每次翻倍、上限默认 256KB——把「很多个小块读」并成少量大读，也是调大 block_size 收益递减的原因之一。</span></div>
+<div class="env"><b>Parquet 对照</b><span>两边押同一个赌注：数据排过序，「先看小抄再翻页」才划算。SST 的块服务点查（粒度细），Parquet 的页服务扫描（粒度粗）。</span></div>
+</div>
+<p class="figcap">边界：本页画的是 data block 的编码与查找 happy path + 布隆拒绝分支；块缓存的分片与二级缓存见第 10–11 章，大值出走见 blob 篇。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">能说清「restart 是一笔什么账」，才算真的懂块内排版。</p>
+<div class="quote">「用自己的话能讲清楚，才算真的懂。」</div>
+<div id="quiz"></div>
+</section>
+
+<div class="summary">
+<h2>一页带走</h2>
+<p class="chant">增量记账，十六行一誊；小抄三级，先筛再翻页。</p>
+<p>· entry = shared / non_shared / value_len 三个 varint32 + 键增量 + 值；三个键 33B → 16B 省 52%，代价是每 entry 3 个长度头。</p>
+<p>· restart point（默认每 16 键）用「每 16 键存一次完整键」换块内二分：64 键 4 路标 ≈ 2 次比较 + ≤16 线性。</p>
+<p>· 块按字节切（block_size 4096 + deviation 10 → 3686 线），块尾是 restarts 数组 + num_restarts + 5B trailer；大值独占块是 blob 的引子。</p>
+<p>· 一次点查 = filter → index → data 三张小抄各读一次；布隆说不存在就 0 次数据读，index 用缩短分隔键把索引项压小。</p>
+<p>· 边界与简化：键材料 9/15/9B 与 33→16B、64 键 4 路标、device_5 缩短键均为文章算例；block_size/restart interval/误判率默认值以 RocksDB 11.13 源码为准。</p>
+</div>
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+<script>
+var STEPS=[
+{d:0,t:"① 写键 1（完整）",x:"device_47 是块里第一个 entry：没有前键可共享，shared=0，9 字节全键照实存。它同时是第 1 个 restart point——键的完整地址从这里起算。",k:"键材料 9B"},
+{d:90,t:"② 写键 2（共享前缀）",x:"device_47:temp 与前键共享 9 字节，只存剩下的 6 字节——省 9B。每行只写「和上一行不同的部分」，这就是前缀压缩赚的钱。",k:"省 9B"},
+{d:180,t:"③ 写键 3 · 省字节账",x:"device_48 与 device_47:temp 共享 8 字节，只存 1 字节。三个键合计：键材料 33B 压成 16B，省 52%；代价是每个 entry 都要 3 个 varint32 长度头——共享越少越不划算。",k:"33B→16B · 省 52%"},
+{d:270,t:"④ 记 restart point",x:"前缀压缩的副作用：第 N 个键依赖第 N−1 个键。于是每 block_restart_interval=16 个键强制 shared=0 重存一个完整键，偏移记进块尾 restarts 数组——64 键的块就有 4 个路标（键 1、17、33、49）。",k:"restart ×4"},
+{d:360,t:"⑤ 块满封口",x:"块按字节切：估计达到 block_size=4096，或「再塞一个就超且已超 4096×90%=3686」才切。块尾依次是 restart 数组、num_restarts 和 5 字节 trailer（1B 压缩类型 + 4B 校验和）。",k:"4096 / 3686 线"},
+{d:450,t:"⑥ 布隆查询",x:"点查第一道闸是 filter block（bloomfilter:9.9 ≈1% 误判）：说不存在 → 整文件免读、0 次数据读；说可能有 → 放行去查 index。误判只发生在「键不存在」的查询上，命中的查询布隆总放行。",k:"布隆放行 · I/O 1"},
+{d:540,t:"⑦ index 定位",x:"index block 每个数据块一条「键 → BlockHandle」，键用 FindShortestSeparator 缩短：device_47:temp 与 device_60 之间可缩成 device_5。1GB 文件 ≈25 万项 ≈5MB，全量进内存没问题；更大的文件用分区索引切片。",k:"device_5 → 句柄 · I/O 2"},
+{d:630,t:"⑧ 块内二分 + 线性",x:"对 4 个路标二分 ≈2 次比较 → 落到键 33 的路标 → 线性扫最多 16 个 entry。没有 restart 就只能从头解 64 个 entry，且每条都要先把前缀拼回来才能比。",k:"≈2 次 + ≤16 · I/O 3"}];
+var CHIPS=[{k:"write",l:"写入"},{k:"rst",l:"路标"},{k:"bloom",l:"布隆"},{k:"seek",l:"查找"}];
+var PARTS={"entry":["row1","row2","row3"],"restart":["rc1","rc2","rc3","rc4","tailR","tailN"],"flush":["tailT"],"filter":["eF","eMiss"],"index":["eI"],"seek":["seekAcc","rc3"]};
+var QUIZ=[
+{q:"前缀压缩已经很省了，为什么还要 restart point？",opts:["为了让块对齐 4KB","因为第 N 个键的内容依赖第 N−1 个键：必须能从某个确定位置开始解码，块内二分才成立","为了校验和计算方便"],a:1,exp:"每 block_restart_interval=16 个键强制 shared=0 存一个完整键，偏移记进块尾数组。Seek 先对路标二分（64 键 4 路标 ≈ 2 次），再线性扫 ≤16 条——没有它就只能从头线性解且每条都要拼前缀。"},
+{q:"三个键 33B 压成 16B 省 52%，这笔账的代价是什么？",opts:["必须整块一起解压","每个 entry 3 个 varint32 长度头（约 3~5 字节），共享越少越不划算","键必须等长"],a:1,exp:"键越随机、共享越少，长度头的占比越高，压缩反而亏。properties 块就因为「注定整个顺序读」把 restart interval 设成 int32 上限，放弃前缀压缩。"},
+{q:"把 block_size 调大到 64 KB，点查 P99 为什么反而从 0.9 ms 涨到 3 ms？",opts:["盘变慢了","块平均 63 KB：单次点查解压的字节翻了 15 倍，CPU 解压吃掉了收益","缓存命中率必然下降到 0"],a:1,exp:"块是 I/O、缓存和压缩共同的最小单位：block_size 限的是未压缩内容量。顺序扫受益、点查遭殃——块大小要匹配访问模式，混合负载默认 4KB 最稳。"},
+{q:"布隆误判率 1% 意味着什么？",opts:["1% 的点查会变慢","只有「键不存在」的查询才可能白跑一趟；命中的查询布隆总是放行","1% 的数据会丢"],a:1,exp:"布隆只有「可能存在 / 一定不存在」两种答案：说不存在 → 0 次数据读整文件免读；说可能有才去翻 index 和 data。所以热键负载几乎感觉不到布隆的存在。"},
+{q:"block_restart_interval 从 16 调成 1，账会怎么变？",opts:["块更小、查找更快","前缀压缩完全失效（每键都是完整键）→ 块变大、缓存命中率降；换来线性段缩短","没有影响"],a:1,exp:"「调小一定更快」是误解：线性段变短是真，但每键重存全键让块变大、二分路标变多。反过来 interval=64 块更小但线性段长到 64 条——默认 16 是折中点。"},
+{q:"写入一个 2 MB 的值，块会发生什么？",opts:["值被切开装进多个块","第一个 entry 进块后估计远超 4KB：下一个 entry 判断「再塞就超且已远超 3686」→ 立即切，2MB 值独占一块","写不进去，报错"],a:1,exp:"FlushBlockBySizePolicy 只有两个触发条件：估计达 block_size，或再塞就超且已超 3686 线。大值独占块意味着压实每过一层就重写这 2MB——blob 篇的引子。"}];
+var WP=[[0,201,112],[60,219,164],[130,201,216],[200,164,216],[265,114,312],[285,214,312],[305,314,312],[325,414,312],[365,447,369],[440,447,369],[620,414,312],[650,314,312],[690,330,312],[720,345,312]];
+var WP2=[[0,187,68],[440,187,68],[455,187,68],[535,187,68],[545,515,68],[625,515,68],[635,828,68],[720,828,68]];
+var PERIOD=6000,basePeriod=PERIOD,PHASE_MAX=720,STEP_DUR=600;
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,stepIdx=-1,dots=[],ticking=false,chipEls={};
+function $(id){return document.getElementById(id);}
+function setText(id,s){var n=$(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setOp(id,v){var n=$(id);if(n)n.setAttribute('opacity',Math.max(0,Math.min(1,v)).toFixed(2));}
+function setAttr(id,k,v){var n=$(id);if(n)n.setAttribute(k,v);}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){t=clamp(t,0,1);return t*t*(3-2*t);}
+function ramp(th,a,b){return clamp((th-a)/((b-a)||1),0,1);}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function lerpPts(pts,th){
+  if(th<=pts[0][0])return[pts[0][1],pts[0][2]];
+  for(var i=0;i<pts.length-1;i++){if(th<pts[i+1][0]){var t=smooth((th-pts[i][0])/(pts[i+1][0]-pts[i][0]));return[pts[i][1]+(pts[i+1][1]-pts[i][1])*t,pts[i][2]+(pts[i+1][2]-pts[i][2])*t];}}
+  return[pts[pts.length-1][1],pts[pts.length-1][2]];
+}
+function setChip(k,v){var n=chipEls[k];if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',/^(已|完成|命中|进行|放行|落定|封口|记)/.test(v));n.classList.toggle('off',/^(待命|—|无|未|0)/.test(v));}
+function stageIdx(pr){var s=0;for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)s=i;}return s;}
+function pageRender(pr,si){
+  var g1=ramp(pr,4,22),g2=ramp(pr,94,112),g3=ramp(pr,184,202);
+  ['row1','row2','row3'].forEach(function(rid,i){var o=i===0?g1:i===1?g2:g3;setOp(rid,o);});
+  setOp('savT',ramp(pr,204,222));
+  setOp('rc1g',ramp(pr,274,292));setOp('rc2g',ramp(pr,282,300));setOp('rc3g',ramp(pr,290,308));setOp('rc4g',ramp(pr,298,316));
+  setOp('tailRg',ramp(pr,364,382));setOp('tailNg',ramp(pr,364,382));setOp('tailTg',ramp(pr,372,390));
+  setAttr('encBar','width',(160*ramp(pr,204,222)).toFixed(1));
+  setText('encT',si<1?'编码后 9B':si<2?'编码后 15B（省 9B）':'编码后 16B（33B → 16B · 省 52%）');
+  var rw=ramp(pr,448,466);
+  setOp('tok2',rw);setOp('eMiss',ramp(pr,470,490)*(1-0.8*ramp(pr,492,508)));
+  setOp('eF',0.55+0.45*rw);setOp('eI',0.55+0.45*ramp(pr,538,556));setOp('eD',0.55+0.45*ramp(pr,628,646));
+  var RAW=['9B','24B','33B'],ENC=['9B','15B','16B'];
+  setText('roRaw',RAW[si<1?0:si<2?1:2]+'（9+15+9）');
+  setText('roEnc',ENC[si<1?0:si<2?1:2]+(si>=2?'（省 52%）':''));
+  setText('roRst',si<3?'1（键 1）':'4（键 1/17/33/49）');
+  setText('roBloom',si<5?'—':si<7?'可能有 → 放行':'已放行');
+  setText('roIO',si<5?'0 次':si<6?'1（filter）':si<7?'2（filter+index）':'3（+data block）');
+  setChip('write',si<5?(si<3?'写键 '+(si+1):'记路标'):'已封口');
+  setChip('rst',si<3?'1 个':si<5?'4 个':'二分用');
+  setChip('bloom',si<5?'待命':si<6?'判定中':'放行');
+  setChip('seek',si<7?'待命':si<8?'二分 + 线性':'命中');
+}
+function render(th){
+  var pr=norm(th);
+  setText('roPhase',Math.round(pr)+'°');
+  var si=stageIdx(pr);if(mode==='step'&&stepIdx>=0)si=stepIdx;
+  setText('roStep',STEPS[si]?STEPS[si].t:'—');
+  setText('roKey',STEPS[si]?STEPS[si].k:'—');
+  pageRender(pr,si);
+  var p=lerpPts(WP,pr);setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));
+  var q=lerpPts(WP2,pr);setAttr('tok2','cx',q[0].toFixed(1));setAttr('tok2','cy',q[1].toFixed(1));
+}
+function tick(now){
+  ticking=false;
+  var dt=Math.min(50,now-last);last=now;
+  if(run&&mode==='auto')phase=(phase+dt/PERIOD*PHASE_MAX)%PHASE_MAX;
+  if(mode==='step'&&stepTo!==null){
+    stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);var p=stepElapsed/STEP_DUR,e=smooth(p);
+    phase=stepFrom+(stepTo-stepFrom)*e;if(p>=1){phase=stepTo;stepTo=null;}
+  }
+  render(phase);
+  if(run||stepTo!==null){ticking=true;requestAnimationFrame(tick);}
+}
+function wake(){if(ticking)return;ticking=true;last=performance.now();requestAnimationFrame(tick);}
+function setAuto(on){
+  mode='auto';run=on;stepTo=null;var b=$('engBtn');if(b)b.textContent=on?'暂停':'播放';
+  if(on){stepIdx=-1;dots.forEach(function(d){d.classList.remove('on');});
+  setText('stepT','自动运转模式');setText('stepX','点下方步骤点可切换到分步演示，随你点击定格。');wake();}
+}
+window.goStep=function(i){
+  stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+  var target=STEPS[stepIdx].d;
+  if(reduced||Math.abs(target-norm(phase))>180){phase=target;stepTo=null;}
+  else{stepFrom=phase;stepTo=target;stepElapsed=0;}
+  render(phase);wake();
+  var b=$('engBtn');if(b)b.textContent='继续自动运转';
+  dots.forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+  setText('stepT','第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t);
+  setText('stepX',STEPS[stepIdx].x);
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+CHIPS.forEach(function(c){var box=$('stateChips');var s=document.createElement('span');s.className='chip';s.innerHTML=c.l+' <b>--</b>';box.appendChild(s);chipEls[c.k]=s;});
+var stepBar=$('stepBar');
+STEPS.forEach(function(s,n){var b=document.createElement('button');b.className='stepnode';b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+s.t+'</span>';b.onclick=function(){goStep(n);};stepBar.appendChild(b);dots.push(b);});
+var engBtn=$('engBtn');engBtn.textContent=run?'暂停':'播放';
+engBtn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+var spd=$('engSpd');
+if(spd){spd.oninput=function(){speed=parseFloat(spd.value);$('engSpdV').textContent=speed+'×';PERIOD=basePeriod/speed;};}
+document.querySelectorAll('.part').forEach(function(btn){btn.onclick=function(){var ids=(PARTS[btn.dataset.part]||[]);document.querySelectorAll('#eng .hl,#eng2 .hl').forEach(function(n){n.classList.remove('hl');});ids.forEach(function(id){var n=$(id);if(n)n.classList.add('hl');});};});
+var quizBox=$('quiz');QUIZ.forEach(function(q,n){var d=document.createElement('div');d.className='q';var html='<div class="qt">'+(n+1)+'. '+q.q+'</div>';q.opts.forEach(function(o,j){html+='<button class="opt" data-q="'+n+'" data-o="'+j+'">'+o+'</button>';});html+='<div class="exp"><b>答案：</b>'+q.opts[q.a]+'<br>'+q.exp+'</div>';d.innerHTML=html;quizBox.appendChild(d);});
+quizBox.querySelectorAll('.opt').forEach(function(b){b.onclick=function(){var q=QUIZ[+b.dataset.q];var box=b.closest('.q');if(box.classList.contains('done'))return;box.classList.add('done');b.classList.add(+b.dataset.o===q.a?'right':'wrong');box.querySelectorAll('.opt').forEach(function(o){if(+o.dataset.o===q.a)o.classList.add('right');});};});
+if(reduced){run=false;phase=0;render(0);engBtn.textContent='播放';}else{wake();}
+</script>
+</body>
+</html>

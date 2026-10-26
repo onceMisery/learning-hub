@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SST 表格式：磁盘上的有序账本 · RocksDB 互动原理实验室 第 7 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#fff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:960px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#fff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:38px 0 22px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:710px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#fff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:500;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:11.5px;fill:#3B3A34}
+.tn{font-size:12.5px;font-weight:500;fill:#1F1E1A}
+.tag{font-size:10px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:68px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+section{padding:34px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .arr{color:#C46A0A;font-weight:600}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.figcap b{color:#3B3A34;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:13.5px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 9px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#scene [opacity]{transition:opacity .22s ease}
+#eng .hl,#eng2 .hl{stroke:#D96C06 !important;stroke-width:2.2 !important}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+.figcap b{color:#3B3A34;font-weight:600}
+@media (prefers-reduced-motion: reduce){#scene [opacity]{transition:none}}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：SST 表格式：磁盘上的有序账本</a>
+  <span class="idx">第 7 / 12 章</span>
+</div>
+<div class="page">
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · SST 格式</div>
+<h1>磁盘上的有序账本：命门长在尾巴上的 53 字节</h1>
+<p>备份脚本把一个 SST 截短了几百字节，RocksDB 直接拒绝打开：<code>Corruption: Input is too short to be an SST file</code>。坏的不是数据块，而是尾部——SST 把全部目录信息放在文件最后固定的 53 字节里，尾巴一缺，前面的数据块纵然完好也一张地图都没有。这页把 writer 的正向写和 reader 的反向找放在同一条时间轴上。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span><span class="mnode">② 静态分解</span><span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span><span class="mnode">⑤ 环境场景</span><span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 560" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>SST 文件布局：writer 正向写，reader 反向找</title><defs><marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="g" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="r" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker></defs><text class="th" x="500" y="22" text-anchor="middle">SST 文件布局：writer 正向写，reader 反向找</text><text class="ts" x="500" y="40" text-anchor="middle">主图 = 文件带与读取路径；副图 = footer 53 字节逐字段 + BlockHandle 编码（同一相位）</text><text class="tag" x="958" y="22" text-anchor="end">橙点 = 写指针当前位置</text><text class="tag" x="958" y="38" text-anchor="end">绿点 = 读游标 · 红 = 损坏分支</text>
+<g id="scene">
+<rect x="40" y="52" width="920" height="188" rx="10" fill="#FBFAF6" stroke="#ECEAE2"/><text class="tn" x="52" y="72">writer 正向写：数据块流式落盘，目录最后才有内容可写</text>
+<rect id="blkD0" x="52" y="96" width="120" height="72" rx="6" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2" opacity="0"/><text id="blkD0t" class="tb" x="112" y="118" text-anchor="middle" opacity="0">data block 0</text><text id="blkD0s" class="tag" x="112" y="136" text-anchor="middle" opacity="0">4KB · 键值对</text><text id="blkD0h" class="tag" x="112" y="152" text-anchor="middle" opacity="0">handle: 0/4096</text>
+<rect id="blkD1" x="176" y="96" width="120" height="72" rx="6" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2" opacity="0"/><text id="blkD1t" class="tb" x="236" y="118" text-anchor="middle" opacity="0">data block 1</text><text id="blkD1s" class="tag" x="236" y="136" text-anchor="middle" opacity="0">背靠背追加</text><text id="blkD1h" class="tag" x="236" y="152" text-anchor="middle" opacity="0">handle: 4096/…</text>
+<text id="blkDots" class="tn" x="318" y="136" text-anchor="middle" opacity="0">…</text>
+<rect id="blkDN" x="340" y="96" width="110" height="72" rx="6" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2" opacity="0"/><text id="blkDNt" class="tb" x="395" y="118" text-anchor="middle" opacity="0">data block N</text><text id="blkDNs" class="tag" x="395" y="136" text-anchor="middle" opacity="0">25 万块示意</text><text id="blkDNh" class="tag" x="395" y="152" text-anchor="middle" opacity="0">每块记下 offset/size</text>
+<rect id="blkF" x="454" y="96" width="86" height="72" rx="6" fill="#EFF6FF" stroke="#2563EB" stroke-width="1.2" opacity="0"/><text id="blkFt" class="tb" x="497" y="118" text-anchor="middle" opacity="0">filter</text><text id="blkFs" class="tag" x="497" y="136" text-anchor="middle" opacity="0">布隆 120KB</text><text id="blkFh" class="tag" x="497" y="152" text-anchor="middle" opacity="0">meta block</text>
+<rect id="blkI" x="544" y="96" width="84" height="72" rx="6" fill="#EFF6FF" stroke="#2563EB" stroke-width="1.2" opacity="0"/><text id="blkIt" class="tb" x="586" y="118" text-anchor="middle" opacity="0">index</text><text id="blkIs" class="tag" x="586" y="136" text-anchor="middle" opacity="0">40KB</text><text id="blkIh" class="tag" x="586" y="152" text-anchor="middle" opacity="0">分隔键→句柄</text>
+<rect id="blkP" x="632" y="96" width="104" height="72" rx="6" fill="#EFF6FF" stroke="#2563EB" stroke-width="1.2" opacity="0"/><text id="blkPt" class="tb" x="684" y="118" text-anchor="middle" opacity="0">properties</text><text id="blkPs" class="tag" x="684" y="136" text-anchor="middle" opacity="0">体检报告</text><text id="blkPh" class="tag" x="684" y="152" text-anchor="middle" opacity="0">统计与身份</text>
+<rect id="blkM" x="740" y="96" width="104" height="72" rx="6" fill="#EAF3DE" stroke="#639922" stroke-width="1.2" opacity="0"/><text id="blkMt" class="tb" x="792" y="118" text-anchor="middle" opacity="0">metaindex</text><text id="blkMs" class="tag" x="792" y="136" text-anchor="middle" opacity="0">140B 小字典</text><text id="blkMh" class="tag" x="792" y="152" text-anchor="middle" opacity="0">块名→句柄</text>
+<rect id="blkFT" x="848" y="96" width="100" height="72" rx="6" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.2" opacity="0"/><text id="blkFTt" class="tb" x="898" y="118" text-anchor="middle" opacity="0">footer</text><text id="blkFTs" class="tag" x="898" y="136" text-anchor="middle" opacity="0">固定 53 字节</text><text id="blkFTh" class="tag" x="898" y="152" text-anchor="middle" opacity="0">1 + 40 + 12</text>
+<text class="tag" x="112" y="188" text-anchor="middle">offset 0 → 630,000</text><text class="tag" x="497" y="188" text-anchor="middle">631,000</text><text class="tag" x="586" y="188" text-anchor="middle">751,000</text><text class="tag" x="684" y="188" text-anchor="middle">791,000</text><text class="tag" x="792" y="188" text-anchor="middle">791,500</text><text class="tag" x="898" y="188" text-anchor="middle">791,640</text><text id="offTotal" class="tb" x="948" y="222" text-anchor="end" opacity="0">文件总长 791,693 字节</text>
+<text class="tag" x="52" y="222">写入顺序即落盘顺序：filter → index → 字典 → 范围删除 → properties → metaindex → footer（Finish 七步）；字典与范围删除块按需出现，图里省略。</text>
+<rect x="40" y="250" width="920" height="210" rx="10" fill="#FBFAF6" stroke="#ECEAE2"/><text class="tn" x="52" y="270">reader 反向找：三层接力，每层的钥匙都在上一层手里</text>
+<g id="r1g" opacity="0"><rect id="r1" x="52" y="288" width="170" height="56" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/><text class="tb" x="137" y="310" text-anchor="middle">① 文件大小 − 53</text><text class="tag" x="137" y="328" text-anchor="middle">读最后 53 字节</text><line x1="224" y1="316" x2="236" y2="316" stroke="#639922" stroke-width="1.4" marker-end="url(#g)"/>
+</g><g id="r2g" opacity="0"><rect id="r2" x="238" y="288" width="176" height="56" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/><text class="tb" x="326" y="310" text-anchor="middle">② 末 8 字节验魔数</text><text class="tag" x="326" y="328" text-anchor="middle">0x88e241b785f4cff7</text><line x1="416" y1="316" x2="428" y2="316" stroke="#639922" stroke-width="1.4" marker-end="url(#g)"/>
+</g><g id="r3g" opacity="0"><rect id="r3" x="430" y="288" width="182" height="56" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/><text class="tb" x="521" y="310" text-anchor="middle">③ 解 Part 3 / Part 2</text><text class="tag" x="521" y="328" text-anchor="middle">version=8 · metaindex 位置</text><line x1="614" y1="316" x2="626" y2="316" stroke="#639922" stroke-width="1.4" marker-end="url(#g)"/>
+</g><g id="r4g" opacity="0"><rect id="r4" x="628" y="288" width="172" height="56" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/><text class="tb" x="714" y="310" text-anchor="middle">④ metaindex</text><text class="tag" x="714" y="328" text-anchor="middle">块名 → 句柄（含 index）</text><line x1="802" y1="316" x2="814" y2="316" stroke="#639922" stroke-width="1.4" marker-end="url(#g)"/>
+</g><g id="r5g" opacity="0"><rect id="r5" x="816" y="288" width="132" height="56" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/><text class="tb" x="882" y="310" text-anchor="middle">⑤ index → data</text><text class="tag" x="882" y="328" text-anchor="middle">分隔键 → BlockHandle</text>
+</g><g id="branchNoteG" opacity="0"><rect id="branchNote" x="52" y="366" width="470" height="70" rx="7" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.1" stroke-dasharray="4 3"/><text class="tag" x="64" y="384" fill="#B03030">分支：尾部被截 100 字节 → 读不满 53B →「too short to be an SST」</text><text class="tag" x="64" y="400" fill="#B03030">就算读满，末 8 字节不是魔数 →「Bad table magic number」。</text><text class="tag" x="64" y="416" fill="#B03030">两条路都到不了数据块——残缺文件不许被当成「少了几条数据」。</text>
+</g><g id="trailerNote" opacity="0"><text class="tag" x="546" y="384">读到的每个块都带 5 字节 trailer：1B 压缩类型 + 4B 校验和；</text><text class="tag" x="546" y="400">校验覆盖「块体 + 类型字节」，坏一块废一块——块的边界就是损坏的边界。</text><text class="tag" x="546" y="416">fv ≥ 6：index 的句柄也登记进 metaindex，footer 只留 metaindex 一个句柄。</text></g>
+<path id="jumpArrow" d="M 882 284 C 882 240 640 210 418 172" fill="none" stroke="#639922" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#g)" opacity="0"/><text id="jumpArrowT" class="tag" x="620" y="196" fill="#4C7A1A" opacity="0">跳回 data block：读 4KB + 5B trailer</text>
+</g>
+<circle id="tok" cx="112" cy="86" r="7" fill="#EF9F27" stroke="#D97E06" stroke-width="1.4"/>
+<circle id="tok2" cx="137" cy="316" r="6" fill="#639922" stroke="#4C7A1A" stroke-width="1.4" opacity="0"/>
+</svg>
+
+<div class="subview">
+<div class="viewtitle">第二视图 · 同一相位下的 footer 53 字节与 BlockHandle 变长编码</div>
+<svg id="eng2" viewBox="0 0 1000 244" role="img" xmlns="http://www.w3.org/2000/svg">
+<g id="scene2"><text class="tn" x="36" y="20" text-anchor="start">footer 53 字节逐字段（table/format.cc:233-272 权威注释 · 解析从最末 8 字节魔数开始倒着来）</text>
+<rect x="36" y="32" width="24" height="46" rx="4" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1"/><text class="tag" x="48" y="94" text-anchor="middle">Part 1 · 1B</text><text class="tag" x="48" y="108" text-anchor="middle">校验和类型</text>
+<rect x="64" y="32" width="56" height="46" rx="4" fill="#EFF6FF" stroke="#2563EB" stroke-width="1.1"/><text class="tag" x="92" y="58" text-anchor="middle">扩展魔数</text><rect x="124" y="32" width="56" height="46" rx="4" fill="#EFF6FF" stroke="#2563EB" stroke-width="1.1"/><text class="tag" x="152" y="58" text-anchor="middle">footer CRC</text><rect x="184" y="32" width="56" height="46" rx="4" fill="#EFF6FF" stroke="#2563EB" stroke-width="1.1"/><text class="tag" x="212" y="58" text-anchor="middle">上下文种子</text><rect x="244" y="32" width="56" height="46" rx="4" fill="#EFF6FF" stroke="#2563EB" stroke-width="1.1"/><text class="tag" x="272" y="58" text-anchor="middle">metaindex</text><rect x="304" y="32" width="224" height="46" rx="4" fill="#F5F4EF" stroke="#B4B2A9" stroke-width="1.1"/><text class="tag" x="416" y="58" text-anchor="middle">保留零填充 16B</text><rect x="532" y="32" width="92" height="46" rx="4" fill="#EFF6FF" stroke="#2563EB" stroke-width="1.1"/><text class="tag" x="578" y="58" text-anchor="middle">不兼容特性位 8B</text><text class="tag" x="348" y="94" text-anchor="middle">Part 2 · 40B：两个 BlockHandle 槽位（各 20B 上限）+ 保护字段；算前校验和清零</text>
+<rect x="628" y="32" width="56" height="46" rx="4" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1"/><text class="tag" x="656" y="58" text-anchor="middle">version 4B</text><rect x="688" y="32" width="112" height="46" rx="4" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.1"/><text class="tag" x="744" y="52" text-anchor="middle">魔数 8B</text><text class="tag" x="744" y="68" text-anchor="middle">0x88e241b785f4cff7</text><text class="tag" x="656" y="94" text-anchor="middle">Part 3 · 12B</text>
+<text class="tb" x="816" y="50">53 = 1 + 2×20 + 4 + 8</text><text class="tag" x="816" y="66">kMaxVarint64Length=10</text><text class="tag" x="816" y="80">→ 单个句柄上限 20 字节</text><text class="tag" x="36" y="122">扩展魔数是道保险丝：format_version 字节本身坏了，先用 4 个已知字节（3E 00 7A 00）把错误拦在门口。</text>
+<text class="tn" x="36" y="150" text-anchor="start">BlockHandle = varint64 的 offset + size（table/format.cc:51-65）：每字节低 7 位放数据，最高位当「后面还有」的续位标记</text>
+<rect x="36" y="160" width="58" height="44" rx="5" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1"/><text class="tb" x="65" y="186" text-anchor="middle">E8</text><rect x="98" y="160" width="58" height="44" rx="5" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1"/><text class="tb" x="127" y="186" text-anchor="middle">07</text><rect x="160" y="160" width="58" height="44" rx="5" fill="#EFF6FF" stroke="#2563EB" stroke-width="1.1"/><text class="tb" x="189" y="186" text-anchor="middle">80</text><rect x="222" y="160" width="58" height="44" rx="5" fill="#EFF6FF" stroke="#2563EB" stroke-width="1.1"/><text class="tb" x="251" y="186" text-anchor="middle">20</text>
+<text class="tag" x="65" y="218" text-anchor="middle">offset=1000</text><text class="tag" x="127" y="218" text-anchor="middle">剩 111</text><text class="tag" x="189" y="218" text-anchor="middle">size=4096</text><text class="tag" x="251" y="218" text-anchor="middle">剩 100000</text>
+<text class="tb" x="300" y="176">句柄 = E8 07 80 20，共 4 字节；footer 槽位不足 20B 补零——变长句柄塞进固定槽，53 字节才「固定」得起来。</text><text class="tag" x="300" y="194">1000 = 0b111_1101000 → 低 7 位 1101000 + 续位 1 → E8；4096 = 0b1_0000_0000_0000 → 低 7 位全 0 + 续位 1 → 80。</text><text class="tag" x="300" y="212">「指针极小、上限极大」：百万块的文件，仅索引项里的句柄只要几 MB；代价是单个 varint64 最多表达 2^64−1 要 10 字节。</text></g>
+</svg>
+</div>
+
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.5" max="2" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm">默认 ≈ 6 秒 / 轮</span>
+</div>
+<div class="readout">
+<span class="ro">进度 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">读数 <b id="roKey">--</b></span>
+<span class="ro">文件偏移 <b id="roOff">--</b></span>
+<span class="ro">最新落块 <b id="roBlk">--</b></span>
+<span class="ro">句柄示例 <b id="roHdl">--</b></span>
+<span class="ro">唯一入口 <b id="roEntry">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav"><button class="btn" onclick="prevStep()">‹ 上一步</button><button class="btn warn" onclick="nextStep()">下一步 ›</button></span>
+</div>
+<p class="figcap">进度 0° = 第一个数据块落盘，720° = reader 沿 index 跳回数据块。偏移沿用正文标尺算例（数字示意、结构为真）：data 0→630,000、filter 631,000、index 751,000、properties 791,000、metaindex 791,500、footer 791,640，总长 791,693。第 6 步起橙色写指针让位给绿色读游标。<br>口径：RocksDB 11.13.0；kNewVersionsEncodedLength = 1 + 2×20 + 4 + 8 = 53（format.h:391-393）、kMaxVarint64Length=10、format_version 最新 8、魔数 0x88e241b785f4cff7、kBlockTrailerSize=5、校验默认 XXH3。</p>
+</div>
+</div>
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：拒绝打开，而不是少几条数据</h2></div>
+<p class="sec-sub">先不拆布局，只看它对外表现出什么。</p>
+<div class="quote">「观察一个系统，先分清它的静态结构、动态过程和外部依赖。」</div>
+<p>同一个 SST，中间挖掉 4KB 可能要等第一次读到那个块才报 <code>block checksum mismatch</code>；尾巴缺 100 字节却在开库那一刻就拒绝——因为这个格式的命门恰好长在尾巴上。SST（Sorted String Table）只有两条硬约束：<b>按键有序</b>（乱序输入直接报 <code>Keys must be added in strict ascending order.</code>）和<b>不可变</b>（footer 落盘后再也不改，删除是追加墓碑，旧文件等压实退役）。</p>
+<div class="flow">
+<span class="node">单遍写：边写边追加</span><span class="arr">→</span><span class="node box">写最后一块时才有块清单</span><span class="arr">→</span><span class="node">目录只能放尾部</span><span class="arr">→</span><span class="node box">尾部 53 字节 = 唯一可靠入口</span><span class="arr">→</span><span class="node">reader 反向找</span>
+</div>
+<p>不可变是全系统的地基：读不用加锁、块缓存键永不过期、压实只增不改（半成品不在 MANIFEST 里就不存在）、<code>cp</code> 就是备份。文件名也简单到只有编号：<code>000005.sst</code>，六位数字加后缀。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：块排在前，目录在后</h2></div>
+<p class="sec-sub">点部件卡片，动画里对应的块会亮起。</p>
+<div class="quote">「分解要 MECE：同一层粒度一致，不重不漏。」</div>
+<div class="figure"><svg viewBox="0 0 920 150" role="img" xmlns="http://www.w3.org/2000/svg"><text x="460" y="16" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">BlockBasedTable 的 SST 从低地址到高地址（写入顺序即落盘顺序）</text>
+<rect x="40" y="30" width="150" height="34" rx="5" fill="#FFF6E8" stroke="#EF9F27"/><text x="115" y="51" font-size="11" fill="#3B3A34" text-anchor="middle">data block ×N（4KB）</text><rect x="194" y="30" width="96" height="34" rx="5" fill="#EFF6FF" stroke="#2563EB"/><text x="242" y="51" font-size="11" fill="#3B3A34" text-anchor="middle">filter（布隆）</text><rect x="294" y="30" width="96" height="34" rx="5" fill="#EFF6FF" stroke="#2563EB"/><text x="342" y="51" font-size="11" fill="#3B3A34" text-anchor="middle">index</text><rect x="394" y="30" width="110" height="34" rx="5" fill="#EFF6FF" stroke="#2563EB"/><text x="449" y="51" font-size="11" fill="#3B3A34" text-anchor="middle">properties（身份）</text><rect x="508" y="30" width="110" height="34" rx="5" fill="#EAF3DE" stroke="#639922"/><text x="563" y="51" font-size="11" fill="#3B3A34" text-anchor="middle">metaindex（字典）</text><rect x="622" y="30" width="96" height="34" rx="5" fill="#FCEBEB" stroke="#E24B4A"/><text x="670" y="51" font-size="11" fill="#3B3A34" text-anchor="middle">footer 53B</text>
+<text x="40" y="90" font-size="10.5" fill="#854F0B" font-weight="600">三层接力的钥匙链：footer 只透露 metaindex（791,500 / 140）；metaindex 再透露 properties 和 index 在哪；</text><text x="40" y="108" font-size="10.5" fill="#6B695F">index 最后把 25 万个数据块的地址交出来。每层都是「块名/分隔键 → BlockHandle」，BlockHandle = varint64 的 offset + size。</text>
+<text x="40" y="132" font-size="10.5" fill="#6B695F">meta blocks 是集合名：filter、properties、压缩字典（rocksdb.compression_dict）、范围删除（rocksdb.range_del）；块名定义在 table/meta_blocks.cc:32-36。</text></svg></div>
+<p class="figcap">静态标注图：文件布局与钥匙链。偏移为正文标尺算例。</p>
+<div class="partgroup"><div class="gname">正文与目录</div><div class="parts">
+<button class="part" data-part="data"><b>data blocks</b><span>按键有序的键值对正文，4KB 一块流式写掉；每块记下 BlockHandle（offset/size）。</span></button>
+<button class="part" data-part="meta"><b>meta blocks</b><span>filter（布隆）、properties（rocksdb.properties 体检报告）、压缩字典、范围删除——不是键值对但要跟着文件走。</span></button>
+<button class="part" data-part="index"><b>index block</b><span>分隔键 → 数据块 BlockHandle；fv ≥ 6 起自己的句柄也登记进 metaindex。</span></button>
+<button class="part" data-part="mi"><b>metaindex block</b><span>「块名 → BlockHandle」的小字典；footer 只透露它的位置（791,500 / 140）。</span></button>
+<button class="part" data-part="ft"><b>footer（53 字节）</b><span>1 + 40 + 12：校验和类型 + Part 2 + format_version + 魔数；文件里唯一有固定位置、固定大小的结构。</span></button>
+</div></div>
+<div class="partgroup"><div class="gname">完整性与身份</div><div class="parts">
+<button class="part" data-part="trailer"><b>块 trailer（5 字节）</b><span>1B 压缩类型 + 4B 校验和，每块自证清白；压缩类型在尾不在头——先读完块才知道怎么解压。</span></button>
+<button class="part" data-part="crc"><b>校验和五档</b><span>kNoChecksum / CRC32c / xxHash / xxHash64 / XXH3（默认）；fv ≥ 6 起 footer 也有校验，偏移混入上下文修饰值。</span></button>
+<button class="part" data-part="uid"><b>唯一 ID 三件套</b><span>db_id + db_session_id + orig_file_number 派生 128 位 ID 进块缓存键——跨库不撞、跨重启不撞。</span></button>
+</div></div>
+<p class="hint">这些块怎么在一条时间轴上先后落盘？切到分步模式，看写指针走完七个块、读游标怎么反向接力。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：写一遍，读一遍，8 个相位</h2></div>
+<p class="sec-sub">第一遍跟橙点正向写（0–450°）；第二遍跟绿点反向找（540–720°）——写是正向的，读是反向的。</p>
+<div class="quote">「动态分析看的是时间轴上的顺序、状态变化和因果链。」</div>
+<table class="grid">
+<tr><th>相位</th><th>阶段</th><th>关键动作</th><th>读数</th></tr>
+<tr><td>0–90°</td><td>① 写 data blocks</td><td>键值对流式追加，每块记下 BlockHandle（offset/size）</td><td>0 → 630,000</td></tr>
+<tr><td>90–180°</td><td>② 写 filter</td><td>布隆过滤器整块落盘，挡点查的第一道闸</td><td class="hot">631,000 → 751,000</td></tr>
+<tr><td>180–270°</td><td>③ 写 index</td><td>分隔键 → 数据块 BlockHandle；fv≥6 起句柄进 metaindex</td><td class="hot">751,000 → 791,000</td></tr>
+<tr><td>270–360°</td><td>④ 写 properties</td><td>rocksdb.properties：统计 + 身份三件套</td><td>791,000 → 791,500</td></tr>
+<tr><td>360–450°</td><td>⑤ 写 metaindex</td><td>块名 → 句柄的小字典（140B）</td><td>791,500 → 791,640</td></tr>
+<tr><td>450–540°</td><td>⑥ 写 footer</td><td>53 字节封尾，文件从此不可变</td><td class="hot">791,640 → 791,693</td></tr>
+<tr><td>540–630°</td><td>⑦ 解 footer</td><td>文件大小−53 → 末 8 字节验魔数 → 解出 metaindex 位置</td><td class="hot">791,693 − 53 = 791,640</td></tr>
+<tr><td>630–720°</td><td>⑧ 三层接力</td><td>metaindex → index → data：每层的钥匙都在上一层手里</td><td class="hot">跳回 data block</td></tr>
+</table>
+<p>相位零点：0° = 第一个数据块落盘；720° = reader 沿 index 跳回数据块。footer 的解析顺序是从后往前：先魔数、再 version、再校验、最后 metaindex 位置——扩展魔数挡住 format_version 字节级损坏。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：块 × 读写阶段</h2></div>
+<p class="sec-sub">同一个块在写侧和读侧各演一个角色——这张矩阵把两条时间轴叠在一起。</p>
+<div class="quote">「动静融合的关键是映射：每个部件在每一步里负责什么。」</div>
+<table class="grid">
+<tr><th>块</th><th>writer 落盘时</th><th>reader 找路时</th><th>拿到的便宜 / 付出的代价</th></tr>
+<tr><td>data blocks</td><td class="hot">流式追加，写完即封</td><td class="hot">index 指到哪读哪（4KB + trailer）</td><td>顺序写最省；随机读靠 index 裁剪</td></tr>
+<tr><td>filter</td><td class="act">键集合编码成位图</td><td class="act">说不存在 → 整文件免读</td><td>点查 0 次数据读的概率换空间</td></tr>
+<tr><td>index</td><td class="act">分隔键 → BlockHandle</td><td class="hot">二分定位目标块</td><td>25 万块 → 数 MB 索引（fv≥4 句柄 delta）</td></tr>
+<tr><td>properties</td><td class="act">统计 + 身份三件套</td><td class="act">seq 范围快速短路、缓存键对账</td><td>restart interval 设成 int32 上限（免前缀压缩）</td></tr>
+<tr><td>metaindex</td><td>最后写的小字典</td><td class="hot">footer 的第一把钥匙</td><td>几十字节换「块名→句柄」全表</td></tr>
+<tr><td>footer</td><td class="hot">53 字节封尾</td><td class="hot">文件大小−53 固定入口</td><td>尾部一缺，全文件作废——命门即入口</td></tr>
+</table>
+<p><b>涌现属性：</b>「反向找路」不是 reader 的偏好，而是单遍写的必然——写最后一块时才有完整的块清单，目录只能后置。Parquet 的 footer 在尾部是同一条因果律：两个格式在骨架上是同一个思路的两次实现。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：文件之外还有什么</h2></div>
+<p class="sec-sub">拆掉任何一个外部依赖，前面看到的便宜都会变。</p>
+<div class="quote">「环境属性 = 外在关系 + 依赖 + 失效后果。」</div>
+<div class="envcards">
+<div class="env"><b>块缓存（默认 32MB）</b><span>读回的 4KB 块安家在内存；唯一 ID（db_id + db_session_id + 文件号）保证缓存键跨库、跨重启都不撞。</span></div>
+<div class="env"><b>报错对着布局找</b><span>too short → 尾部；Bad magic → Part 3 魔数；unsupported format_version → 版本号；checksum mismatch @offset → 那块的 5B trailer。</span></div>
+<div class="env"><b>备份 / 迁移</b><span>cp 就是备份、硬链接就是快照——文件不改，拷贝时刻即一致点；截短尾部则开库即拒。</span></div>
+<div class="env"><b>压缩 / 字典</b><span>块级独立压缩；跨块字典（rocksdb.compression_dict）让小键值也有 2~3 倍压缩比——读侧多一张要读的小抄。</span></div>
+<div class="env"><b>自定义收集器</b><span>TablePropertiesCollector 在构建时逐键回调，把「过期数据占比」这类业务统计写进 properties，给压实当输入。</span></div>
+<div class="env"><b>Parquet 对照</b><span>目录后置 + 尾部入口 + 反向解析两边同款；SST 的目录服务「找一个键」，Parquet 的 footer 服务「裁剪一批列」。</span></div>
+</div>
+<p class="figcap">边界：本页画的是 BlockBasedTable 格式（RocksDB 默认表格式）的布局；布隆、索引、块内编码的内部细节见第 8 章。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">能说清「为什么 53 字节缺一不可」，才算真的懂布局。</p>
+<div class="quote">「用自己的话能讲清楚，才算真的懂。」</div>
+<div id="quiz"></div>
+</section>
+
+<div class="summary">
+<h2>一页带走</h2>
+<p class="chant">正文在前，目录在后；命门 53 字节，钥匙层层递。</p>
+<p>· SST = 按键有序的不可变块集合；不可变是缓存安全、无锁读、压实「只增不改」的地基。</p>
+<p>· 布局：data blocks → meta blocks（filter/properties/字典/范围删除）→ metaindex → index → footer，写入顺序即落盘顺序。</p>
+<p>· footer 固定 53 字节（1 + 2×20 + 4 + 8），从文件尾反向解析；扩展魔数挡住 format_version 损坏；BlockHandle = varint64 的 offset+size，上限 20 字节。</p>
+<p>· 每块带 5 字节 trailer（1B 压缩类型 + 4B 校验和），fv ≥ 6 起 footer 也有校验、偏移也参与校验。</p>
+<p>· TableProperties 是体检报告，db_id + db_session_id + 文件号派生唯一 ID 撑起块缓存键。</p>
+<p>· 边界与简化：文件偏移 630,000/631,000/751,000/791,000/791,500/791,640 为正文标尺算例（数字示意、结构为真）；块大小 4KB、缓存 32MB、format_version 8、校验默认 XXH3 均为 RocksDB 11.13 实际值。</p>
+</div>
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+<script>
+var STEPS=[
+{d:0,t:"① 写 data blocks",x:"键值对按键升序流式追加：4KB 一块，写完一块封一块，每块记下 BlockHandle（offset + size 两个 varint64）。此刻文件里只有正文，没有任何目录。",k:"0 → 630,000"},
+{d:90,t:"② 写 filter",x:"布隆过滤器整块落盘，是 meta block 的第一个——点查先问它，说不存在就整文件免读。压缩字典与范围删除块按需出现，图里省略。",k:"631,000 → 751,000"},
+{d:180,t:"③ 写 index",x:"每个数据块一条「分隔键 → BlockHandle」；format_version ≥ 6 起，index 自己的句柄也登记进 metaindex，footer 里只留 metaindex 一个句柄。",k:"751,000 → 791,000"},
+{d:270,t:"④ 写 properties",x:"rocksdb.properties 是文件的体检报告：键值数、原始字节数、seq 范围，还有 db_id + db_session_id + orig_file_number 身份三件套——唯一 ID 从这里派生。",k:"791,000 → 791,500"},
+{d:360,t:"⑤ 写 metaindex",x:"「块名 → BlockHandle」的小字典，几十到一百多字节——它自己是块，也用 BlockHandle 登记。它是 footer 打开全文件的第一把钥匙。",k:"791,500 → 791,640"},
+{d:450,t:"⑥ 写 footer",x:"最后 53 字节封尾：1B 校验和类型 + 40B Part 2（含两个 20B 句柄槽位与保护字段）+ 4B format_version + 8B 魔数 0x88e241b785f4cff7。footer 落盘，文件从此不可变。",k:"791,640 → 791,693"},
+{d:540,t:"⑦ reader 解 footer",x:"ReadFooterFromFile 先算 read_offset = 文件大小 − 53，读 53 字节；Footer::DecodeFrom 从最末 8 字节读魔数验明正身，回头读 version、校 footer 自身校验和，最后从 Part 2 解出 metaindex 的确切位置。",k:"791,693 − 53 = 791,640"},
+{d:630,t:"⑧ 三层接力",x:"footer 只透露 metaindex 在 791,500、大小 140；metaindex 再透露 properties 和 index 在哪；index 最后把 25 万个数据块的地址交出来。三层接力，每层的钥匙都在上一层手里——最后跳回 data block。",k:"跳回 data block"}];
+var CHIPS=[{k:"write",l:"写指针"},{k:"key",l:"钥匙链"},{k:"crc",l:"逐块校验"},{k:"read",l:"读游标"}];
+var PARTS={"data":["blkD0","blkD1","blkDN"],"meta":["blkF","blkP"],"index":["blkI"],"mi":["blkM"],"ft":["blkFT","branchNote"],"trailer":["trailerNote"],"crc":["trailerNote"],"uid":["blkP"]};
+var QUIZ=[
+{q:"footer 为什么必须放在文件尾部、而且大小固定？",opts:["方便操作系统预读","单遍写：写最后一块时才有完整块清单，目录只能后置；固定大小让 reader 永远知道去哪读","历史兼容原因"],a:1,exp:"数据块在写键值对的过程中流式写掉，目录等所有块写完才有内容可写——footer 必须在尾部。而「每次 Get 都要过一遍入口」要求它的位置和大小都可预期：53 = 1 + 2×20 + 4 + 8，把变长句柄塞进 20B 固定槽位（不足补零）。"},
+{q:"一个 SST 文件被截短了尾部 100 字节，重启时会发生什么？",opts:["正常打开，只是少几条数据","读不满 53 字节报「too short to be an SST」；就算读满，末 8 字节不是魔数报「Bad table magic number」——两条路都到不了数据块","自动从副本恢复缺失字节"],a:1,exp:"这正是设计意图：别让残缺文件被当成「少了几条数据」。最老 footer 都要 28 字节，读到的长度不足直接拒绝；魔数验不出正身同样拒绝。"},
+{q:"BlockHandle 里存的是什么？offset=1000、size=4096 编码后长什么样？",opts:["文件名 + 块号；16 字节定长","varint64 的 offset + size：E8 07 80 20，共 4 字节","crc + 数据；随块大小变化"],a:1,exp:"每个字节低 7 位放数据、最高位当续位标记：1000 → E8 07，4096 → 80 20。单个 varint64 上限 10 字节，所以句柄上限 20 字节——「指针极小、上限极大」。"},
+{q:"块 trailer 的 5 字节是什么？为什么压缩类型放在尾部而不是块头？",opts:["块长度 + 类型；历史原因","1B 压缩类型 + 4B 校验和；先读完整个块才能知道它是怎么被压缩的——和 Parquet「页头不压缩」的取舍正好相反","魔数 + 版本；防止块错位"],a:1,exp:"校验和覆盖「块体 + 压缩类型字节」共 block_size+1 长度；对不上就报 block checksum mismatch，整块作废——没有「只重读坏的一半」，块的边界就是损坏的边界。"},
+{q:"format_version ≥ 6 的两件校验加强是什么？",opts:["footer 自身有校验和 + 每块校验和混入由 base_context_checksum 和块 offset 推导的上下文修饰值","全部块改用 CRC32c + 双写","footer 加密 + 块签名"],a:1,exp:"修的是「块被挪了位置」这类真实事故：错位读到的块本身可能完好，普通校验和验不出来；混入偏移后，「这 4KB 是不是这个位置的数据」有了明确答案。"},
+{q:"两个库各自 flush 出了 000005.sst，块缓存为什么不会读串？",opts:["缓存键里有文件完整路径","db_id + db_session_id + orig_file_number 派生出 128 位唯一 ID：跨库 db_id 不同、跨重启 session 换——键永不撞","每个库有独立的缓存实例"],a:1,exp:"文件名会变（复制、迁移、编号重排），所以身份从 properties 三件套派生；表打开时还会拿预期 ID 与文件里重算的 ID 对账，对不上直接报 Corruption。"}];
+var WP=[[0,112,86],[40,236,86],[80,395,86],[105,497,86],[175,497,86],[200,586,86],[265,586,86],[290,684,86],[355,684,86],[380,792,86],[445,792,86],[470,898,86],[540,898,86]];
+var WP2=[[540,137,316],[570,326,316],[600,521,316],[630,521,316],[660,714,316],[688,882,316],[720,882,316]];
+var PERIOD=6000,basePeriod=PERIOD,PHASE_MAX=720,STEP_DUR=600;
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,stepIdx=-1,dots=[],ticking=false,chipEls={};
+function $(id){return document.getElementById(id);}
+function setText(id,s){var n=$(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setOp(id,v){var n=$(id);if(n)n.setAttribute('opacity',Math.max(0,Math.min(1,v)).toFixed(2));}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){t=clamp(t,0,1);return t*t*(3-2*t);}
+function ramp(th,a,b){return clamp((th-a)/((b-a)||1),0,1);}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function lerpPts(pts,th){
+  if(th<=pts[0][0])return[pts[0][1],pts[0][2]];
+  for(var i=0;i<pts.length-1;i++){if(th<pts[i+1][0]){var t=smooth((th-pts[i][0])/(pts[i+1][0]-pts[i][0]));return[pts[i][1]+(pts[i+1][1]-pts[i][1])*t,pts[i][2]+(pts[i+1][2]-pts[i][2])*t];}}
+  return[pts[pts.length-1][1],pts[pts.length-1][2]];
+}
+function setChip(k,v){var n=chipEls[k];if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',/^(已|完成|命中|进行|接力|写|校验|封尾)/.test(v));n.classList.toggle('off',/^(待命|—|无|未|0)/.test(v));}
+function stageIdx(pr){var s=0;for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)s=i;}return s;}
+function pageRender(pr,si){
+  var w=1-ramp(pr,530,545),r=ramp(pr,535,550);
+  setOp('tok',w);setOp('tok2',r);
+  setOp('blkD0',ramp(pr,2,20));setOp('blkD0t',ramp(pr,2,20));setOp('blkD0s',ramp(pr,2,20));setOp('blkD0h',ramp(pr,2,20));
+  setOp('blkD1',ramp(pr,25,45));setOp('blkD1t',ramp(pr,25,45));setOp('blkD1s',ramp(pr,25,45));setOp('blkD1h',ramp(pr,25,45));
+  setOp('blkDots',ramp(pr,50,70));setOp('blkDN',ramp(pr,50,70));setOp('blkDNt',ramp(pr,50,70));setOp('blkDNs',ramp(pr,50,70));setOp('blkDNh',ramp(pr,50,70));
+  setOp('blkF',ramp(pr,95,115));setOp('blkFt',ramp(pr,95,115));setOp('blkFs',ramp(pr,95,115));setOp('blkFh',ramp(pr,95,115));
+  setOp('blkI',ramp(pr,185,205));setOp('blkIt',ramp(pr,185,205));setOp('blkIs',ramp(pr,185,205));setOp('blkIh',ramp(pr,185,205));
+  setOp('blkP',ramp(pr,275,295));setOp('blkPt',ramp(pr,275,295));setOp('blkPs',ramp(pr,275,295));setOp('blkPh',ramp(pr,275,295));
+  setOp('blkM',ramp(pr,365,385));setOp('blkMt',ramp(pr,365,385));setOp('blkMs',ramp(pr,365,385));setOp('blkMh',ramp(pr,365,385));
+  setOp('blkFT',ramp(pr,455,475));setOp('blkFTt',ramp(pr,455,475));setOp('blkFTs',ramp(pr,455,475));setOp('blkFTh',ramp(pr,455,475));
+  setOp('offTotal',ramp(pr,455,475));
+  var rw=ramp(pr,540,556);
+  setOp('r1g',rw);setOp('r2g',ramp(pr,552,568));setOp('r3g',ramp(pr,564,580));setOp('r4g',ramp(pr,576,592));setOp('r5g',ramp(pr,588,604));
+  setOp('branchNoteG',ramp(pr,548,566));
+  setOp('trailerNote',ramp(pr,596,614));
+  setOp('jumpArrow',ramp(pr,620,640));setOp('jumpArrowT',ramp(pr,620,640));
+  var OFFS=['0 → 630,000','631,000 → 751,000','751,000 → 791,000','791,000 → 791,500','791,500 → 791,640','791,640 → 791,693','791,693 − 53 = 791,640','791,500 → 751,000 → data'];
+  setText('roOff',OFFS[si]);
+  var BLKS=['data block 0..N（4KB）','filter block（布隆）','index block（分隔键→句柄）','properties（rocksdb.properties）','metaindex（块名→句柄）','footer（53 字节）','footer 解析中','data block（带 5B trailer）'];
+  setText('roBlk',BLKS[si]);
+  setText('roHdl','E8 07 80 20 · 4B');
+  setText('roEntry',si<6?'—（写完后才有）':'footer → metaindex @791,500 · 140B');
+  setChip('write',si<6?(si<5?'写 '+BLKS[si].split('（')[0]:'写 footer'):'已封尾 · 不可变');
+  setChip('key',si<6?'待目录':si<7?'footer→metaindex':'metaindex→index→data');
+  setChip('crc',si<6?'逐块记录中':'逐块校验中');
+  setChip('read',si<6?'待命':si<7?'解 footer 中':'三层接力');
+}
+function render(th){
+  var pr=norm(th);
+  setText('roPhase',Math.round(pr)+'°');
+  var si=stageIdx(pr);if(mode==='step'&&stepIdx>=0)si=stepIdx;
+  setText('roStep',STEPS[si]?STEPS[si].t:'—');
+  setText('roKey',STEPS[si]?STEPS[si].k:'—');
+  pageRender(pr,si);
+  var p=lerpPts(WP,pr);setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));
+  var q=lerpPts(WP2,pr);setAttr('tok2','cx',q[0].toFixed(1));setAttr('tok2','cy',q[1].toFixed(1));
+}
+function setAttr(id,k,v){var n=$(id);if(n)n.setAttribute(k,v);}
+function tick(now){
+  ticking=false;
+  var dt=Math.min(50,now-last);last=now;
+  if(run&&mode==='auto')phase=(phase+dt/PERIOD*PHASE_MAX)%PHASE_MAX;
+  if(mode==='step'&&stepTo!==null){
+    stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);var p=stepElapsed/STEP_DUR,e=smooth(p);
+    phase=stepFrom+(stepTo-stepFrom)*e;if(p>=1){phase=stepTo;stepTo=null;}
+  }
+  render(phase);
+  if(run||stepTo!==null){ticking=true;requestAnimationFrame(tick);}
+}
+function wake(){if(ticking)return;ticking=true;last=performance.now();requestAnimationFrame(tick);}
+function setAuto(on){
+  mode='auto';run=on;stepTo=null;var b=$('engBtn');if(b)b.textContent=on?'暂停':'播放';
+  if(on){stepIdx=-1;dots.forEach(function(d){d.classList.remove('on');});
+  setText('stepT','自动运转模式');setText('stepX','点下方步骤点可切换到分步演示，随你点击定格。');wake();}
+}
+window.goStep=function(i){
+  stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+  var target=STEPS[stepIdx].d;
+  if(reduced||Math.abs(target-norm(phase))>180){phase=target;stepTo=null;}
+  else{stepFrom=phase;stepTo=target;stepElapsed=0;}
+  render(phase);wake();
+  var b=$('engBtn');if(b)b.textContent='继续自动运转';
+  dots.forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+  setText('stepT','第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t);
+  setText('stepX',STEPS[stepIdx].x);
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+CHIPS.forEach(function(c){var box=$('stateChips');var s=document.createElement('span');s.className='chip';s.innerHTML=c.l+' <b>--</b>';box.appendChild(s);chipEls[c.k]=s;});
+var stepBar=$('stepBar');
+STEPS.forEach(function(s,n){var b=document.createElement('button');b.className='stepnode';b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+s.t+'</span>';b.onclick=function(){goStep(n);};stepBar.appendChild(b);dots.push(b);});
+var engBtn=$('engBtn');engBtn.textContent=run?'暂停':'播放';
+engBtn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+var spd=$('engSpd');
+if(spd){spd.oninput=function(){speed=parseFloat(spd.value);$('engSpdV').textContent=speed+'×';PERIOD=basePeriod/speed;};}
+document.querySelectorAll('.part').forEach(function(btn){btn.onclick=function(){var ids=(PARTS[btn.dataset.part]||[]);document.querySelectorAll('#eng .hl,#eng2 .hl').forEach(function(n){n.classList.remove('hl');});ids.forEach(function(id){var n=$(id);if(n)n.classList.add('hl');});};});
+var quizBox=$('quiz');QUIZ.forEach(function(q,n){var d=document.createElement('div');d.className='q';var html='<div class="qt">'+(n+1)+'. '+q.q+'</div>';q.opts.forEach(function(o,j){html+='<button class="opt" data-q="'+n+'" data-o="'+j+'">'+o+'</button>';});html+='<div class="exp"><b>答案：</b>'+q.opts[q.a]+'<br>'+q.exp+'</div>';d.innerHTML=html;quizBox.appendChild(d);});
+quizBox.querySelectorAll('.opt').forEach(function(b){b.onclick=function(){var q=QUIZ[+b.dataset.q];var box=b.closest('.q');if(box.classList.contains('done'))return;box.classList.add('done');b.classList.add(+b.dataset.o===q.a?'right':'wrong');box.querySelectorAll('.opt').forEach(function(o){if(+o.dataset.o===q.a)o.classList.add('right');});};});
+if(reduced){run=false;phase=0;render(0);engBtn.textContent='播放';}else{wake();}
+</script>
+</body>
+</html>

@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>读取路径与迭代器：从新到旧，一层一层问 · RocksDB 互动原理实验室 第 4 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#fff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:960px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#fff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:38px 0 22px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:710px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#fff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:500;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:11.5px;fill:#3B3A34}
+.tn{font-size:12.5px;font-weight:500;fill:#1F1E1A}
+.tag{font-size:10px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:68px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+section{padding:34px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .arr{color:#C46A0A;font-weight:600}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.figcap b{color:#3B3A34;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:13.5px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 9px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#scene [opacity],#scene2 [opacity]{transition:opacity .22s ease}
+#eng .hl,#eng2 .hl{stroke:#D96C06 !important;stroke-width:2.2 !important}
+.subview{margin:8px 0 4px;background:#fff;border:1px dashed #D3D1C7;border-radius:10px;padding:8px 10px}
+.subview .viewtitle{font-size:12px;font-weight:600;color:#854F0B;margin-bottom:4px}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+@media (prefers-reduced-motion: reduce){#scene [opacity],#scene2 [opacity]{transition:none}}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：读取路径与迭代器：从新到旧，一层一层问</a>
+  <span class="idx">第 4 / 12 章</span>
+</div>
+<div class="page">
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · 读取路径</div>
+<h1>从新到旧，一层一层问：先问的一定对</h1>
+<p>删掉 8000 万行旧数据，点查 P99 却从 0.8 ms 涨到 4 ms——数据变少不等于层数变浅，墓碑满地、旧层文件原地没动。这页把「一次 Get 到底问了几个人、每人怎么回答」拆开，把读放大的账算明白。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span><span class="mnode">② 静态分解</span><span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span><span class="mnode">⑤ 环境场景</span><span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 590" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>一次 Get 的层层问</title><defs><marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="g" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker></defs><text class="th" x="500" y="22" text-anchor="middle">一次 Get 的层层问：Get("device_47") 撞上墓碑的全过程</text><text class="ts" x="500" y="40" text-anchor="middle">主图 = 数据源座次与磁盘侧漏斗；副图 = 迭代器的小顶堆（另一台机器，同一相位）</text><text class="tag" x="958" y="22" text-anchor="end">琥珀 = 读游标当前位置</text><text class="tag" x="958" y="38" text-anchor="end">红 = 墓碑 / 终止 · 绿 = 返回</text><g id="scene"><rect id="srcLane" x="40" y="52" width="390" height="418" rx="10" fill="#FBFAF6" stroke="#ECEAE2"/><text class="tn" x="52" y="72">数据源座次（从新到旧）</text><text class="tag" x="52" y="88">规矩只有一条：先被问到的答案就是最终答案</text>
+<rect id="sv0" x="52" y="98" width="366" height="38" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/><text class="tb" x="235" y="114" text-anchor="middle">⑧ SuperVersion 快照：memtable + immutable + Version</text><text class="tag" x="235" y="130" text-anchor="middle">GetAndRefSuperVersion 钉住 · 读结束引用归还</text><rect id="g0" x="52" y="98" width="366" height="38" rx="7" fill="none" stroke="#EF9F27" stroke-width="1.6" opacity="0"/><line x1="142" y1="138" x2="142" y2="144" stroke="#C46A0A" stroke-width="1.3" marker-end="url(#a)"/><rect id="s1" x="52" y="146" width="176" height="42" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/><text class="tb" x="140" y="163" text-anchor="middle">mutable memtable</text><text class="tag" x="140" y="179" text-anchor="middle">sv-&gt;mem-&gt;Get · 内置布隆</text><rect id="g1" x="52" y="146" width="176" height="42" rx="7" fill="none" stroke="#EF9F27" stroke-width="1.6" opacity="0"/><text id="v1" class="tag" x="244" y="162">未命中</text><text class="tag" x="244" y="178">MEMTABLE_MISS</text><line x1="142" y1="190" x2="142" y2="198" stroke="#C46A0A" stroke-width="1.3" marker-end="url(#a)"/>
+<rect id="s2" x="52" y="200" width="176" height="42" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/><text class="tb" x="140" y="217" text-anchor="middle">immutable ×N（新→旧）</text><text class="tag" x="140" y="233" text-anchor="middle">push_front 天然新→旧</text><rect id="g2" x="52" y="200" width="176" height="42" rx="7" fill="none" stroke="#EF9F27" stroke-width="1.6" opacity="0"/><text id="v2" class="tag" x="244" y="216">未命中</text><text class="tag" x="244" y="232">sv-&gt;imm-&gt;Get</text><line x1="142" y1="244" x2="142" y2="252" stroke="#C46A0A" stroke-width="1.3" marker-end="url(#a)"/><rect id="s3" x="52" y="254" width="176" height="42" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/><text class="tb" x="140" y="271" text-anchor="middle">L0 f7（逐个问）</text><text class="tag" x="140" y="287" text-anchor="middle">键范围重叠 · 从新到旧</text><rect id="g3" x="52" y="254" width="176" height="42" rx="7" fill="none" stroke="#EF9F27" stroke-width="1.6" opacity="0"/><text id="v3" class="tag" x="244" y="270" fill="#854F0B">布隆：肯定没有</text><text class="tag" x="244" y="286">整文件返回 · 0 块读取</text>
+<line x1="142" y1="298" x2="142" y2="306" stroke="#C46A0A" stroke-width="1.3" marker-end="url(#a)"/><rect id="s4" x="52" y="308" width="176" height="42" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/><text class="tb" x="140" y="325" text-anchor="middle">L0 f8</text><text class="tag" x="140" y="341" text-anchor="middle">同层继续问</text><rect id="g4" x="52" y="308" width="176" height="42" rx="7" fill="none" stroke="#EF9F27" stroke-width="1.6" opacity="0"/><text id="v4" class="tag" x="244" y="324">键范围外 → 跳过</text><text class="tag" x="244" y="340">smallest / largest 先裁</text><line x1="142" y1="352" x2="142" y2="360" stroke="#C46A0A" stroke-width="1.3" marker-end="url(#a)"/><rect id="s5" x="52" y="362" width="176" height="42" rx="7" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.3"/><text class="tb" x="140" y="379" text-anchor="middle">L1 F3（层内至多 1 个）</text><text class="tag" x="140" y="395" text-anchor="middle">二分 + FileIndexer 选中</text><rect id="g5" x="52" y="362" width="176" height="42" rx="7" fill="none" stroke="#EF9F27" stroke-width="1.6" opacity="0"/>
+<text id="v5" class="tag" x="244" y="378" fill="#854F0B">布隆放行 → 进漏斗 →</text><text class="tag" x="244" y="394">块内撞上 seq=10 墓碑</text><line x1="142" y1="406" x2="142" y2="414" stroke="#D3D1C7" stroke-width="1.2" stroke-dasharray="3 3"/><rect id="s6" x="52" y="416" width="176" height="42" rx="7" fill="#F5F4EF" stroke="#B4B2A9" stroke-width="1.1"/><text class="tb" x="140" y="433" text-anchor="middle">L2 F9：seq=4 旧版本</text><text class="tag" x="140" y="449" text-anchor="middle">kDeleted 已终止</text><text id="v6" class="tag" x="244" y="432">永远不被读路径看到，</text><text class="tag" x="244" y="448">只能等压实来清理</text><rect id="funnel" x="450" y="52" width="510" height="418" rx="10" fill="#FBFAF6" stroke="#ECEAE2"/><text class="tn" x="462" y="72">磁盘侧四段漏斗（BlockBasedTable::Get，以 L1 F3 为例）</text><text class="tag" x="462" y="88">每深一层多一次布隆 + 索引 + 可能的读盘；命中层越深读越贵</text><rect id="fb1" x="462" y="100" width="250" height="54" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/><text class="tb" x="587" y="121" text-anchor="middle">① 布隆 FullFilterKeyMayMatch</text><text class="tag" x="587" y="139" text-anchor="middle">肯定没有 → 整文件返回，零块读取</text>
+<rect id="h1" x="462" y="100" width="250" height="54" rx="7" fill="none" stroke="#EF9F27" stroke-width="1.6" opacity="0"/><line x1="587" y1="156" x2="587" y2="176" stroke="#C46A0A" stroke-width="1.3" marker-end="url(#a)"/><rect id="fb2" x="462" y="180" width="250" height="54" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/><text class="tb" x="587" y="201" text-anchor="middle">② index Seek → BlockHandle</text><text class="tag" x="587" y="219" text-anchor="middle">索引定位目标数据块</text><rect id="h2" x="462" y="180" width="250" height="54" rx="7" fill="none" stroke="#EF9F27" stroke-width="1.6" opacity="0"/><line x1="587" y1="236" x2="587" y2="256" stroke="#C46A0A" stroke-width="1.3" marker-end="url(#a)"/><rect id="fb3" x="462" y="260" width="250" height="54" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/><text class="tb" x="587" y="281" text-anchor="middle">③ 读块（4KB block）</text><text class="tag" x="587" y="299" text-anchor="middle">优先命中块缓存（默认 32MB）</text><rect id="h3" x="462" y="260" width="250" height="54" rx="7" fill="none" stroke="#EF9F27" stroke-width="1.6" opacity="0"/>
+<line x1="587" y1="316" x2="587" y2="336" stroke="#C46A0A" stroke-width="1.3" marker-end="url(#a)"/><rect id="fb4" x="462" y="340" width="250" height="54" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/><text class="tb" x="587" y="361" text-anchor="middle">④ 块内 SeekForGet</text><text class="tag" x="587" y="379" text-anchor="middle">逐条交给 SaveValue 裁决</text><rect id="h4" x="462" y="340" width="250" height="54" rx="7" fill="none" stroke="#EF9F27" stroke-width="1.6" opacity="0"/><rect id="svPanel" x="740" y="100" width="208" height="294" rx="8" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/><text class="tn" x="844" y="120" text-anchor="middle">SaveValue 裁决（最终裁判）</text><text class="tag" x="752" y="144">· user_key 相等才算数</text><text class="tag" x="752" y="162">· 快照不可见 → 跳过继续</text><text class="tag" x="752" y="180">· kTypeValue → 返回值</text><text class="tag" x="752" y="198" fill="#854F0B">· kTypeDeletion → kDeleted 终止</text><text class="tag" x="752" y="216">· kTypeMerge → 攒操作数继续</text><text class="tb" x="844" y="248" text-anchor="middle">四种终态（GetContext）</text>
+<rect x="752" y="258" width="88" height="26" rx="5" fill="#EAF3DE" stroke="#639922" stroke-width="1.1"/><text class="tag" x="796" y="275" text-anchor="middle">kFound 有值</text><rect x="848" y="258" width="88" height="26" rx="5" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.1"/><text class="tag" x="892" y="275" text-anchor="middle">kDeleted 墓碑</text><rect x="752" y="292" width="88" height="26" rx="5" fill="#F5F4EF" stroke="#B4B2A9" stroke-width="1.1"/><text class="tag" x="796" y="309" text-anchor="middle">kNotFound</text><rect x="848" y="292" width="88" height="26" rx="5" fill="#F5F4EF" stroke="#B4B2A9" stroke-width="1.1"/><text class="tag" x="892" y="309" text-anchor="middle">kMerge</text><rect id="kDelHi" x="846" y="256" width="92" height="30" rx="6" fill="none" stroke="#E24B4A" stroke-width="2" opacity="0"/><text class="tag" x="752" y="342">kDeleted 与 kNotFound 对用户都是</text><text class="tag" x="752" y="358">查无此键——语义等价，代价不同：</text><text class="tag" x="752" y="374">kDeleted 走到墓碑层就停，</text><text class="tag" x="752" y="390">kNotFound 要问完全程才知道。</text>
+<rect id="ctxLane" x="40" y="480" width="920" height="94" rx="10" fill="#FBFAF6" stroke="#ECEAE2"/><text class="tn" x="52" y="500">读路径上的便宜账与计数器</text><text class="tag" x="52" y="520">第 0 关 row cache：缓存「这个键在这套文件版本下的最终答案」，命中连布隆和索引都省——数据一 flush 就作废</text><text class="tag" x="52" y="538">read_tier=kBlockCacheTier：块不在缓存就返回 MayExist 不碰盘——「可能存在但没核实」，答案不保证真假</text><text class="tag" x="52" y="556">计数器按关卡顺序读：MEMTABLE_HIT/MISS → GET_HIT_L0/L1/L2_AND_UP → BLOOM_FILTER_* → BLOCK_CACHE_*</text><text class="tag" x="660" y="520">MultiGet 复用同一条漏斗：一批键的块</text><text class="tag" x="660" y="536">收集起来集中读；键的空间局部性越好，</text><text class="tag" x="660" y="552">集中读省下的往返越多</text></g><circle id="tok" cx="235" cy="117" r="7" fill="#EF9F27" stroke="#D97E06" stroke-width="1.4"/>
+</svg>
+
+<div class="subview">
+<div class="viewtitle">第二视图 · 迭代器是另一台机器：MergingIterator 小顶堆 + DBIter 过滤（与主图同一相位，每两步推进一轮）</div>
+<svg id="eng2" viewBox="0 0 1000 200" role="img" xmlns="http://www.w3.org/2000/svg">
+<g id="scene2"><text class="tn" x="40" y="22">MergingIterator：所有数据源各发一个子迭代器，塞进小顶堆</text><text class="tag" x="40" y="40">Get 是找一个键；迭代器按序走一段区间——两台机器，成本结构不同</text><rect x="40" y="52" width="250" height="34" rx="6" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/><text class="tag" x="165" y="73" text-anchor="middle">MemTableIterator：device_47@seq9（Put）</text><rect id="e1h" x="40" y="52" width="250" height="34" rx="6" fill="none" stroke="#EF9F27" stroke-width="1.6" opacity="0"/><rect x="40" y="94" width="250" height="34" rx="6" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/><text class="tag" x="165" y="115" text-anchor="middle">TableIterator L0-F2：device_47@seq7（Put）</text><rect id="e2h" x="40" y="94" width="250" height="34" rx="6" fill="none" stroke="#EF9F27" stroke-width="1.6" opacity="0"/><rect x="40" y="136" width="250" height="34" rx="6" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/><text class="tag" x="165" y="157" text-anchor="middle">LevelIterator L2-F9：device_20@seq4（Put）</text><rect id="e3h" x="40" y="136" width="250" height="34" rx="6" fill="none" stroke="#EF9F27" stroke-width="1.6" opacity="0"/>
+<rect id="heapBox" x="330" y="52" width="280" height="118" rx="8" fill="#FBFAF6" stroke="#B4B2A9" stroke-width="1.2"/><text class="tb" x="470" y="74" text-anchor="middle">小顶堆（堆顶 = 当前最小内部键）</text><rect x="350" y="84" width="240" height="34" rx="6" fill="#FFFFFF" stroke="#EF9F27" stroke-width="1.2"/><text id="heapTop" class="tb" x="470" y="105" text-anchor="middle">堆顶 device_47@seq9</text><text class="tag" x="470" y="140" text-anchor="middle">Next() 三步：取堆顶 → 堆顶自己 Next() → replace_top</text><text class="tag" x="470" y="158" text-anchor="middle">key() 就是堆顶的 key；反向遍历换大顶堆</text><rect id="dbOutBox" x="650" y="52" width="310" height="118" rx="8" fill="#FFFFFF" stroke="#639922" stroke-width="1.2"/><text class="tb" x="805" y="74" text-anchor="middle">DBIter（给用户看 user key）</text><rect x="670" y="84" width="270" height="34" rx="6" fill="#EAF3DE" stroke="#639922" stroke-width="1.1"/><text id="dbOutT" class="tb" x="805" y="105" text-anchor="middle">输出 device_47 → seq=9 的值</text><text class="tag" x="670" y="140">· seq 过滤：快照之后写入的版本跳过</text><text class="tag" x="670" y="156">· 同 user_key 只露出一个；撞墓碑整键跳掉</text>
+<text class="tag" x="40" y="188">方向切换是隐形税：Next/Prev 交替要重建反向堆（SeekForPrev + 重建堆序）——「先 Seek 再单向遍历」快一个量级的根子在这里</text></g><circle id="tok2" cx="470" cy="101" r="6" fill="#EF9F27" stroke="#D97E06" stroke-width="1.4"/>
+</svg>
+</div>
+
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.5" max="2" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm">默认 ≈ 6 秒 / 轮</span>
+</div>
+<div class="readout">
+<span class="ro">进度 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">读数 <b id="roKey">--</b></span>
+<span class="ro">当前被问的层 <b id="roLayer">--</b></span>
+<span class="ro">比较过的版本 <b id="roCmp">--</b></span>
+<span class="ro">布隆判定 <b id="roBloom">--</b></span>
+<span class="ro">返回值 <b id="roRet">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav"><button class="btn" onclick="prevStep()">‹ 上一步</button><button class="btn warn" onclick="nextStep()">下一步 ›</button></span>
+</div>
+<p class="figcap">进度 0° = 钉住 SuperVersion 快照，720° = SaveValue 裁决完成返回 NotFound。演示时刻：device_47 的 4 条痕迹经压实后，墓碑（seq=10）在 L1 F3，L0 两个文件来自更晚的 flush；橙点 = 读游标。<br>口径：RocksDB 11.13.0；L0 逐文件（version_set.cc:488-490）、L1+ 二分 + FileIndexer（version_set.cc:401-526）、布隆/索引/块/SaveValue 四段（block_based_table_reader:507-708）、块 4KB（table.h:400）、块缓存默认 32MB。</p>
+</div>
+</div>
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：删了 8000 万行，P99 为什么反而涨</h2></div>
+<p class="sec-sub">先不拆路径，只看它对外表现出什么。</p>
+<div class="quote">「观察一个系统，先分清它的静态结构、动态过程和外部依赖。」</div>
+<p>数据明明变少了，点查却变慢。差别不在缓存冷热，而在 LSM 读路径的形状：写入永远落在 memtable，读取却要<b>从新到旧、一层一层问过去</b>。那 8000 万行删除只留下满地墓碑，旧层的文件还在原地，每次点查照样要问到最后一层。</p>
+<div class="flow">
+<span class="node">Get(key)</span><span class="arr">→</span><span class="node box">SuperVersion 快照</span><span class="arr">→</span><span class="node">memtable</span><span class="arr">→</span><span class="node">immutable</span><span class="arr">→</span><span class="node">L0 逐个</span><span class="arr">→</span><span class="node">L1+ 每层一个</span><span class="arr">→</span><span class="node">第一次命中即返回</span>
+</div>
+<p>一句话本质：<b>问一群按资历排座的师傅，规矩只有一条——先被问到的答案就是最终答案</b>，因为座次就是新旧次序。命中层越深，这次读越贵：GET_HIT_L0 → L1 → L2_AND_UP 三个计数器直接反映数据「冷」到了哪一层。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：座次与漏斗</h2></div>
+<p class="sec-sub">点部件卡片，动画里对应的结构会亮起。</p>
+<div class="quote">「分解要 MECE：同一层粒度一致，不重不漏。」</div>
+<div class="figure"><svg viewBox="0 0 920 188" role="img" xmlns="http://www.w3.org/2000/svg"><text x="460" y="20" font-size="13" fill="#1F1E1A" text-anchor="middle" font-weight="600">LookupKey：user_key + 快照 seq + seek 类型——比该键在快照内的一切现存版本都大一号</text><rect x="40" y="40" width="150" height="44" rx="6" fill="#EFF6FF" stroke="#2563EB"/><text x="115" y="66" font-size="11.5" fill="#3B3A34" text-anchor="middle">user_key：device_47</text><rect x="202" y="40" width="230" height="44" rx="6" fill="#FFF6E8" stroke="#EF9F27"/><text x="317" y="58" font-size="11" fill="#3B3A34" text-anchor="middle">8 字节尾巴：(快照 seq &lt;&lt; 8) | kValueTypeForSeek</text><text x="317" y="76" font-size="10" fill="#6B695F" text-anchor="middle">seek 类型取真实值类型里序号最大的</text><text x="40" y="106" font-size="10.5" fill="#6B695F">Seek 落点：快照 seq 版本（可见）或首个不可见版本——从落点往后过滤。</text><rect x="40" y="112" width="392" height="68" rx="8" fill="#FFFFFF" stroke="#3B3A34"/><text x="52" y="130" font-size="10.5" fill="#854F0B" font-weight="600">正确性靠两个不变式（第一次命中即终止的全部依据）</text><text x="52" y="148" font-size="10.5" fill="#3B3A34">① seq 全局单调：同键两个版本，seq 大的一定是后写的</text><text x="52" y="164" font-size="10.5" fill="#3B3A34">② 层间新旧不变：同 key 上游 seq 永远比下游大</text><rect x="470" y="40" width="410" height="132" rx="8" fill="#FFFFFF" stroke="#D3D1C7"/><text x="482" y="62" font-size="10.5" fill="#854F0B" font-weight="600">读放大的账（一次冷点查）</text><text x="482" y="84" font-size="10.5" fill="#3B3A34">L0 有 4 个文件 + L1~L3 各 1 个候选 = 7 次布隆判断</text><text x="482" y="102" font-size="10.5" fill="#3B3A34">命中前 2 个文件实际读块 = 9 次「布隆/索引/块」访问</text><text x="482" y="120" font-size="10.5" fill="#3B3A34">全 miss 再乘一遍——「P99 = 层数 × 2ms」经验的出处</text><text x="482" y="142" font-size="10.5" fill="#6B695F">压实把 L0 压平、拉深层数、生成布隆，</text><text x="482" y="158" font-size="10.5" fill="#6B695F">都是在给这张表做减法。</text></svg></div>
+<p class="figcap">静态标注图：LookupKey 怎么拼、正确性靠哪两个不变式、读放大怎么算。与下方部件卡、动画结构一致。</p>
+<div class="partgroup"><div class="gname">座次（从新到旧）</div><div class="parts">
+<button class="part" data-part="sv"><b>SuperVersion</b><span>memtable + immutable + Version 的只读打包视图；读不阻塞写靠引用计数。</span></button>
+<button class="part" data-part="mem"><b>mutable memtable</b><span>第一个被问；内置布隆先行，再查跳表。</span></button>
+<button class="part" data-part="imm"><b>immutable 队列</b><span>push_front 天然新→旧，逐个被问。</span></button>
+<button class="part" data-part="l0"><b>L0 文件</b><span>键范围互相重叠——源码写明逐个问。</span></button>
+<button class="part" data-part="l1"><b>L1+ 文件</b><span>层内不重叠：二分 + FileIndexer 收窄，每层至多一个候选。</span></button>
+</div></div>
+<div class="partgroup"><div class="gname">块内与另一台机器</div><div class="parts">
+<button class="part" data-part="funnel"><b>四段漏斗</b><span>布隆挡点查 → index 定位块 → 读块（块缓存）→ 块内 SeekForGet。</span></button>
+<button class="part" data-part="save"><b>SaveValue</b><span>user_key 相等才算数；按 type 分派 kFound / kDeleted / kNotFound / kMerge。</span></button>
+<button class="part" data-part="iter"><b>MergingIterator + DBIter</b><span>小顶堆出全局有序内部键；DBIter 做 seq 过滤、同键去重、方向翻转。</span></button>
+</div></div>
+<p class="hint">读是「带方向的扫描」：沿内部键序前进，直到撞上墓碑或命中值——切到分步模式看裁决的每一关。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：一次 Get 的 8 个相位</h2></div>
+<p class="sec-sub">第一遍只看橙点一层层往下问；第二遍同时看读数条「布隆判定」和「返回值」什么时候落定。</p>
+<div class="quote">「动态分析看的是时间轴上的顺序、状态变化和因果链。」</div>
+<table class="grid">
+<tr><th>相位</th><th>阶段</th><th>关键动作</th><th>读数</th></tr>
+<tr><td>0–90°</td><td>取快照 seq</td><td>先引用 SuperVersion，再取快照 seq（顺序约束）</td><td>视图已钉住</td></tr>
+<tr><td>90–180°</td><td>问 memtable</td><td>内置布隆先行，再查跳表</td><td>MEMTABLE_MISS</td></tr>
+<tr><td>180–270°</td><td>问 immutable</td><td>队列新→旧逐个问</td><td>未命中</td></tr>
+<tr><td>270–360°</td><td>问 L0</td><td class="hot">f7 布隆「肯定没有」；f8 键范围外</td><td class="hot">2 个全裁掉</td></tr>
+<tr><td>360–450°</td><td>层内裁剪</td><td>二分 + FileIndexer 收窄，键范围过滤</td><td>L1 候选 1 个</td></tr>
+<tr><td>450–540°</td><td>布隆过滤</td><td>F3「可能存在」→ 放行进漏斗</td><td class="hot">可能存在</td></tr>
+<tr><td>540–630°</td><td>块内定位</td><td>index → BlockHandle → 读块（块缓存）→ SeekForGet</td><td>块已定位</td></tr>
+<tr><td>630–720°</td><td>SaveValue 裁决</td><td class="hot">撞上 seq=10 墓碑 → kDeleted 终止</td><td class="hot">NotFound（墓碑）</td></tr>
+</table>
+<p>相位零点：0° = Get 钉住 SuperVersion；720° = 裁决完成返回。值得分步细看的两处：第 ④ 步两个 L0 文件被两种不同手段裁掉（布隆 vs 键范围）；第 ⑧ 步 kDeleted 终止后 L2 的旧版本永远不被看到。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件 × 关卡</h2></div>
+<p class="sec-sub">竖看是一次 Get 的全体协同，横看是一个部件的完整职责。</p>
+<div class="quote">「把部件放回阶段里，才能看清谁在什么时候接力。」</div>
+<table class="grid">
+<tr><th>部件</th><th>钉视图</th><th>内存侧</th><th>L0</th><th>L1+</th><th>块内</th></tr>
+<tr><td>SuperVersion</td><td class="hot">引用 + 快照 seq</td><td class="act">提供三段查找入口</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>memtable / immutable</td><td>—</td><td class="hot">布隆 + 跳表应答</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>FilePicker</td><td>—</td><td>—</td><td class="hot">逐个问</td><td class="hot">二分 + 收窄</td><td>—</td></tr>
+<tr><td>布隆过滤器</td><td>—</td><td class="act">memtable 内置</td><td class="hot">肯定没有 → 免读</td><td class="act">可能存在 → 放行</td><td>—</td></tr>
+<tr><td>块缓存（32MB）</td><td>—</td><td>—</td><td>—</td><td>—</td><td class="hot">兜住读块</td></tr>
+<tr><td>SaveValue</td><td>—</td><td>—</td><td>—</td><td>—</td><td class="hot">按 type 裁决终态</td></tr>
+</table>
+<p><b>涌现属性：</b>「读不阻塞写」不属于任何单个部件——SuperVersion 引用计数让后台随便换视图，读者拿着钉死的旧视图跑完。而「先问的一定对」由两个不变式涌现：seq 全局单调 + 层间新旧不变，缺一个整条读路径就塌。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：读路径之外还有什么</h2></div>
+<p class="sec-sub">拆掉任何一个外部依赖，前面看到的行为都会变。</p>
+<div class="quote">「环境属性 = 外在关系 + 依赖 + 失效后果。」</div>
+<div class="envcards">
+<div class="env"><b>块缓存（默认 32MB）</b><span>读回来的 4KB 块安家在内存；没有它，每个候选文件都要真读一次盘。</span></div>
+<div class="env"><b>row cache</b><span>第 0 关：缓存「这个键的最终答案」；数据一 flush 就作废，只适合反复点查的负载。</span></div>
+<div class="env"><b>快照列表（压实侧）</b><span>快照对读只是一个 seq 数字；重的那半（不许压实丢可见版本）记在压实侧的账上。</span></div>
+<div class="env"><b>上游写负载</b><span>flush 频率决定 L0 厚度、压实进度决定旧层深浅——读放大的形状是写路径给的。</span></div>
+<div class="env"><b>布隆过滤器</b><span>每文件一份全量过滤器：占内存与元数据，换来「肯定没有」时的零块读取。</span></div>
+<div class="env"><b>MultiGet 批量</b><span>同一条漏斗，块收集后集中读：键的空间局部性决定省多少往返。</span></div>
+</div>
+<p class="figcap">边界：本页画的是点查 Get；范围删除墓碑在本页只登记不判死（max_covering_tombstone_seq），展开留到压实篇。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">能说清「先问的一定对」靠什么成立，才算真的懂读路径。</p>
+<div class="quote">「用自己的话能讲清楚，才算真的懂。」</div>
+<div id="quiz"></div>
+</section>
+
+<div class="summary">
+<h2>一页带走</h2>
+<p class="chant">座次即新旧，第一答案算数；墓碑也是答案。</p>
+<p>· 一次 Get = 钉 SuperVersion → 定快照 seq → 拼 LookupKey → memtable → immutable → Version 逐层；第一次命中即终止。</p>
+<p>· 正确性靠两个不变式：seq 全局单调 + 同 key 上游永远比下游新；命中层越深读越贵（GET_HIT_L0/L1/L2_AND_UP）。</p>
+<p>· 磁盘侧四段漏斗：布隆挡点查（零块读取）→ index 定位块 → 读块（4KB/块缓存 32MB）→ SaveValue 按 type 裁决。</p>
+<p>· kDeleted 与 kNotFound 都返回 NotFound：语义等价、代价不同——删除只是一次写，回收要靠一次压实。</p>
+<p>· 边界与简化：演示时刻的文件布局为教学设定（墓碑在 L1）；迭代器方向切换税、Merge 键归并与范围删除本页不展开。</p>
+</div>
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+<script>
+var STEPS=[
+{d:0,t:"① 取快照 seq",x:"GetAndRefSuperVersion 把「memtable + immutable 队列 + 当前 Version」打包引用。快照 seq 必须在引用之后取——反过来，两步之间的 flush 可能把需要的数据压掉，读者将两头看不见。",k:"视图已钉住"},
+{d:90,t:"② 问 memtable",x:"sv->mem->Get：先过 memtable 内置布隆，再查跳表。本次未命中——device_47 的痕迹早已 flush 走（MEMTABLE_MISS）。",k:"memtable：未命中"},
+{d:180,t:"③ 问 immutable",x:"immutable 队列用 push_front 维护，天然新→旧；sv->imm->Get 逐个问，仍未命中。",k:"immutable：未命中"},
+{d:270,t:"④ 问 L0",x:"L0 文件键范围互相重叠，源码写明「On Level-0, we read through all files」。f7 布隆说「肯定没有」——整文件返回、零块读取；f8 键范围外，直接跳过。",k:"L0：2 个全裁掉"},
+{d:360,t:"⑤ 层内裁剪",x:"L1+ 层内不重叠：二分定位 + FileIndexer 用上一层的比较结果收窄区间，多数层连二分都省了；键范围过滤先行——每层至多一个候选文件。",k:"L1 候选 1 个"},
+{d:450,t:"⑥ 布隆过滤",x:"L1 F3 的布隆说「可能存在」——放行进漏斗。布隆说「肯定没有」时整文件免读，代价只是每文件多读一次布隆块（有块缓存时几乎免费）。",k:"布隆：可能存在"},
+{d:540,t:"⑦ 块内定位",x:"index Seek 找到目标数据块的 BlockHandle，读块优先命中块缓存（4KB 块，默认 32MB）；块内 SeekForGet 定位，逐条交给 SaveValue。",k:"块已定位"},
+{d:630,t:"⑧ SaveValue 裁决",x:"user_key 相等才算数；撞上 seq=10 的墓碑 → kDeleted 终止——对用户表现为 NotFound。L2 里的 seq=4 旧版本永远轮不到：先问的一定对。",k:"NotFound（墓碑）"}];
+var CHIPS=[{k:"layer",l:"问层"},{k:"bloom",l:"布隆"},{k:"verdict",l:"裁决"},{k:"iter",l:"迭代器"}];
+var PARTS={"sv":["sv0"],"mem":["s1"],"imm":["s2"],"l0":["s3","s4"],"l1":["s5"],"funnel":["funnel","fb1","fb2","fb3","fb4"],"save":["svPanel","kDelHi"],"iter":["heapBox","dbOutBox"]};
+var QUIZ=[
+{q:"为什么「先问的一定对」？",opts:["因为内存比盘快","两个不变式：seq 全局单调 + 同 key 上游永远比下游新","因为布隆过滤器很准"],a:1,exp:"seq 全局单调保证同键版本可比分新旧；数据只朝一个方向流（memtable→L0→更深层），上游 seq 永远比下游大。于是顺着座次问，第一次命中就是最新可见版本。"},
+{q:"kDeleted 和 kNotFound 都表现为查无此键，差别在哪？",opts:["没有差别","kDeleted 走到墓碑所在层就终止（便宜），kNotFound 通常问完全程（贵）","kNotFound 更快"],a:1,exp:"两者语义等价、代价不同：kDeleted 在墓碑层提前终止，后面的层不用问；kNotFound 要把所有层问到底才知道「真没有」。"},
+{q:"L0 为什么逐个问，L1+ 每层至多问一个文件？",opts:["随机决定","L0 文件键范围互相重叠；L1+ 层内不重叠，可二分 + FileIndexer 收窄","L0 文件更小"],a:1,exp:"L0 的文件来自互不知情的 memtable，范围彼此重叠；L1+ 由压实产出、层内有序不重叠，二分定位后每层至多一个候选。"},
+{q:"布隆过滤器说「肯定没有」时，省掉了什么？",opts:["整个文件的读取：零块读取","只省了块缓存","省了快照"],a:1,exp:"FullFilterKeyMayMatch 返回否就整文件返回，index 和数据块都不碰；代价是每个文件多读一次布隆块——有块缓存时几乎免费。"},
+{q:"快照机制对读路径的代价是什么？",opts:["要复制整个 memtable","只是一个 seq 数字；重的那半（不许压实丢可见版本）记在压实侧","要锁住所有层"],a:1,exp:"带快照的 Get 只是把比较用的 seq 换成快照 seq。代价在压实侧：快照登记后，压实清理旧版本时必须保留所有快照可见的最新版本。"},
+{q:"删掉 8000 万行后点查 P99 从 0.8ms 涨到 4ms，最可能的解释？",opts:["缓存变冷","删除只留墓碑、旧层文件原地没动：GET_HIT_L2_AND_UP 占比升高，每层照付过路费","数据变小所以更慢"],a:1,exp:"数据变少不等于层数变浅。墓碑把「待合并」的账撑大，旧层文件原地没动，读路径每层照付布隆/索引/块的过路费——读路径的债记在压实的账上，收敛靠压实。"}];
+var WP=[[0,235,117],[55,235,117],[70,140,167],[170,140,167],[185,140,221],[260,140,221],[275,140,275],[340,140,275],[352,140,329],[360,140,383],[450,140,383],[465,587,127],[530,587,127],[545,587,207],[620,587,207],[630,587,287],[656,587,367],[678,844,196],[720,844,196]];
+var WP2=[[0,470,101],[240,470,101],[258,805,101],[272,470,101],[510,470,101],[528,805,101],[542,470,101],[700,470,101],[712,805,101],[720,805,101]];
+var HEAPTOP=["堆顶 device_47@seq9","堆顶 device_47@seq7","堆顶 device_20@seq4"];
+var DBOUT=["输出 device_47 → seq=9 的值","跳过 device_47@7（同键已输出）","输出 device_20 → seq=4 的值"];
+var PERIOD=6000,basePeriod=PERIOD,PHASE_MAX=720,STEP_DUR=600;
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,stepIdx=-1,dots=[],ticking=false,chipEls={};
+function $(id){return document.getElementById(id);}
+function setText(id,s){var n=$(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setOp(id,v){var n=$(id);if(n)n.setAttribute('opacity',Math.max(0,Math.min(1,v)).toFixed(2));}
+function setAttr(id,k,v){var n=$(id);if(n)n.setAttribute(k,v);}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){t=clamp(t,0,1);return t*t*(3-2*t);}
+function ramp(th,a,b){return clamp((th-a)/((b-a)||1),0,1);}
+function win(pr,a,b){return clamp(ramp(pr,a,a+6)*(1-ramp(pr,b-6,b)),0,1);}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function lerpPts(pts,th){
+  if(th<=pts[0][0])return[pts[0][1],pts[0][2]];
+  for(var i=0;i<pts.length-1;i++){if(th<pts[i+1][0]){var t=smooth((th-pts[i][0])/(pts[i+1][0]-pts[i][0]));return[pts[i][1]+(pts[i+1][1]-pts[i][1])*t,pts[i][2]+(pts[i+1][2]-pts[i][2])*t];}}
+  return[pts[pts.length-1][1],pts[pts.length-1][2]];
+}
+function setChip(k,v){var n=chipEls[k];if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',/^(已|完成|命中|可能|进行|放行)/.test(v));n.classList.toggle('off',/^(待命|—|无|未|0|肯定)/.test(v));}
+function stageIdx(pr){var s=0;for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)s=i;}return s;}
+function pageRender(pr,si){
+  var layer=pr<90?'SuperVersion':pr<180?'mutable memtable':pr<270?'immutable 队列':pr<360?'L0（f7→f8）':pr<450?'L1（层内裁剪）':pr<540?'L1 F3 布隆':pr<630?'F3 index→块':'SaveValue 裁决';
+  setText('roLayer',layer);
+  setText('roCmp',pr<630?'0':'1（seq=10 墓碑）');
+  var bloom=pr<270?'—':pr<310?'肯定没有':pr<350?'范围外':pr<540?'—':'可能存在';
+  setText('roBloom',bloom);
+  setText('roRet',pr<630?'进行中':'NotFound（kDeleted）');
+  setOp('g0',win(pr,0,70));
+  setOp('g1',win(pr,70,185));
+  setOp('g2',win(pr,185,275));
+  setOp('g3',win(pr,275,340));
+  setOp('g4',win(pr,340,362));
+  setOp('g5',win(pr,362,465));
+  setOp('h1',win(pr,465,545));
+  setOp('h2',win(pr,545,630));
+  setOp('h3',win(pr,630,656));
+  setOp('h4',win(pr,656,678));
+  setOp('kDelHi',ramp(pr,636,650));
+  setText('v3',pr>=280?'布隆：肯定没有':'等待应答');
+  setText('v5',pr>=632?'块内撞上 seq=10 墓碑':'布隆放行 → 进漏斗 →');
+  var rd=pr<270?0:pr<540?1:2;
+  setText('heapTop',HEAPTOP[rd]);
+  setText('dbOutT',DBOUT[rd]);
+  setOp('e1h',win(pr,0,270));setOp('e2h',win(pr,270,540));setOp('e3h',win(pr,540,720));
+  setChip('layer',layer);
+  setChip('bloom',bloom);
+  setChip('verdict',pr<630?'进行中':'命中墓碑');
+  setChip('iter','第 '+(rd+1)+' 轮');
+}
+function render(th){
+  var pr=norm(th);
+  setText('roPhase',Math.round(pr)+'°');
+  var si=stageIdx(pr);if(mode==='step'&&stepIdx>=0)si=stepIdx;
+  setText('roStep',STEPS[si]?STEPS[si].t:'—');
+  setText('roKey',STEPS[si]?STEPS[si].k:'—');
+  pageRender(pr,si);
+  var p=lerpPts(WP,pr);setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));
+  var q=lerpPts(WP2,pr);setAttr('tok2','cx',q[0].toFixed(1));setAttr('tok2','cy',q[1].toFixed(1));
+}
+function tick(now){
+  ticking=false;
+  var dt=Math.min(50,now-last);last=now;
+  if(run&&mode==='auto')phase=(phase+dt/PERIOD*PHASE_MAX)%PHASE_MAX;
+  if(mode==='step'&&stepTo!==null){
+    stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);var p=stepElapsed/STEP_DUR,e=smooth(p);
+    phase=stepFrom+(stepTo-stepFrom)*e;if(p>=1){phase=stepTo;stepTo=null;}
+  }
+  render(phase);
+  if(run||stepTo!==null){ticking=true;requestAnimationFrame(tick);}
+}
+function wake(){if(ticking)return;ticking=true;last=performance.now();requestAnimationFrame(tick);}
+function setAuto(on){
+  mode='auto';run=on;stepTo=null;var b=$('engBtn');if(b)b.textContent=on?'暂停':'播放';
+  if(on){stepIdx=-1;dots.forEach(function(d){d.classList.remove('on');});
+  setText('stepT','自动运转模式');setText('stepX','点下方步骤点可切换到分步演示，随你点击定格。');wake();}
+}
+window.goStep=function(i){
+  stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+  var target=STEPS[stepIdx].d;
+  if(reduced||Math.abs(target-norm(phase))>180){phase=target;stepTo=null;}
+  else{stepFrom=phase;stepTo=target;stepElapsed=0;}
+  render(phase);wake();
+  var b=$('engBtn');if(b)b.textContent='继续自动运转';
+  dots.forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+  setText('stepT','第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t);
+  setText('stepX',STEPS[stepIdx].x);
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+CHIPS.forEach(function(c){var box=$('stateChips');var s=document.createElement('span');s.className='chip';s.innerHTML=c.l+' <b>--</b>';box.appendChild(s);chipEls[c.k]=s;});
+var stepBar=$('stepBar');
+STEPS.forEach(function(s,n){var b=document.createElement('button');b.className='stepnode';b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+s.t+'</span>';b.onclick=function(){goStep(n);};stepBar.appendChild(b);dots.push(b);});
+var engBtn=$('engBtn');engBtn.textContent=run?'暂停':'播放';
+engBtn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+var spd=$('engSpd');
+if(spd){spd.oninput=function(){speed=parseFloat(spd.value);$('engSpdV').textContent=speed+'×';PERIOD=basePeriod/speed;};}
+document.querySelectorAll('.part').forEach(function(btn){btn.onclick=function(){var ids=(PARTS[btn.dataset.part]||[]);document.querySelectorAll('#eng .hl,#eng2 .hl').forEach(function(n){n.classList.remove('hl');});ids.forEach(function(id){var n=$(id);if(n)n.classList.add('hl');});};});
+var quizBox=$('quiz');QUIZ.forEach(function(q,n){var d=document.createElement('div');d.className='q';var html='<div class="qt">'+(n+1)+'. '+q.q+'</div>';q.opts.forEach(function(o,j){html+='<button class="opt" data-q="'+n+'" data-o="'+j+'">'+o+'</button>';});html+='<div class="exp"><b>答案：</b>'+q.opts[q.a]+'<br>'+q.exp+'</div>';d.innerHTML=html;quizBox.appendChild(d);});
+quizBox.querySelectorAll('.opt').forEach(function(b){b.onclick=function(){var q=QUIZ[+b.dataset.q];var box=b.closest('.q');if(box.classList.contains('done'))return;box.classList.add('done');b.classList.add(+b.dataset.o===q.a?'right':'wrong');box.querySelectorAll('.opt').forEach(function(o){if(+o.dataset.o===q.a)o.classList.add('right');});};});
+if(reduced){run=false;phase=0;render(0);engBtn.textContent='播放';}else{wake();}
+</script>
+</body>
+</html>

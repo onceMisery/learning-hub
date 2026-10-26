@@ -1,0 +1,260 @@
+{
+  "id": "cassandra",
+  "title": "分布式数据库 · 读 Cassandra 源码",
+  "subtitle": "沿着一行数据的写入、复制与读取，把提交日志、Memtable、SSTable、Gossip、令牌环与一致性读成一套能复述的分布式存储系统，并与单机引擎 RocksDB 逐章对照",
+  "order": 80,
+  "status": "active",
+  "accent": "blue",
+  "tags": [
+    "Cassandra",
+    "分布式数据库",
+    "LSM-Tree",
+    "一致性哈希",
+    "Gossip",
+    "CQL"
+  ],
+  "toolchain": "Cassandra 7.0-SNAPSHOT（master 分支）",
+  "verifiedAt": "2026-10-25",
+  "outline": [
+    "架构概述：一行数据的进来与出去",
+    "提交日志与内存表：先记账，再落内存",
+    "SSTable 与压缩：磁盘上的不可变账本",
+    "基于 Trie 的存储格式：TrieMemtable 与 BTI",
+    "Gossip 与故障检测：八卦网怎么知道谁挂了",
+    "分区器与令牌环：一行数据摊给谁",
+    "一致性与副本：三个副本几个确认",
+    "CQL3 解析与执行：从 CQL 到 Mutation",
+    "原生协议传输：CQL 消息的线路形态",
+    "读写路径：Coordinator 的两条流水线",
+    "存储附着索引（SAI）：索引跟着 SSTable 走",
+    "向量搜索与 ANN：JVector 的近邻搜索",
+    "修复与反熵：Merkle 树、Hint 与读修复",
+    "拓扑变更与节点生命周期：入列与离场",
+    "快照与备份：硬链接的时光机"
+  ],
+  "sections": [
+    {
+      "id": "overview",
+      "title": "架构概述",
+      "path": "tutorial/overview",
+      "order": 10,
+      "pages": [
+        {
+          "file": "01-架构概述.md",
+          "slug": "01-architecture",
+          "title": "架构概述：一行数据的进来与出去",
+          "tags": [
+            "Dynamo 系",
+            "整体架构",
+            "对等架构",
+            "RocksDB 对比"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "engine",
+      "title": "存储引擎",
+      "path": "tutorial/engine",
+      "order": 20,
+      "pages": [
+        {
+          "file": "01-提交日志与内存表.md",
+          "slug": "01-commitlog-memtable",
+          "title": "提交日志与内存表：先记账，再落内存",
+          "tags": [
+            "CommitLog",
+            "Memtable",
+            "TrieMemtable",
+            "commitlog_sync"
+          ]
+        },
+        {
+          "file": "02-SSTable与压缩.md",
+          "slug": "02-sstable-compaction",
+          "title": "SSTable 与压缩：磁盘上的不可变账本",
+          "tags": [
+            "SSTable",
+            "Compaction",
+            "STCS",
+            "LCS",
+            "TWCS"
+          ]
+        },
+        {
+          "file": "03-基于Trie的存储格式.md",
+          "slug": "03-trie-formats",
+          "title": "基于 Trie 的存储格式：TrieMemtable 与 BTI",
+          "tags": [
+            "Trie",
+            "BTI",
+            "PartitionIndex",
+            "RowIndexReader"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "distributed",
+      "title": "分布式协调",
+      "path": "tutorial/distributed",
+      "order": 30,
+      "pages": [
+        {
+          "file": "01-Gossip与故障检测.md",
+          "slug": "01-gossip-failure-detection",
+          "title": "Gossip 与故障检测：八卦网怎么知道谁挂了",
+          "tags": [
+            "Gossip",
+            "Phi Accrual",
+            "EndpointState",
+            "心跳"
+          ]
+        },
+        {
+          "file": "02-分区器与令牌环.md",
+          "slug": "02-partitioner-token-ring",
+          "title": "分区器与令牌环：一行数据摊给谁",
+          "tags": [
+            "Murmur3Partitioner",
+            "Token",
+            "vnodes",
+            "一致性哈希"
+          ]
+        },
+        {
+          "file": "03-一致性与副本.md",
+          "slug": "03-consistency-replication",
+          "title": "一致性与副本：三个副本几个确认",
+          "tags": [
+            "ConsistencyLevel",
+            "QUORUM",
+            "NetworkTopologyStrategy",
+            " Hinted Handoff"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "query",
+      "title": "查询处理",
+      "path": "tutorial/query",
+      "order": 40,
+      "pages": [
+        {
+          "file": "01-CQL3解析与执行.md",
+          "slug": "01-cql3-parsing",
+          "title": "CQL3 解析与执行：从 CQL 到 Mutation",
+          "tags": [
+            "CQL3",
+            "QueryProcessor",
+            "AST",
+            "预处理语句"
+          ]
+        },
+        {
+          "file": "02-原生协议传输.md",
+          "slug": "02-native-protocol",
+          "title": "原生协议传输：CQL 消息的线路形态",
+          "tags": [
+            "Native Protocol v5",
+            "Frame",
+            "Netty",
+            "消息编解码"
+          ]
+        },
+        {
+          "file": "03-读写路径.md",
+          "slug": "03-read-write-paths",
+          "title": "读写路径：Coordinator 的两条流水线",
+          "tags": [
+            "StorageProxy",
+            "ReadCallback",
+            "WriteResponseHandler",
+            "拼接"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "index",
+      "title": "索引子系统",
+      "path": "tutorial/index",
+      "order": 50,
+      "pages": [
+        {
+          "file": "01-存储附着索引SAI.md",
+          "slug": "01-sai",
+          "title": "存储附着索引（SAI）：索引跟着 SSTable 走",
+          "tags": [
+            "SAI",
+            "倒排",
+            "PostingList",
+            "SSTableIndex"
+          ]
+        },
+        {
+          "file": "02-向量搜索与ANN.md",
+          "slug": "02-vector-ann",
+          "title": "向量搜索与 ANN：JVector 的近邻搜索",
+          "tags": [
+            "vector",
+            "ANN",
+            "JVector",
+            "TopK"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "operations",
+      "title": "集群操作",
+      "path": "tutorial/operations",
+      "order": 60,
+      "pages": [
+        {
+          "file": "01-修复与反熵.md",
+          "slug": "01-repair-anti-entropy",
+          "title": "修复与反熵：Merkle 树、Hint 与读修复",
+          "tags": [
+            "Repair",
+            "MerkleTree",
+            "Hinted Handoff",
+            "读修复"
+          ]
+        },
+        {
+          "file": "02-拓扑变更与节点生命周期.md",
+          "slug": "02-topology-lifecycle",
+          "title": "拓扑变更与节点生命周期：入列与离场",
+          "tags": [
+            "Bootstrap",
+            "Decommission",
+            "Streaming",
+            "CMS"
+          ]
+        },
+        {
+          "file": "03-快照与备份.md",
+          "slug": "03-snapshot-backup",
+          "title": "快照与备份：硬链接的时光机",
+          "tags": [
+            "Snapshot",
+            "硬链接",
+            "增量备份",
+            "sstableloader"
+          ]
+        }
+      ]
+    }
+  ],
+  "codeRoots": [],
+  "assets": [
+    "assets"
+  ],
+  "lab": {
+    "title": "Cassandra 互动原理实验室",
+    "subtitle": "十五章动态图解：从一行数据的进来与出去、提交日志与内存表、SSTable 与 Trie 格式，到 Gossip 传八卦、令牌环分数据、一致性协商、CQL 解析、读写流水线、SAI 索引、向量搜索、反熵修复与快照备份。每页都能自动运转，也能按步骤定格。",
+    "route": "/cassandra/lab"
+  }
+}

@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>压实策略：Level、Universal、FIFO 三本账 · RocksDB 互动原理实验室 第 5 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#fff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:960px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#fff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:38px 0 22px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:710px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#fff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:500;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:11.5px;fill:#3B3A34}
+.tn{font-size:12.5px;font-weight:500;fill:#1F1E1A}
+.tag{font-size:10px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.modebar{display:flex;align-items:center;gap:8px;margin:6px 4px 0;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.modebar .mlabel{font-weight:600;color:#3B3A34}
+.modebtn{padding:5px 12px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:12.5px;cursor:pointer;font-family:inherit}
+.modebtn:hover{border-color:#888780}
+.modebtn.on{background:#FFF6E8;border-color:#EF9F27;color:#854F0B;font-weight:600}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:68px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+section{padding:34px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .arr{color:#C46A0A;font-weight:600}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.figcap b{color:#3B3A34;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:13.5px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 9px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#scene [opacity]{transition:opacity .22s ease}
+#eng .hl{stroke:#D96C06 !important;stroke-width:2.2 !important}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+@media (prefers-reduced-motion: reduce){#scene [opacity]{transition:none}}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：压实策略：Level、Universal、FIFO 三本账</a>
+  <span class="idx">第 5 / 12 章</span>
+</div>
+<div class="page">
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · 压实策略</div>
+<h1>三本放大账：同一条数据流，三种理账的形状</h1>
+<p>四线程压测前 30 分钟 P99 稳定 2 ms，40 分钟后掉到 500 ms，磁盘却只用了不到 20%；STATS 里 L0 文件数在 20 和 36 之间打摆。写入路径没变——变的是压实的形状：层的金字塔、按时间的叠放，还是只管丢弃的队列。切一切下面的策略开关，看同一条数据流怎么走出三种账。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span><span class="mnode">② 静态分解</span><span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span><span class="mnode">⑤ 环境场景</span><span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 640" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>三种压实策略：Leveled 金字塔 / Universal 叠放 / FIFO 队列</title><defs><marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="g" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="r" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker></defs><text class="th" x="500" y="22" text-anchor="middle">三种压实策略：Leveled 金字塔 / Universal 叠放 / FIFO 队列</text><text class="ts" x="500" y="40" text-anchor="middle">主图 = 同一条数据流在三种形状里的走向；下方 = 三本放大账联动读数</text><text class="tag" x="958" y="22" text-anchor="end">琥珀 = 新 flush 文件 / run</text><text class="tag" x="958" y="38" text-anchor="end">绿 = 归并输出 · 红 = 删除 / 淘汰</text>
+<g id="scene">
+<rect x="40" y="52" width="920" height="84" rx="10" fill="#FBFAF6" stroke="#ECEAE2"/><text class="tn" x="52" y="72">公共入口：memtable 攒满 64MB → flush 成一个不可变文件——三种策略唯一的公共动作</text>
+<rect id="nw0" x="52" y="84" width="120" height="44" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/><text class="tb" x="112" y="104" text-anchor="middle">MemTable</text><text class="tag" x="112" y="120" text-anchor="middle">满 64MB</text><line x1="174" y1="106" x2="192" y2="106" stroke="#C46A0A" stroke-width="1.4" marker-end="url(#a)"/><rect id="nw1" x="196" y="84" width="180" height="44" rx="7" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/><text class="tb" x="286" y="102" text-anchor="middle">flush → 不可变文件</text><text class="tag" x="286" y="118" text-anchor="middle">文件一旦写完就不再改</text><rect x="716" y="84" width="232" height="44" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1" stroke-dasharray="4 3"/><text class="tag" x="728" y="102">分岔从「这个文件之后归谁管」开始：</text><text class="tag" x="728" y="118">进层（L）/ 成 run（U）/ 排队（F）</text>
+
+<g id="gLev">
+<rect x="40" y="148" width="920" height="284" rx="10" fill="#FBFAF6" stroke="#ECEAE2"/><text class="tn" x="52" y="168">Leveled（默认）：层间归并金字塔 —— 读最省、写最贵</text>
+<rect id="levL0" x="52" y="180" width="520" height="62" rx="8" fill="#FFFFFF" stroke="#B4B2A9" stroke-width="1.2"/><text class="tb" x="64" y="196">L0：文件键范围互相重叠，点查要逐个问</text>
+<rect id="lf1" x="64" y="204" width="92" height="26" rx="5" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1" opacity="0"/><text id="lf1t" class="tag" x="110" y="221" text-anchor="middle" opacity="0">f1 · seq7</text><rect id="lf2" x="162" y="204" width="92" height="26" rx="5" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1" opacity="0"/><text id="lf2t" class="tag" x="208" y="221" text-anchor="middle" opacity="0">f2 · seq8</text><rect id="lf3" x="260" y="204" width="92" height="26" rx="5" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1" opacity="0"/><text id="lf3t" class="tag" x="306" y="221" text-anchor="middle" opacity="0">f3 · seq9</text><rect id="lf4" x="358" y="204" width="98" height="26" rx="5" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.1" opacity="0"/><text id="lf4t" class="tag" x="407" y="221" text-anchor="middle" opacity="0">f4 · seq10 删</text>
+<g id="levScoreNote"><text class="tag" x="52" y="356">score = L0 文件数 / level0_file_num_compaction_trigger（4）</text><text id="scoreTxt" class="tb" x="52" y="372" fill="#854F0B">score = 0/4 → 未触发</text><text class="tag" x="52" y="388">≥1 触发；软闸 20 减速 · 硬闸 36 停写</text><text class="tag" x="52" y="404">L0 计分按文件数：撞上的文件全带上</text></g>
+<g id="levMergeArrow"><line x1="300" y1="244" x2="300" y2="284" stroke="#C46A0A" stroke-width="1.5" marker-end="url(#a)"/><text class="tag" x="310" y="266">归并重写：拉齐所有重叠 L0 + 基座重叠文件</text></g>
+<rect id="levBaseShelf" x="52" y="290" width="520" height="54" rx="8" fill="#FFFFFF" stroke="#B4B2A9" stroke-width="1.2"/><text class="tb" x="64" y="306">基座（L1+）：层内按键有序、互不重叠 → 点查每层最多 1 个文件</text>
+<rect id="levOut" x="64" y="312" width="260" height="24" rx="5" fill="#EAF3DE" stroke="#639922" stroke-width="1.1" opacity="0"/><text id="levOutT" class="tag" x="194" y="328" text-anchor="middle" opacity="0">归并输出：去重 · 消墓碑 · 层内不重叠</text>
+<g id="levPyramid"><text class="tag" x="596" y="192">层目标：dynamic_level_bytes=true（默认）→ 从最底层按 10 反推</text>
+<rect x="656" y="202" width="72" height="22" rx="4" fill="#FFFFFF" stroke="#B4B2A9"/><text class="tag" x="664" y="217">L1</text><rect x="644" y="228" width="96" height="22" rx="4" fill="#FFFFFF" stroke="#B4B2A9"/><text class="tag" x="652" y="243">L2</text><rect x="632" y="254" width="120" height="22" rx="4" fill="#FFFFFF" stroke="#B4B2A9"/><text class="tag" x="640" y="269">L3</text><rect x="620" y="280" width="144" height="22" rx="4" fill="#FFFFFF" stroke="#B4B2A9"/><text class="tag" x="628" y="295">L4</text><rect x="608" y="306" width="168" height="22" rx="4" fill="#FFFFFF" stroke="#B4B2A9"/><text class="tag" x="616" y="321">L5</text><rect x="596" y="332" width="192" height="22" rx="4" fill="#FFFFFF" stroke="#B4B2A9"/><text class="tag" x="604" y="347">L6（最底层）</text>
+<rect id="levBase" x="592" y="330" width="200" height="26" rx="4" fill="none" stroke="#EF9F27" stroke-width="1.4" stroke-dasharray="5 4"/><text id="levBaseTag" class="tag" x="800" y="347" fill="#854F0B">← 基座浮动</text>
+<text class="tag" x="596" y="376">空库：flush 直接压进最底层；长到 256MB 量级基座上移</text><text class="tag" x="596" y="392">每层目标 = 下层 / 10（multiplier=10），下限 25.6MB</text><text class="tag" x="596" y="408">小库不养空层；排障时「L1 很大」先想基座是不是就在 L1</text></g>
+</g>
+
+<g id="gUni" opacity="0">
+<rect x="40" y="148" width="920" height="284" rx="10" fill="#FBFAF6" stroke="#ECEAE2"/><text class="tn" x="52" y="168">Universal：按新旧叠放的 sorted run —— 写省、读贵</text>
+<rect id="ur1" x="64" y="184" width="336" height="24" rx="5" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1" opacity="0"/><text id="ur1t" class="tag" x="232" y="200" text-anchor="middle" opacity="0">run 新（flush 产出）· 24MB</text><rect id="ur2" x="64" y="216" width="280" height="24" rx="5" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1" opacity="0"/><text id="ur2t" class="tag" x="204" y="232" text-anchor="middle" opacity="0">run · 20MB</text><rect id="ur3" x="64" y="248" width="238" height="24" rx="5" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1" opacity="0"/><text id="ur3t" class="tag" x="183" y="264" text-anchor="middle" opacity="0">run · 17MB</text><rect id="ur4" x="64" y="280" width="196" height="24" rx="5" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1" opacity="0"/><text id="ur4t" class="tag" x="162" y="296" text-anchor="middle" opacity="0">run · 14MB</text><rect id="ur5" x="64" y="312" width="140" height="24" rx="5" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1" opacity="0"/><text id="ur5t" class="tag" x="134" y="328" text-anchor="middle" opacity="0">run 旧 · 10MB</text>
+<g id="uniWalk"><text id="uW1" class="tb" x="520" y="200" opacity="0">size_ratio=1：已选累计 ×1.01 ≥ 下一个 run → 拉进候选</text><text id="uW2" class="tb" x="520" y="222" opacity="0">24×1.01=24.24 ≥ 20 → 拉进，累计 44</text><text id="uW3" class="tb" x="520" y="244" opacity="0">44.4 ≥ 17 → 61；61.6 ≥ 14 → 75；75.8 ≥ 10 → 85</text><text id="uW4" class="tb" x="520" y="266" fill="#854F0B" opacity="0">候选 5 个 ≥ min_merge_width=2 → 五个 run 整摞归并</text><text id="uW5" class="tag" x="520" y="288" opacity="0">反例：runs 24 / 60 → 24.24 &lt; 60 → 停，不合（尺寸差太远）</text></g>
+<g id="uniAmpNote" opacity="0"><text class="tb" x="520" y="316">兜底 size-amp：其余 run 总和×100 ≥ 最老 run×200 → 大扫除</text><text class="tag" x="520" y="334">max_size_amplification_percent=200：100B 数据最多占 300B 盘面</text><text class="tag" x="520" y="350">run 间全重叠：点查候选 = run 数；allow_trivial_move 可白捡换层</text></g>
+<line x1="134" y1="338" x2="160" y2="356" stroke="#639922" stroke-width="1.3" marker-end="url(#g)"/><rect id="uniOut" x="64" y="360" width="336" height="24" rx="5" fill="#EAF3DE" stroke="#639922" stroke-width="1.1" opacity="0"/><text id="uniOutT" class="tag" x="232" y="376" text-anchor="middle" opacity="0">整摞归并 → 一个新 run（尺寸接近，重写的字数少）</text>
+</g>
+
+<g id="gFifo" opacity="0">
+<rect x="40" y="148" width="920" height="284" rx="10" fill="#FBFAF6" stroke="#ECEAE2"/><text class="tn" x="52" y="168">FIFO：不归并的队列 —— 写放大 ≈0，靠整体丢弃收空间</text>
+<rect id="fq1" x="64" y="196" width="130" height="48" rx="6" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1" opacity="0"/><text id="fq1t" class="tb" x="129" y="216" text-anchor="middle" opacity="0">f1 · 300MB</text><text id="fq1s" class="tag" x="129" y="232" text-anchor="middle" opacity="0">最旧</text><rect id="fq2" x="206" y="196" width="130" height="48" rx="6" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1" opacity="0"/><text id="fq2t" class="tb" x="271" y="216" text-anchor="middle" opacity="0">f2 · 300MB</text><rect id="fq3" x="348" y="196" width="130" height="48" rx="6" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1" opacity="0"/><text id="fq3t" class="tb" x="413" y="216" text-anchor="middle" opacity="0">f3 · 400MB</text>
+<line x1="560" y1="220" x2="486" y2="220" stroke="#C46A0A" stroke-width="1.4" marker-end="url(#a)"/><text class="tag" x="566" y="216">新 flush 从队尾进</text><line x1="60" y1="220" x2="44" y2="220" stroke="#E24B4A" stroke-width="1.4" marker-end="url(#r)"/><text class="tag" x="64" y="186">最旧的从队首出</text>
+<rect x="64" y="258" width="414" height="12" rx="3" fill="#ECEAE2"/><rect id="fqGauge" x="64" y="258" width="0" height="12" rx="3" fill="#EF9F27"/><text id="fqGaugeT" class="tag" x="64" y="288">总量 0MB / max_table_files_size 1GB</text>
+<rect id="fq1Dead" x="64" y="196" width="130" height="48" rx="6" fill="none" stroke="#E24B4A" stroke-width="1.4" stroke-dasharray="5 4" opacity="0"/><text id="fq1DeadT" class="tag" x="129" y="216" text-anchor="middle" fill="#E24B4A" opacity="0">容量线：已删</text><text id="fifoEvict" class="tb" x="64" y="316" fill="#854F0B" opacity="0">删 f1 → 剩 700MB，继续收新数据；全程没有一次数据重写</text>
+<circle cx="716" cy="230" r="40" fill="none" stroke="#B4B2A9" stroke-width="1.3" stroke-dasharray="5 4"/><line x1="752" y1="206" x2="740" y2="194" stroke="#C46A0A" stroke-width="1.3" marker-end="url(#a)"/><text class="tn" x="716" y="236" text-anchor="middle">环形队列</text><text class="tag" x="716" y="290" text-anchor="middle">满了删最旧 · 一个字节不重写</text>
+<text class="tag" x="640" y="322">ttl 线（默认哨兵 30 天）：文件里最新的键早于「现在 − ttl」→ 整文件删</text><text class="tag" x="640" y="338">判据是键的时间，不是文件创建时间；score = 总量 / 上限</text><text class="tag" x="640" y="354">allow_compaction（默认 false）是唯一归并开关：单文件均摊超</text><text class="tag" x="640" y="370">write_buffer_size 就不合，防止刚写出的大文件被反复翻动</text><text class="tag" x="640" y="398">代价：不去重、不消墓碑、没有层级——旧版本活多久删多久</text>
+</g>
+
+<rect x="40" y="444" width="920" height="176" rx="10" fill="#FBFAF6" stroke="#ECEAE2"/><text class="tn" x="52" y="464">三本放大账（1GB 活数据 · 随策略联动；条长为演示值，口径以正文为准）</text>
+<text class="tn" x="52" y="492">写放大</text><rect x="120" y="480" width="440" height="16" rx="4" fill="#ECEAE2"/><rect id="waBar" x="120" y="480" width="414" height="16" rx="4" fill="#EF9F27"/><text id="waTxt" class="tb" x="576" y="492">最高：下推一层 ≈10× 重写，全链路常到两位数</text>
+<text class="tn" x="52" y="526">读放大</text><rect x="120" y="514" width="440" height="16" rx="4" fill="#ECEAE2"/><rect id="raBar" x="120" y="514" width="85" height="16" rx="4" fill="#2563EB"/><text id="raTxt" class="tb" x="576" y="526">最低：L0 ≤4 文件 + 每层 1 个，约 5~10 个候选</text>
+<text class="tn" x="52" y="560">空间放大</text><rect x="120" y="548" width="440" height="16" rx="4" fill="#ECEAE2"/><rect id="saBar" x="120" y="548" width="141" height="16" rx="4" fill="#639922"/><text id="saTxt" class="tb" x="576" y="560">低：层形状约束在 multiplier 倍内</text>
+<text class="tag" x="52" y="600">没有同时全低的形状：压得越勤 → 写放大越高、读放大越低；选型 = 挑哪本账贵。</text>
+</g>
+<circle id="tok" cx="112" cy="106" r="7" fill="#EF9F27" stroke="#D97E06" stroke-width="1.4"/>
+</svg>
+
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.5" max="2" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm">默认 ≈ 6 秒 / 轮</span>
+</div>
+<div class="modebar">
+<span class="mlabel">策略切换</span>
+<button class="modebtn" id="mL">Leveled（默认 · 金字塔）</button>
+<button class="modebtn" id="mU">Universal（叠放 run）</button>
+<button class="modebtn" id="mF">FIFO（队列 · WA≈0）</button>
+</div>
+<div class="readout">
+<span class="ro">进度 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">读数 <b id="roKey">--</b></span>
+<span class="ro">当前策略 <b id="roStrat">--</b></span>
+<span class="ro">L0 文件/run <b id="roL0">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav"><button class="btn" onclick="prevStep()">‹ 上一步</button><button class="btn warn" onclick="nextStep()">下一步 ›</button></span>
+</div>
+<p class="figcap">进度 0° = 第一批 flush 落盘，720° = FIFO 队列完成一次容量线淘汰。自动模式下第 6/7 步切到 Universal、第 8 步切到 FIFO；点「策略切换」可锁定一种策略全程观看，<b>再点一次当前高亮按钮恢复随剧情</b>。三本账条长为演示值，文字口径与正文表格一致。<br>口径：RocksDB 11.13.0；level0_file_num_compaction_trigger=4、减速/停写 20/36、dynamic_level_bytes=true、max_bytes_for_level_base=256MB、multiplier=10、下限 25.6MB、size_ratio=1、min_merge_width=2、max_size_amplification_percent=200、max_table_files_size=1GB、ttl 默认哨兵 30 天；文件名与 run 尺寸为文章算例。</p>
+</div>
+</div>
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：L0 打摆与 500 ms——形状选错，一本账爆掉</h2></div>
+<p class="sec-sub">先不拆策略，只看它对外表现出什么。</p>
+<div class="quote">「观察一个系统，先分清它的静态结构、动态过程和外部依赖。」</div>
+<p>压测前 30 分钟写入 P99 稳定 2 ms，之后开始抖，40 分钟后掉到 500 ms——磁盘只用了不到 20%。STATS 里 L0 文件数在 20 和 36 之间来回打摆，<code>soft_pending_compaction_bytes_limit</code>（默认 64GB）的减速逻辑已经触发：写入线程在等后台收拾账本。写入永远是把账「先记下来」，压实负责「把账理清」；<b>策略决定后台按什么形状理账</b>。</p>
+<div class="flow">
+<span class="node">写入：一切先记下</span><span class="arr">→</span><span class="node box">压实形状：金字塔 / 叠放 / 队列</span><span class="arr">→</span><span class="node">读放大：一次点查问几个</span><span class="arr">→</span><span class="node">写放大：重写几遍</span><span class="arr">→</span><span class="node">空间放大：新旧共存多久</span>
+</div>
+<p>不收拾会发生三件坏事：读放大失控（重复版本越多问的人越多）、墓碑永生（Delete 只是一条写入）、空间账没法收。压实的三件事——<b>去重、消墓碑、控读放大</b>——怎么排优先级，就是三种策略的分岔口。策略在 <code>CompactionStyle</code> 里定型：Level（0，默认）、Universal（1）、FIFO（2）、None（3，只走手动 <code>CompactFiles</code>）。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：三种形状与它们的旋钮</h2></div>
+<p class="sec-sub">点部件卡片，动画里对应的结构会亮起。</p>
+<div class="quote">「分解要 MECE：同一层粒度一致，不重不漏。」</div>
+<div class="figure"><svg viewBox="0 0 920 210" role="img" xmlns="http://www.w3.org/2000/svg"><text x="100" y="20" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">Leveled：金字塔</text><rect x="80" y="30" width="40" height="16" fill="#FFF6E8" stroke="#EF9F27"/><text x="132" y="42" font-size="10" fill="#6B695F">L0 允许重叠（≤4 个）</text><rect x="66" y="52" width="68" height="16" fill="#fff" stroke="#B4B2A9"/><text x="132" y="64" font-size="10" fill="#6B695F">L1+ 层内不重叠</text><rect x="52" y="74" width="96" height="16" fill="#fff" stroke="#B4B2A9"/><text x="132" y="86" font-size="10" fill="#6B695F">每层目标 = 下层/10</text><rect x="38" y="96" width="124" height="16" fill="#fff" stroke="#B4B2A9"/><text x="132" y="108" font-size="10" fill="#6B695F">基座浮动（dynamic）</text><rect x="24" y="118" width="152" height="16" fill="#fff" stroke="#B4B2A9"/><text x="132" y="130" font-size="10" fill="#6B695F">score：文件数/4 · 层尺寸/层目标</text>
+<text x="460" y="20" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">Universal：按新旧叠放</text><rect x="380" y="30" width="200" height="16" fill="#FFF6E8" stroke="#EF9F27"/><text x="592" y="42" font-size="10" fill="#6B695F">run 新（flush 产出）</text><rect x="380" y="52" width="180" height="16" fill="#FFF6E8" stroke="#EF9F27"/><rect x="380" y="74" width="160" height="16" fill="#FFF6E8" stroke="#EF9F27"/><text x="592" y="86" font-size="10" fill="#6B695F">run 间允许全重叠</text><rect x="380" y="96" width="140" height="16" fill="#FFF6E8" stroke="#EF9F27"/><text x="592" y="108" font-size="10" fill="#6B695F">size_ratio 挑相近 run</text><rect x="380" y="118" width="120" height="16" fill="#FFF6E8" stroke="#EF9F27"/><text x="592" y="130" font-size="10" fill="#6B695F">size-amp 200% 兜底空间放大</text>
+<text x="800" y="20" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">FIFO：环形队列</text><rect x="700" y="30" width="60" height="24" fill="#FFF6E8" stroke="#EF9F27"/><rect x="768" y="30" width="60" height="24" fill="#FFF6E8" stroke="#EF9F27"/><rect x="836" y="30" width="60" height="24" fill="#FFF6E8" stroke="#EF9F27"/><text x="800" y="76" font-size="10" fill="#6B695F" text-anchor="middle">全部在 L0，按新旧排队</text><text x="800" y="94" font-size="10" fill="#6B695F" text-anchor="middle">容量线：超 max_table_files_size（1GB）删最旧</text><text x="800" y="112" font-size="10" fill="#6B695F" text-anchor="middle">ttl 线：文件里最新的键过期 → 整文件删</text><text x="800" y="130" font-size="10" fill="#6B695F" text-anchor="middle">不归并不去重，写放大 ≈0</text>
+<text x="40" y="160" font-size="10.5" fill="#854F0B" font-weight="600">同层先压谁（CompactionPri，默认 kMinOverlappingRatio）：</text><text x="40" y="178" font-size="10.5" fill="#6B695F">f1 100MB 与下层重叠 5MB → 51.2；f2 60MB 重叠 40MB → 682.7；f3 80MB 重叠 0MB → 0（最小，先压，很可能白捡一次 trivial move）</text><text x="40" y="196" font-size="10.5" fill="#6B695F">其余取值：kByCompensatedSize / kOldestLargestSeqFirst / kOldestSmallestSeqFirst / kRoundRobin（游标轮流，防旧数据饿死）</text></svg></div>
+<p class="figcap">静态标注图：三种形状各管各的触发线。编号与下方部件卡、动画结构一一对应。</p>
+<div class="partgroup"><div class="gname">触发与打分</div><div class="parts">
+<button class="part" data-part="trigger"><b>L0 计分（Leveled）</b><span>score = 文件数 / 4，score ≥ 1 触发；积压减速 20、停写 36。用文件数不用字节：压 1 个要把范围撞上的文件全带上。</span></button>
+<button class="part" data-part="base"><b>基座浮动（dynamic）</b><span>dynamic_level_bytes=true 默认开：空库 flush 直接压进最底层，长到 256MB 量级基座上移；每层目标 = 下层/10，下限 25.6MB。</span></button>
+<button class="part" data-part="pri"><b>CompactionPri</b><span>默认 kMinOverlappingRatio：与下层重叠越少越先压；TTL 快过期的文件还有 FileTtlBooster 加分。</span></button>
+</div></div>
+<div class="partgroup"><div class="gname">Universal 与 FIFO 的旋钮</div><div class="parts">
+<button class="part" data-part="runs"><b>size_ratio 归并</b><span>从最新 run 走起：已选累计 ×(100+size_ratio)/100 装得下下一个就拉进；候选 ≥ min_merge_width=2 动手。</span></button>
+<button class="part" data-part="amp"><b>size-amp 兜底</b><span>max_size_amplification_percent=200：其余 run 总和×100 超过最老 run×200 就大扫除——100B 数据最多占 300B。</span></button>
+<button class="part" data-part="fifo"><b>FIFO 双线</b><span>容量线：超 max_table_files_size（默认 1GB）从最旧删起；ttl 线：文件里最新的键早于「现在 − ttl」整文件删。</span></button>
+</div></div>
+<p class="hint">这些旋钮怎么在一条时间轴上接力？切到分步模式，或用上面的策略开关锁定一种形状看全程。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：同一条数据流的 8 个相位</h2></div>
+<p class="sec-sub">第一遍看 Leveled 怎么把 L0 收进层里；第 6/7 步切到 Universal，第 8 步切到 FIFO——同一条数据流，三种走向。</p>
+<div class="quote">「动态分析看的是时间轴上的顺序、状态变化和因果链。」</div>
+<table class="grid">
+<tr><th>相位</th><th>阶段</th><th>关键动作</th><th>读数</th></tr>
+<tr><td>0–90°</td><td>① 写入进 L0</td><td>memtable 满 64MB flush——三种策略毫无区别</td><td>L0 +1</td></tr>
+<tr><td>90–180°</td><td>② L0 攒满</td><td>四个文件键范围互相重叠，点查逐个问</td><td class="hot">L0 4/4 · score=1.0</td></tr>
+<tr><td>180–270°</td><td>③ 挑层 score</td><td>L0 按文件数计分、L1+ 按层尺寸/层目标；score ≥ 1 入选</td><td class="hot">score 最高层</td></tr>
+<tr><td>270–360°</td><td>④ 归并重写</td><td>拉齐所有重叠 L0 + 基座重叠文件，同键只留该留的</td><td class="hot">去重 · 消墓碑</td></tr>
+<tr><td>360–450°</td><td>⑤ Ln 推进</td><td>基座浮动：空库=最底层，长到 256MB 量级上移；目标 = 下层/10</td><td class="hot">小库不养空层</td></tr>
+<tr><td>450–540°</td><td>⑥ 切 Universal</td><td>size_ratio=1：24×1.01≥20 → 累计 44→61→75→85，5 run 整摞归并</td><td class="hot">min_merge_width=2</td></tr>
+<tr><td>540–630°</td><td>⑦ Universal 大扫除</td><td>其余总和×100 ≥ 最老 run×200 → 大归并；100B 最多占 300B</td><td class="hot">size-amp 200%</td></tr>
+<tr><td>630–720°</td><td>⑧ 切 FIFO</td><td>总量 1GB 到顶 → 容量线删最旧 f1 剩 700MB；ttl 线整文件删</td><td class="hot">写放大 ≈0</td></tr>
+</table>
+<p>相位零点：0° = 第一批 flush 落盘；720° = FIFO 队列完成一次容量线淘汰。自动模式下第 6/7 步与第 8 步分别切换 Universal / FIFO 面板，读数条与三本账条形同步联动。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：策略 × 三本账</h2></div>
+<p class="sec-sub">同一份数据交给不同形状，三本账的付法完全不同——这张矩阵就是选型表。</p>
+<div class="quote">「动静融合的关键是映射：每个部件在每一步里负责什么。」</div>
+<table class="grid">
+<tr><th>账本</th><th>Leveled（dynamic，7 层）</th><th>Universal（默认参数）</th><th>FIFO（默认参数）</th></tr>
+<tr><td>写放大</td><td class="hot">最高：下推一层 ≈ 10× 重写，全链路常到两位数</td><td class="act">中低：只合尺寸接近的 run，size-amp 大归并偶发</td><td class="hot">≈0：从不重写</td></tr>
+<tr><td>读放大</td><td class="hot">最低：L0 ≤4 + 每层 1 个，约 5~10 个候选</td><td class="act">高：run 间全重叠，候选 = run 数（可用 max_read_amp 压）</td><td>最高：N 个文件逐个问</td></tr>
+<tr><td>空间放大</td><td class="act">低：层形状约束在 multiplier 倍内</td><td class="act">可配：默认最多 200%（100B → 300B）</td><td class="act">由 max_table_files_size（1GB）硬封顶</td></tr>
+<tr><td>去重 / 消墓碑</td><td>每次压实都做</td><td>每次压实都做</td><td class="hot">不做（靠整体删除）</td></tr>
+</table>
+<p><b>涌现属性：</b>「哪本账贵」不属于任何单个参数——它是触发线（score / size_ratio / 容量线）× 形状（层 / run / 队列）协同涌现的结果。两笔账之间有一条硬约束：压得越勤，写放大越高、读放大越低；压得越懒，反之。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：账本之外还有什么</h2></div>
+<p class="sec-sub">拆掉任何一个外部依赖，前面看到的形状都会变。</p>
+<div class="quote">「环境属性 = 外在关系 + 依赖 + 失效后果。」</div>
+<div class="envcards">
+<div class="env"><b>写停顿闸门</b><span>soft/hard_pending_compaction_bytes_limit（64GB/256GB）+ L0 减速 20/停写 36：压实欠账直接顶住前台写入——开头压测的 500 ms 就是这一闸。</span></div>
+<div class="env"><b>监控三落点</b><span>压实日志 write-amplify 字段看写放大；GET_HIT_L0/L1/L2_AND_UP 看命中层深度；EstimateCompactionBytesNeeded 高企就是压实欠账。</span></div>
+<div class="env"><b>负载类型</b><span>点查密集选 Leveled；大批量写/扫描选 Universal；TTL 流水（监控、轨迹、暂存）选 FIFO——大值为主配 Leveled+BlobDB 或 FIFO。</span></div>
+<div class="env"><b>压缩过滤器</b><span>compaction filter 在归并时逐键执行（服务端 TTL、数据修补），与 trivial move 互斥——过滤器要真的执行。</span></div>
+<div class="env"><b>手动模式</b><span>kCompactionStyleNone 关掉后台压实，只走 CompactFiles——离线批处理专用，欠账没人替你还。</span></div>
+<div class="env"><b>湖上同款</b><span>Iceberg rewrite_data_files / Delta OPTIMIZE 与 LSM 压实同构：不可变文件 + 后台重写 + 原子换清单；FIFO ≈ 按保留期整分区删除。</span></div>
+</div>
+<p class="figcap">边界：本页画的是三种策略各自的 happy path 与文章算例；压实任务内部（Picker 扩边、快照分带、原子安装）见第 6 章。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">能说清「为什么没有同时全低的形状」，才算真的懂选型。</p>
+<div class="quote">「用自己的话能讲清楚，才算真的懂。」</div>
+<div id="quiz"></div>
+</section>
+
+<div class="summary">
+<h2>一页带走</h2>
+<p class="chant">层收读、叠省写、队列零重写——三本账先挑贵的。</p>
+<p>· Leveled：L0 按 level0_file_num_compaction_trigger（4）计分、L1+ 按层尺寸/层目标，score ≥ 1 触发；dynamic_level_bytes 默认开，基座浮动、目标按 10 反推，小库不养空层。</p>
+<p>· Universal：一摞按时间叠放的 sorted run；size_ratio 挑尺寸接近的相邻 run，max_size_amplification_percent（200）兜底空间放大，allow_trivial_move 让不重叠 run 白捡换层。</p>
+<p>· FIFO：全在 L0，超 max_table_files_size（1GB）删最旧、ttl 到期整文件删；写放大 ≈0，代价是不清旧版本、点查逐个问。</p>
+<p>· 同层先压谁由 CompactionPri（默认 kMinOverlappingRatio）决定：重叠越少越先，零重叠可能白捡一次 trivial move。</p>
+<p>· 边界与简化：三本账条长为演示值；run 尺寸 24/20/17/14/10 与 30/28/27/10、FIFO 的 300/300/400MB 均为文章算例，参数默认值以 RocksDB 11.13 源码为准。</p>
+</div>
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+<script>
+var STEPS=[
+{d:0,t:"① 写入进 L0",x:"写入永远先落 memtable，攒满 64MB flush 成一个不可变文件。三种策略在这一步毫无区别——分岔从「这个文件之后归谁管」开始：进层（Leveled）、成 run（Universal）、排队（FIFO）。",k:"L0 +1"},
+{d:90,t:"② L0 攒满",x:"Leveled 下 L0 文件键范围互相重叠，点查要逐个问。攒够 level0_file_num_compaction_trigger=4 个，score = 4/4 = 1.0 ≥ 1，触发压实；积压到 20 个减速、36 个停写。",k:"L0 4/4 · 触发"},
+{d:180,t:"③ 挑层 score",x:"Picker 每轮挑分数最高的层动手：L0 按文件数计分（写缓冲可能很大、L0 又会在每次读取时被全量合并，太多小文件读不起），L1+ 按层尺寸/层目标计分。score ≥ 1 才有活干。",k:"score 最高层"},
+{d:270,t:"④ 归并重写",x:"输入 = 所有范围撞上的 L0 文件 + 基座里所有重叠文件，按键归并、同键从新到旧只留该留的：去重、消墓碑。层内从此不重叠——这是三种形状里写最贵、读最省的一步。",k:"L0→基座"},
+{d:360,t:"⑤ Ln 推进",x:"dynamic_level_bytes=true（默认）：基座不固定在 L1——空库 flush 直接压进最底层，数据长到 256MB 量级基座才上移一层；每层目标从最底层按 10 反推，下限 25.6MB。小库不养空层。",k:"基座浮动 · 10×"},
+{d:450,t:"⑥ 切 Universal · 按重叠挑",x:"整个库是一摞按时间叠放的 sorted run。size_ratio=1 从最新 run 走起：24×1.01=24.24 ≥ 20 → 拉进累计 44；44.4 ≥ 17、61.6 ≥ 14、75.8 ≥ 10 → 五个 run 整摞归并（候选 5 ≥ min_merge_width=2）。尺寸接近，合了不亏。",k:"5 run 整摞归并"},
+{d:540,t:"⑦ Universal 大扫除",x:"空间放大的兜底线：其余 run 总和 ×100 超过最老 run × max_size_amplification_percent（默认 200）就大扫除——100 字节用户数据最多占 300 字节盘面。归并完只剩一个 run，空间放大归零，代价是这次写放大高。",k:"size-amp 200%"},
+{d:660,t:"⑧ 切 FIFO · 超限删最老",x:"所有数据都待在 L0 排成队：总量超过 max_table_files_size（默认 1GB）从最旧开始整文件删（1000MB → 删 f1 剩 700MB），ttl 到期也一样。全程零重写——写放大 ≈0，代价是旧版本永不清、点查逐个问。",k:"容量线 1GB · WA≈0"}];
+var CHIPS=[{k:"write",l:"入口 flush"},{k:"l0",l:"L0 / run / 队列"},{k:"score",l:"打分"},{k:"merge",l:"归并 / 淘汰"}];
+var PARTS={"trigger":["levL0","levScoreNote"],"base":["levBaseShelf","levPyramid","levBase"],"pri":["levScoreNote"],"runs":["ur1","ur2","ur3","ur4","ur5","uniOut"],"amp":["uniAmpNote"],"fifo":["fq1","fq2","fq3","fqGauge","fifoEvict"]};
+var QUIZ=[
+{q:"L0 的压实 score 是怎么算的？",opts:["L0 尺寸 / L1 目标尺寸","文件数 / level0_file_num_compaction_trigger（默认 4），score ≥ 1 触发","L0 不参与打分，攒够就压"],a:1,exp:"L0 文件键范围互相重叠、压一个键要把范围撞上的文件全带上，写缓冲又可能很大——所以用文件数而非字节数计分；L1+ 才按层尺寸/层目标。"},
+{q:"dynamic_level_bytes=true（默认）时空库启动，第一批 flush 出的文件会被压到哪一层？",opts:["固定压进 L1","直接压进最底层（基座浮动），数据长到 256MB 量级基座才上移","留在 L0 不动"],a:1,exp:"基座不固定在 L1：空库时基座就是最底层，L0 flush 出来的文件压进 L6；数据先在底层堆着，长到 max_bytes_for_level_base（256MB）量级基座才上移一层——小库不养 6 层空壳。"},
+{q:"Universal 的 max_size_amplification_percent=200 是什么意思？",opts:["写放大最多 200%","100 字节用户数据最多额外占 200 字节，共占 300 字节盘面","空间最多放大到 2 倍文件数"],a:1,exp:"这个百分比的定义写在源码注释里：「存 100 字节用户数据最多额外占多少字节」：200% 意味着最多占 300 字节。其余 run 总和×100 超过最老 run×200 就触发大扫除。"},
+{q:"FIFO 写放大 ≈0，它的代价是什么？",opts:["空间完全失控","不去重、不消墓碑，旧版本活多久占多久，点查要逐个问文件","数据随时会丢"],a:1,exp:"空间由 max_table_files_size（默认 1GB）硬封顶，但清理粒度是整文件：文件活着期间，里面的旧版本、墓碑一直占地方，点查要对每个文件过一遍布隆。只适合写完不久整体作废的负载。"},
+{q:"同样 1GB 数据，为什么 Leveled 读放大最低、写放大最高？",opts:["因为层数最多","层内互不重叠 → 点查每层最多 1 个文件；代价是每次下推把下一层一大片重写（multiplier=10 时约 10×）","因为 L0 不重叠"],a:1,exp:"层内不重叠让点查每层最多碰一个文件（L0 ≤4 + 每层 1 个，约 5~10 个候选）；但每次下推都可能重写下一层一大片——一个 key 平均被重写 10 遍（flush 1 次 + 每层下推约 9 次）。"},
+{q:"同层里 CompactionPri 默认的 kMinOverlappingRatio 会先挑哪个文件压？",opts:["尺寸最大的","与下一层重叠字节/自身尺寸最小的——零重叠的最先，很可能白捡一次 trivial move","编号最小的"],a:1,exp:"算式 = 重叠字节×1024/补偿尺寸/ttl 加分：f3 与下层重叠 0MB 得 0 分最先压；文件寿命过半后 FileTtlBooster 还会加分，防止 TTL 压实永远排队。"}];
+var WPL=[[0,112,106],[25,281,106],[60,110,217],[95,208,217],[150,306,217],[200,407,217],[265,407,217],[290,300,268],[320,189,324],[360,189,324],[400,690,312],[450,694,291],[540,694,291],[720,694,291]];
+var WPU=[[0,112,106],[30,281,106],[70,232,196],[110,204,228],[150,183,260],[190,162,292],[230,134,324],[440,134,324],[465,170,270],[495,200,292],[520,232,372],[600,700,316],[720,700,316]];
+var WPF=[[0,112,106],[30,281,106],[70,129,220],[110,271,220],[150,413,220],[200,413,220],[620,413,220],[645,129,240],[680,716,270],[720,716,270]];
+function cntL(pr){return pr<25?0:pr<95?1:pr<150?2:pr<200?3:pr<330?4:0;}
+function cntU(pr){return pr<30?0:pr<70?1:pr<110?2:pr<155?3:pr<200?4:pr<520?5:1;}
+function cntF(pr){return pr<30?0:pr<70?1:pr<110?2:pr<640?3:2;}
+var PERIOD=6000,basePeriod=PERIOD,PHASE_MAX=720,STEP_DUR=600;
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,stepIdx=-1,dots=[],ticking=false,chipEls={},forced=null;
+function $(id){return document.getElementById(id);}
+function setText(id,s){var n=$(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setOp(id,v){var n=$(id);if(n)n.setAttribute('opacity',Math.max(0,Math.min(1,v)).toFixed(2));}
+function setAttr(id,k,v){var n=$(id);if(n)n.setAttribute(k,v);}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){t=clamp(t,0,1);return t*t*(3-2*t);}
+function ramp(th,a,b){return clamp((th-a)/((b-a)||1),0,1);}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function lerpPts(pts,th){
+  if(th<=pts[0][0])return[pts[0][1],pts[0][2]];
+  for(var i=0;i<pts.length-1;i++){if(th<pts[i+1][0]){var t=smooth((th-pts[i][0])/(pts[i+1][0]-pts[i][0]));return[pts[i][1]+(pts[i+1][1]-pts[i][1])*t,pts[i][2]+(pts[i+1][2]-pts[i][2])*t];}}
+  return[pts[pts.length-1][1],pts[pts.length-1][2]];
+}
+function setChip(k,v){var n=chipEls[k];if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',/^(已|完成|命中|进行|归并|大扫除|淘汰|触发|整摞)/.test(v));n.classList.toggle('off',/^(待命|—|无|未|0)/.test(v));}
+function stageIdx(pr){var s=0;for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)s=i;}return s;}
+function effStrat(pr){return forced||(pr<450?'L':pr<630?'U':'F');}
+function pageRender(pr,si){
+  var st=effStrat(pr);
+  setText('roStrat',(st==='L'?'Leveled':st==='U'?'Universal':'FIFO')+(forced?'（已锁定）':'（随剧情）'));
+  setOp('gLev',st==='L'?1:0.07);setOp('gUni',st==='U'?1:0.07);setOp('gFifo',st==='F'?1:0.07);
+  var mL=$('mL'),mU=$('mU'),mF=$('mF');
+  if(mL)mL.classList.toggle('on',st==='L');if(mU)mU.classList.toggle('on',st==='U');if(mF)mF.classList.toggle('on',st==='F');
+  var B=st==='L'?[414,85,141]:st==='U'?[235,367,320]:[14,447,235];
+  setAttr('waBar','width',B[0]);setAttr('raBar','width',B[1]);setAttr('saBar','width',B[2]);
+  setText('waTxt',st==='L'?'最高：下推一层 ≈10× 重写，全链路常到两位数':st==='U'?'中低：只合并尺寸接近的 run，size-amp 大扫除偶发':'≈0：从不重写，超限整文件删');
+  setText('raTxt',st==='L'?'最低：L0 ≤4 文件 + 每层 1 个，约 5~10 个候选':st==='U'?'高：run 间全重叠，候选 = run 数':'最高：N 个文件逐个问（布隆逐个过）');
+  setText('saTxt',st==='L'?'低：层形状约束在 multiplier 倍内':st==='U'?'可配：默认最多 200%（100B → 300B）':'由 max_table_files_size（1GB）硬封顶');
+  var c=st==='L'?cntL(pr):st==='U'?cntU(pr):cntF(pr);
+  setText('roL0',st==='L'?c+' /4':c+(st==='U'?' 个 run':' 个（队列）'));
+  setOp('lf1',ramp(pr,25,45)*(1-0.85*ramp(pr,300,318)));setOp('lf1t',ramp(pr,25,45)*(1-0.85*ramp(pr,300,318)));
+  setOp('lf2',ramp(pr,95,112)*(1-0.85*ramp(pr,300,318)));setOp('lf2t',ramp(pr,95,112)*(1-0.85*ramp(pr,300,318)));
+  setOp('lf3',ramp(pr,150,166)*(1-0.85*ramp(pr,300,318)));setOp('lf3t',ramp(pr,150,166)*(1-0.85*ramp(pr,300,318)));
+  setOp('lf4',ramp(pr,200,216)*(1-0.85*ramp(pr,300,318)));setOp('lf4t',ramp(pr,200,216)*(1-0.85*ramp(pr,300,318)));
+  setText('scoreTxt',cntL(pr)>=4?'score = 4/4 = 1.0 ≥ 1 → 触发':'score = '+cntL(pr)+'/4 → 未触发');
+  setOp('levOut',ramp(pr,300,318));setOp('levOutT',ramp(pr,300,318));
+  setOp('levMergeArrow',0.35+0.65*ramp(pr,268,286));
+  var yb=330-56*ramp(pr,360,450);
+  setAttr('levBase','y',yb.toFixed(1));setAttr('levBaseTag','y',(yb+17).toFixed(1));
+  setText('levBaseTag',ramp(pr,360,450)>0.5?'← 基座上移':'← 基座浮动');
+  setOp('ur1',ramp(pr,30,48));setOp('ur1t',ramp(pr,30,48));
+  setOp('ur2',ramp(pr,70,88));setOp('ur2t',ramp(pr,70,88));
+  setOp('ur3',ramp(pr,110,128));setOp('ur3t',ramp(pr,110,128));
+  setOp('ur4',ramp(pr,155,172));setOp('ur4t',ramp(pr,155,172));
+  setOp('ur5',ramp(pr,200,218));setOp('ur5t',ramp(pr,200,218));
+  setOp('uW1',ramp(pr,452,466));setOp('uW2',ramp(pr,468,482));setOp('uW3',ramp(pr,484,498));
+  setOp('uW4',ramp(pr,500,514));setOp('uW5',ramp(pr,516,530));
+  setOp('uniAmpNote',ramp(pr,516,532));setOp('uniOut',ramp(pr,505,522));setOp('uniOutT',ramp(pr,505,522));
+  setOp('fq1',ramp(pr,30,48));setOp('fq1t',ramp(pr,30,48)*(1-ramp(pr,620,632)));setOp('fq1s',ramp(pr,30,48)*(1-ramp(pr,620,632)));
+  setOp('fq2',ramp(pr,70,88));setOp('fq2t',ramp(pr,70,88));
+  setOp('fq3',ramp(pr,110,128));setOp('fq3t',ramp(pr,110,128));
+  var used=pr<640?1000:700;
+  setAttr('fqGauge','width',(used/1000*414).toFixed(1));
+  setText('fqGaugeT','总量 '+used+'MB / max_table_files_size 1GB'+(used>=1000?' → 到顶':''));
+  setOp('fq1Dead',ramp(pr,632,648));setOp('fq1DeadT',ramp(pr,632,648));
+  setOp('fifoEvict',ramp(pr,636,652));
+  setChip('write',ramp(pr,20,50)>0&&ramp(pr,20,50)<1?'flush 中':(c>0?'已 flush ×'+c:'待命'));
+  setChip('l0',c===0?'0（已收敛）':c+' 个在册');
+  setChip('score',st==='L'?(cntL(pr)>=4?'4/4 已触发':cntL(pr)+'/4 计分中'):st==='U'?'run 数 + size-amp':'总量 / 1GB');
+  setChip('merge',st==='L'?(ramp(pr,270,300)>0&&ramp(pr,300,318)<1?'归并中':pr>=318?'已完成':'待命'):st==='U'?(ramp(pr,470,505)>0&&ramp(pr,505,522)<1?'整摞归并中':pr>=522?'已完成':ramp(pr,540,556)>0?'大扫除中':'待命'):(ramp(pr,632,648)>0&&ramp(pr,632,648)<1?'容量线删 f1':pr>=648?'已淘汰':'待命'));
+}
+function render(th){
+  var pr=norm(th);
+  setText('roPhase',Math.round(pr)+'°');
+  var si=stageIdx(pr);if(mode==='step'&&stepIdx>=0)si=stepIdx;
+  setText('roStep',STEPS[si]?STEPS[si].t:'—');
+  setText('roKey',STEPS[si]?STEPS[si].k:'—');
+  pageRender(pr,si);
+  var pts=effStrat(pr)==='L'?WPL:effStrat(pr)==='U'?WPU:WPF;
+  var p=lerpPts(pts,pr);setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));
+  var op=1;
+  if(!forced){var dip=Math.max(ramp(pr,441,449)-ramp(pr,451,459),ramp(pr,621,629)-ramp(pr,631,639));op=1-0.9*clamp(dip,0,1);}
+  setOp('tok',op);
+}
+function tick(now){
+  ticking=false;
+  var dt=Math.min(50,now-last);last=now;
+  if(run&&mode==='auto')phase=(phase+dt/PERIOD*PHASE_MAX)%PHASE_MAX;
+  if(mode==='step'&&stepTo!==null){
+    stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);var p=stepElapsed/STEP_DUR,e=smooth(p);
+    phase=stepFrom+(stepTo-stepFrom)*e;if(p>=1){phase=stepTo;stepTo=null;}
+  }
+  render(phase);
+  if(run||stepTo!==null){ticking=true;requestAnimationFrame(tick);}
+}
+function wake(){if(ticking)return;ticking=true;last=performance.now();requestAnimationFrame(tick);}
+function setAuto(on){
+  mode='auto';run=on;stepTo=null;var b=$('engBtn');if(b)b.textContent=on?'暂停':'播放';
+  if(on){stepIdx=-1;dots.forEach(function(d){d.classList.remove('on');});
+  setText('stepT','自动运转模式');setText('stepX','点下方步骤点可切换到分步演示，随你点击定格。');wake();}
+}
+window.goStep=function(i){
+  stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+  var target=STEPS[stepIdx].d;
+  if(reduced||Math.abs(target-norm(phase))>180){phase=target;stepTo=null;}
+  else{stepFrom=phase;stepTo=target;stepElapsed=0;}
+  render(phase);wake();
+  var b=$('engBtn');if(b)b.textContent='继续自动运转';
+  dots.forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+  setText('stepT','第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t);
+  setText('stepX',STEPS[stepIdx].x);
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+function setStrat(s){
+  forced=(forced===s)?null:s;
+  render(phase);wake();
+}
+CHIPS.forEach(function(c){var box=$('stateChips');var s=document.createElement('span');s.className='chip';s.innerHTML=c.l+' <b>--</b>';box.appendChild(s);chipEls[c.k]=s;});
+var stepBar=$('stepBar');
+STEPS.forEach(function(s,n){var b=document.createElement('button');b.className='stepnode';b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+s.t+'</span>';b.onclick=function(){goStep(n);};stepBar.appendChild(b);dots.push(b);});
+var engBtn=$('engBtn');engBtn.textContent=run?'暂停':'播放';
+engBtn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+var spd=$('engSpd');
+if(spd){spd.oninput=function(){speed=parseFloat(spd.value);$('engSpdV').textContent=speed+'×';PERIOD=basePeriod/speed;};}
+var mLEl=$('mL'),mUEl=$('mU'),mFEl=$('mF');
+if(mLEl)mLEl.onclick=function(){setStrat('L');};
+if(mUEl)mUEl.onclick=function(){setStrat('U');};
+if(mFEl)mFEl.onclick=function(){setStrat('F');};
+document.querySelectorAll('.part').forEach(function(btn){btn.onclick=function(){var ids=(PARTS[btn.dataset.part]||[]);document.querySelectorAll('#eng .hl').forEach(function(n){n.classList.remove('hl');});ids.forEach(function(id){var n=$(id);if(n)n.classList.add('hl');});};});
+var quizBox=$('quiz');QUIZ.forEach(function(q,n){var d=document.createElement('div');d.className='q';var html='<div class="qt">'+(n+1)+'. '+q.q+'</div>';q.opts.forEach(function(o,j){html+='<button class="opt" data-q="'+n+'" data-o="'+j+'">'+o+'</button>';});html+='<div class="exp"><b>答案：</b>'+q.opts[q.a]+'<br>'+q.exp+'</div>';d.innerHTML=html;quizBox.appendChild(d);});
+quizBox.querySelectorAll('.opt').forEach(function(b){b.onclick=function(){var q=QUIZ[+b.dataset.q];var box=b.closest('.q');if(box.classList.contains('done'))return;box.classList.add('done');b.classList.add(+b.dataset.o===q.a?'right':'wrong');box.querySelectorAll('.opt').forEach(function(o){if(+o.dataset.o===q.a)o.classList.add('right');});};});
+if(reduced){run=false;phase=0;render(0);engBtn.textContent='播放';}else{wake();}
+</script>
+</body>
+</html>

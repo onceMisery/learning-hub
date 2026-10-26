@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 710" width="1000" height="710" font-family="Microsoft YaHei, sans-serif">
+<defs>
+<marker id="qA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="qG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="qB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<rect x="0" y="0" width="1000" height="710" fill="#ffffff"/>
+<text x="500" y="34" font-size="20" fill="#1F1E1A" text-anchor="middle" font-weight="600">CQL3 解析与执行：从一句 CQL 到一件 Mutation</text>
+<text x="500" y="56" font-size="12" fill="#6B695F" text-anchor="middle" font-weight="400">跟随 UPDATE users SET name='阿福2' WHERE id=47：词法 → 语法 → 语句对象 → Mutation / ReadCommand → 第 7 章的副本确认</text>
+<text x="976" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">橙色：解析 / 中间形态</text>
+<text x="976" y="42" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色：写终点 Mutation</text>
+<text x="976" y="58" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">蓝色：读终点 ReadCommand</text>
+
+<!-- ============ 第一条：入口柜台 ============ -->
+<rect x="28" y="76" width="944" height="118" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.3"/>
+<text x="44" y="98" font-size="13" fill="#C46A0A" text-anchor="start" font-weight="600">唯一柜台：三种协议消息殊途同归（QueryProcessor.java:112、119，CQL 3.4.8）</text>
+<rect x="44" y="112" width="196" height="64" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="142" y="134" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">QUERY（一次性语句）</text>
+<text x="142" y="152" font-size="10.5" fill="#6B695F" text-anchor="middle">现场解析 → 执行 → 丢弃</text>
+<text x="142" y="168" font-size="10.5" fill="#E24B4A" text-anchor="middle">每次全价（凌晨事故的元凶）</text>
+<rect x="260" y="112" width="196" height="64" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="358" y="134" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">PREPARE（建档）</text>
+<text x="358" y="152" font-size="10.5" fill="#6B695F" text-anchor="middle">解析一次 → 存缓存</text>
+<text x="358" y="168" font-size="10.5" fill="#6B695F" text-anchor="middle">id = MD5(keyspace+文本)（:843）</text>
+<rect x="476" y="112" width="196" height="64" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="574" y="134" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">EXECUTE（复用）</text>
+<text x="574" y="152" font-size="10.5" fill="#6B695F" text-anchor="middle">带 id + 参数值</text>
+<text x="574" y="168" font-size="10.5" fill="#6B695F" text-anchor="middle">只付绑定 + 执行的钱</text>
+<path d="M240 144 L260 144" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#qA)"/>
+<path d="M456 144 L476 144" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#qA)"/>
+<rect x="692" y="112" width="264" height="64" rx="8" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.2"/>
+<text x="824" y="134" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">三连：authorize → validate → execute</text>
+<text x="824" y="152" font-size="10.5" fill="#6B695F" text-anchor="middle">权限 → 语义体检 → 语句自己执行</text>
+<text x="824" y="168" font-size="10.5" fill="#6B695F" text-anchor="middle">（QueryProcessor.java:302-312）</text>
+<path d="M672 144 L692 144" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#qA)"/>
+
+<!-- ============ 第二条：词法与语法 ============ -->
+<rect x="28" y="204" width="944" height="150" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.3"/>
+<text x="44" y="226" font-size="13" fill="#C46A0A" text-anchor="start" font-weight="600">解析站：词法切 token，语法归约成树（规则在 src/antlr/，生成代码不进仓库）</text>
+<rect x="44" y="240" width="400" height="48" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="56" y="258" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="600">UPDATE users SET name = '阿福2' WHERE id = 47 ;</text>
+<text x="56" y="276" font-size="10" fill="#6B695F" text-anchor="start">一句 39 字符的 CQL 文本（原生协议 QUERY 消息的载荷）</text>
+<path d="M244 288 L244 306" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#qA)"/>
+<text x="256" y="302" font-size="10" fill="#6B695F" text-anchor="start">词法（Lexer.g:20）</text>
+<rect x="44" y="310" width="400" height="32" rx="8" fill="#ffffff" stroke="#C46A0A" stroke-width="1.2"/>
+<text x="56" y="330" font-size="9.5" fill="#3B3A34" text-anchor="start">[UPDATE] [users] [SET] [name] [=] ['阿福2'] [WHERE] [id] [=] [47]</text>
+<rect x="464" y="240" width="492" height="102" rx="8" fill="#ffffff" stroke="#C46A0A" stroke-width="1.2"/>
+<text x="478" y="262" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="600">语法（Parser.g:632 updateStatement）→ AST / Raw 语句对象</text>
+<text x="478" y="282" font-size="10.5" fill="#3B3A34" text-anchor="start">UpdateStatement.ParsedUpdate{</text>
+<text x="496" y="298" font-size="10.5" fill="#3B3A34" text-anchor="start">name:"users"｜updates:[name←'阿福2']｜where:(id = 47)</text>
+<text x="496" y="314" font-size="10.5" fill="#3B3A34" text-anchor="start">attrs:{ 无 USING TIMESTAMP / TTL }</text>
+<text x="478" y="332" font-size="10" fill="#6B695F" text-anchor="start">prepare() 一跳（QueryProcessor.java:958）：查表元数据，Raw 转正式语句对象</text>
+<path d="M444 266 L464 266" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#qA)"/>
+<text x="454" y="256" font-size="10" fill="#6B695F" text-anchor="middle">归约</text>
+
+<!-- ============ 第三条：预处理 ============ -->
+<rect x="28" y="364" width="400" height="120" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.3"/>
+<text x="44" y="386" font-size="13" fill="#C46A0A" text-anchor="start" font-weight="600">预处理：解析一次，绑定千次</text>
+<text x="44" y="408" font-size="10.5" fill="#3B3A34" text-anchor="start">PREPARE：全价解析 → 语句对象入缓存（按字节计费，:143-148）</text>
+<text x="44" y="426" font-size="10.5" fill="#3B3A34" text-anchor="start">EXECUTE ×1000：查缓存 → 绑参数 → 三连执行</text>
+<text x="44" y="444" font-size="10.5" fill="#C46A0A" text-anchor="start" font-weight="600">省下的正是：每条的词法 + 语法 + 查表元数据</text>
+<rect x="44" y="452" width="368" height="22" rx="5" fill="#ffffff" stroke="#D3D1C7" stroke-width="1"/>
+<text x="56" y="467" font-size="10" fill="#6B695F" text-anchor="start">防注入：绑定值不进语法层，'x OR 1=1' 只是字符串值</text>
+
+<!-- ============ 第四条：Mutation 行李 ============ -->
+<rect x="440" y="364" width="532" height="120" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.3"/>
+<text x="456" y="386" font-size="13" fill="#639922" text-anchor="start" font-weight="600">写终点：一件 Mutation = 一个分区的一次完整修改（db/Mutation.java:68）</text>
+<rect x="456" y="398" width="500" height="76" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="470" y="418" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="600">keyspaceName: "demo"</text>
+<text x="470" y="436" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="600">key: DecoratedKey{ "47", token≈-9.0×10^18 }（第 6 章）</text>
+<text x="470" y="454" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="600">modifications: { users → PartitionUpdate{ name←'阿福2' @ts } }</text>
+<text x="470" y="470" font-size="10" fill="#6B695F" text-anchor="start">ts：未写 USING TIMESTAMP 取协调者微秒时钟（Attributes.java:85）</text>
+
+<!-- ============ 第五条：读写分岔 ============ -->
+<rect x="28" y="494" width="944" height="140" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.3"/>
+<text x="44" y="516" font-size="13" fill="#2F6FA8" text-anchor="start" font-weight="600">分岔与交接：改数据 → StorageProxy.mutate；查数据 → 能否定位分区决定命令形态</text>
+<rect x="44" y="530" width="270" height="88" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="58" y="550" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">写：ModificationStatement.execute</text>
+<text x="58" y="568" font-size="10.5" fill="#3B3A34" text-anchor="start">getMutations（:961）装箱 → Mutation</text>
+<text x="58" y="586" font-size="10.5" fill="#3B3A34" text-anchor="start">→ StorageProxy.mutateWithTriggers（:748）</text>
+<text x="58" y="606" font-size="10.5" fill="#639922" text-anchor="start" font-weight="600">→ 第 7 章：名单 {node2,node4,node5} + blockFor 倒计时</text>
+<path d="M314 574 L338 574" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#qG)"/>
+<rect x="342" y="530" width="290" height="88" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="492" y="550" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">读：SelectStatement.getQuery（:470）</text>
+<text x="492" y="570" font-size="10.5" fill="#3B3A34" text-anchor="middle">分区键给全（id=47）→ 点查命令</text>
+<text x="492" y="588" font-size="10.5" fill="#3B3A34" text-anchor="middle">SinglePartitionReadCommand（:98）</text>
+<text x="492" y="608" font-size="10.5" fill="#2F6FA8" text-anchor="middle" font-weight="600">→ StorageProxy.read：1 data + R−1 digest</text>
+<rect x="646" y="530" width="310" height="88" rx="8" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.2"/>
+<text x="660" y="550" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="600">WHERE 落在非分区键上（name=...）</text>
+<text x="660" y="568" font-size="10.5" fill="#E24B4A" text-anchor="start">引擎拒绝 → 加 ALLOW FILTERING 才放行</text>
+<text x="660" y="586" font-size="10.5" fill="#6B695F" text-anchor="start">（第 6 章：定位链只认分区键）</text>
+<text x="660" y="606" font-size="10.5" fill="#6B695F" text-anchor="start">LIMIT / PER PARTITION LIMIT 只管到量即停（:487、:182）</text>
+
+<!-- ============ 底部总结 ============ -->
+<rect x="28" y="644" width="944" height="50" rx="8" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="44" y="664" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">一张图的一句话：一句 CQL 走完「词法 → 语法 → 语句对象 → Mutation/ReadCommand」四道工序，交到第 7 章手里；prepared 把前三道的钱只付一次。</text>
+<text x="44" y="684" font-size="11" fill="#6B695F" text-anchor="start">数据来源：cql3/QueryProcessor.java:950-991、843-847 · src/antlr/Parser.g:632 · db/Mutation.java:68 · cql3/statements/ModificationStatement.java:748 · SelectStatement.java:501-506</text>
+</svg>

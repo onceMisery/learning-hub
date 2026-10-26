@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>架构概述：一条 KV 的进来与出去 · RocksDB 互动原理实验室 第 1 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#fff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:960px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#fff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:38px 0 22px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:710px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#fff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:500;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:11.5px;fill:#3B3A34}
+.tn{font-size:12.5px;font-weight:500;fill:#1F1E1A}
+.tag{font-size:10px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:68px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+section{padding:34px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .arr{color:#C46A0A;font-weight:600}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.figcap b{color:#3B3A34;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:13.5px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 9px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#scene [opacity],#scene2 [opacity]{transition:opacity .22s ease}
+#eng .hl,#eng2 .hl{stroke:#D96C06 !important;stroke-width:2.2 !important}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+@media (prefers-reduced-motion: reduce){#scene [opacity],#scene2 [opacity]{transition:none}}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：架构概述：一条 KV 的进来与出去</a>
+  <span class="idx">第 1 / 12 章</span>
+</div>
+<div class="page">
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · 架构总览</div>
+<h1>一条 KV 的进来与出去：一切都是追加</h1>
+<p>device_47 只「写过一次」，目录里却有它的多份影子；删掉的键一小时后还占着盘。不是 bug——RocksDB 从不原地修改数据：写是追加记录，更新是追加更大 seq 的新版本，删除是追加墓碑。这页跟着 4 条记录走完全程。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span><span class="mnode">② 静态分解</span><span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span><span class="mnode">⑤ 环境场景</span><span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 590" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>一条 KV 的一生：device_47 的 4 条记录</title><defs><marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="g" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker></defs><text class="th" x="500" y="22" text-anchor="middle">一条 KV 的一生：device_47 的 4 条记录（seq=7/8/9 Put · seq=10 Delete）</text><text class="ts" x="500" y="40" text-anchor="middle">写 → flush → 压实 → 读：一切都是追加，压实负责把账收敛</text><text class="tag" x="958" y="22" text-anchor="end">橙点 = device_47 记录本体的当前位置</text><text class="tag" x="958" y="38" text-anchor="end">绿点 = 读请求游标 · 红 = 墓碑 / 作废</text><g id="scene"><rect id="laneW" x="40" y="52" width="920" height="100" rx="10" fill="#FBFAF6" stroke="#ECEAE2"/><text class="tn" x="52" y="72">写流水线：① 组包 → ② 组提交 → ③ WAL → ④ MemTable</text>
+<rect id="nw0" x="52" y="84" width="104" height="48" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/><text class="tb" x="104" y="106" text-anchor="middle">客户端 Put</text><text class="tag" x="104" y="122" text-anchor="middle">device_47</text><line x1="158" y1="108" x2="170" y2="108" stroke="#C46A0A" stroke-width="1.4" marker-end="url(#a)"/><rect id="nw1" x="172" y="84" width="124" height="48" rx="7" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/><text class="tb" x="234" y="104" text-anchor="middle">① WriteBatch</text><text class="tag" x="234" y="120" text-anchor="middle">组包 · 领 seq</text><line x1="298" y1="108" x2="310" y2="108" stroke="#C46A0A" stroke-width="1.4" marker-end="url(#a)"/><rect id="nw2" x="312" y="84" width="104" height="48" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/><text class="tb" x="364" y="104" text-anchor="middle">② 组提交</text><text class="tag" x="364" y="120" text-anchor="middle">leader 合车</text><line x1="418" y1="108" x2="430" y2="108" stroke="#C46A0A" stroke-width="1.4" marker-end="url(#a)"/>
+<rect id="nw3" x="432" y="84" width="132" height="48" rx="7" fill="#EFF6FF" stroke="#2563EB" stroke-width="1.2"/><text class="tb" x="498" y="104" text-anchor="middle">③ WAL 000005.log</text><text class="tag" x="498" y="118" text-anchor="middle">先记账 · 顺序追加</text><rect x="442" y="123" width="112" height="4" rx="2" fill="#ECEAE2"/><rect id="walLine" x="442" y="123" width="0" height="4" rx="2" fill="#2563EB"/><line x1="566" y1="108" x2="578" y2="108" stroke="#C46A0A" stroke-width="1.4" marker-end="url(#a)"/><rect id="nw4" x="580" y="84" width="120" height="48" rx="7" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/><text class="tb" x="640" y="104" text-anchor="middle">④ MemTable</text><text class="tag" x="640" y="120" text-anchor="middle">内存账本 · 跳表</text><rect id="noteW" x="716" y="84" width="232" height="48" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1" stroke-dasharray="4 3"/><text class="tag" x="728" y="103">返回 OK 时：SST 一个都没有</text><text class="tag" x="728" y="120">此刻崩溃？WAL 回放补回</text><rect id="laneT" x="40" y="162" width="920" height="286" rx="10" fill="#FBFAF6" stroke="#ECEAE2"/>
+<text class="tn" x="52" y="182">flush + 压实流水线：4 份痕迹收敛成 0 份</text><rect id="memBox" x="52" y="192" width="304" height="76" rx="8" fill="#FFFFFF" stroke="#639922" stroke-width="1.2"/><text class="tb" x="64" y="210">MemTable（mutable）</text><text class="tag" x="196" y="210">64MB 满转 immutable</text><rect id="ch7" x="64" y="222" width="62" height="24" rx="5" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1"/><text class="tag" x="95" y="238" text-anchor="middle">seq7 Put</text><rect id="ch8" x="132" y="222" width="62" height="24" rx="5" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1"/><text class="tag" x="163" y="238" text-anchor="middle">seq8 Put</text><rect id="ch9" x="200" y="222" width="62" height="24" rx="5" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1"/><text class="tag" x="231" y="238" text-anchor="middle">seq9 Put</text><rect id="ch10" x="268" y="222" width="72" height="24" rx="5" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.1"/><text class="tag" x="304" y="238" text-anchor="middle">seq10 删·墓碑</text><text class="tag" x="368" y="210">memtable 已用 /64MB</text>
+<rect x="368" y="218" width="118" height="10" rx="3" fill="#ECEAE2"/><rect id="memGauge" x="368" y="218" width="95" height="10" rx="3" fill="#EF9F27"/><line x1="204" y1="270" x2="204" y2="296" stroke="#C46A0A" stroke-width="1.4" marker-end="url(#a)"/><text class="tag" x="214" y="290">flush：BuildTable 顺序写成一个 SST</text><rect id="l0shelf" x="52" y="300" width="424" height="62" rx="8" fill="#FFFFFF" stroke="#B4B2A9" stroke-width="1.2"/><text class="tb" x="64" y="316">L0：文件键范围互相重叠</text><rect id="f1" x="64" y="322" width="92" height="26" rx="5" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1"/><text class="tag" x="110" y="339" text-anchor="middle">f1 · seq7</text><rect id="f2" x="162" y="322" width="92" height="26" rx="5" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1"/><text class="tag" x="208" y="339" text-anchor="middle">f2 · seq8</text><rect id="f3" x="260" y="322" width="92" height="26" rx="5" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1"/><text class="tag" x="306" y="339" text-anchor="middle">f3 · seq9</text>
+<rect id="f4" x="358" y="322" width="98" height="26" rx="5" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.1"/><text class="tag" x="407" y="339" text-anchor="middle">f4 · seq10 删</text><text class="tag" x="496" y="384">L0：level0_file_num_compaction_trigger = 4 → 攒够 4 个触发压实</text><line x1="264" y1="364" x2="264" y2="392" stroke="#C46A0A" stroke-width="1.4" marker-end="url(#a)"/><text class="tag" x="274" y="384">压实：归并排序，同键从新到旧只留该留的</text><rect id="l1shelf" x="52" y="396" width="424" height="52" rx="8" fill="#FFFFFF" stroke="#B4B2A9" stroke-width="1.2"/><text class="tb" x="64" y="412">L1：层内互不重叠（归并输出）</text><rect id="l1f" x="64" y="418" width="250" height="22" rx="5" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.1"/><text class="tag" x="189" y="433" text-anchor="middle">f9：seq10 墓碑（seq7/8/9 已作废）</text><g id="deepStack"><text class="tb" x="496" y="200">L2 → L6（num_levels = 7，越深越旧）</text>
+<rect x="496" y="206" width="452" height="26" rx="5" fill="#FFFFFF" stroke="#B4B2A9" stroke-width="1.1"/><text class="tag" x="506" y="223">L2</text><text class="tag" x="938" y="223" text-anchor="end">更冷、更旧</text><rect x="496" y="238" width="428" height="26" rx="5" fill="#FFFFFF" stroke="#B4B2A9" stroke-width="1.1"/><text class="tag" x="506" y="255">L3</text><rect x="496" y="270" width="404" height="26" rx="5" fill="#FFFFFF" stroke="#B4B2A9" stroke-width="1.1"/><text class="tag" x="506" y="287">L4</text><rect x="496" y="302" width="380" height="26" rx="5" fill="#FFFFFF" stroke="#B4B2A9" stroke-width="1.1"/><text class="tag" x="506" y="319">L5</text><rect x="496" y="334" width="356" height="26" rx="5" fill="#FFFFFF" stroke="#B4B2A9" stroke-width="1.1"/><text class="tag" x="506" y="351">L6</text></g><line x1="314" y1="429" x2="490" y2="222" stroke="#C46A0A" stroke-width="1.2" stroke-dasharray="5 4" marker-end="url(#a)"/><text class="tag" x="496" y="370" fill="#854F0B">墓碑随每轮压实继续下沉 →</text><rect id="vanishNote" x="496" y="392" width="396" height="46" rx="8" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.1" stroke-dasharray="4 3"/>
+<text class="tag" x="508" y="410" fill="#854F0B">L6：底下再无此键版本、无快照 → 4 条全部丢弃</text><text class="tag" x="508" y="428">最终：盘上 0 份痕迹，删除此刻才真正完成</text><rect id="laneR" x="40" y="458" width="920" height="118" rx="10" fill="#FBFAF6" stroke="#ECEAE2"/><text class="tn" x="52" y="478">读流水线：先问的一定对（第一次命中即终止）</text><rect id="nr0" x="52" y="490" width="88" height="46" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/><text class="tb" x="96" y="509" text-anchor="middle">⑦ Get</text><text class="tag" x="96" y="526" text-anchor="middle">device_47</text><line x1="142" y1="513" x2="154" y2="513" stroke="#639922" stroke-width="1.4" marker-end="url(#g)"/><rect id="nr1" x="156" y="490" width="128" height="46" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/><text class="tb" x="220" y="509" text-anchor="middle">⑧ SuperVersion</text><text class="tag" x="220" y="526" text-anchor="middle">钉住快照视图</text><line x1="286" y1="513" x2="298" y2="513" stroke="#639922" stroke-width="1.4" marker-end="url(#g)"/><rect id="nr2" x="300" y="490" width="116" height="46" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/>
+<text class="tb" x="358" y="509" text-anchor="middle">⑨ 问 memtable</text><text class="tag" x="358" y="526" text-anchor="middle">含 immutable 新→旧</text><line x1="418" y1="513" x2="430" y2="513" stroke="#639922" stroke-width="1.4" marker-end="url(#g)"/><rect id="nr3" x="432" y="490" width="104" height="46" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/><text class="tb" x="484" y="509" text-anchor="middle">⑩ 问磁盘</text><text class="tag" x="484" y="526" text-anchor="middle">Version::Get</text><line x1="538" y1="513" x2="550" y2="513" stroke="#639922" stroke-width="1.4" marker-end="url(#g)"/><rect id="nr4" x="552" y="490" width="112" height="46" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/><text class="tb" x="608" y="509" text-anchor="middle">L0 从新到旧</text><text class="tag" x="608" y="526" text-anchor="middle">最多多问 4 个</text><line x1="666" y1="513" x2="678" y2="513" stroke="#639922" stroke-width="1.4" marker-end="url(#g)"/><rect id="nr5" x="680" y="490" width="112" height="46" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/>
+<text class="tb" x="736" y="509" text-anchor="middle">L1+ 每层一个</text><text class="tag" x="736" y="526" text-anchor="middle">二分 + 布隆</text><line x1="794" y1="513" x2="806" y2="513" stroke="#639922" stroke-width="1.4" marker-end="url(#g)"/><rect id="nr6" x="808" y="490" width="140" height="46" rx="7" fill="#FFFFFF" stroke="#639922" stroke-width="1.3"/><text class="tb" x="878" y="509" text-anchor="middle">第一次命中即返回</text><text id="ansX" class="tag" x="878" y="526" text-anchor="middle">命中值 或 NotFound</text><text class="tag" x="52" y="562">两种 NotFound 结果相同、成本天差地别：墓碑提前终止（f1/f2/f3 一个都不碰）vs 问完所有层才知道「真没有」。</text></g><circle id="tok" cx="104" cy="110" r="7" fill="#EF9F27" stroke="#D97E06" stroke-width="1.4"/><circle id="tok2" cx="96" cy="513" r="6" fill="#639922" stroke="#4C7A1A" stroke-width="1.4" opacity="0"/>
+</svg>
+
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.5" max="2" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm">默认 ≈ 6 秒 / 轮</span>
+</div>
+<div class="readout">
+<span class="ro">进度 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">读数 <b id="roKey">--</b></span>
+<span class="ro">当前 seq <b id="roSeq">--</b></span>
+<span class="ro">memtable <b id="roMem">--</b></span>
+<span class="ro">L0 文件 <b id="roL0">--</b></span>
+<span class="ro">该键现存版本 <b id="roVer">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav"><button class="btn" onclick="prevStep()">‹ 上一步</button><button class="btn warn" onclick="nextStep()">下一步 ›</button></span>
+</div>
+<p class="figcap">进度 0° = Put device_47 领到 seq=7 开始组包，720° = 墓碑在最底层丢弃、4 份痕迹清零。橙点 = 记录本体，绿点 = 读请求游标；分步点可定格任意时刻。<br>口径：RocksDB 11.13.0；write_buffer_size=64MB、max_write_buffer_number=2、level0_file_num_compaction_trigger=4、num_levels=7；同期并发写、占用曲线与文件名为演示值。</p>
+</div>
+</div>
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：三个「怪现象」其实是三个特性</h2></div>
+<p class="sec-sub">先不拆引擎，只看它对外表现出什么。</p>
+<div class="quote">「观察一个系统，先分清它的静态结构、动态过程和外部依赖。」</div>
+<p>一个键「写过一次」，好几个 SST 里都有它的影子；删掉的键过了一小时还占着盘；<code>du</code> 看到的空间是业务估算的两倍。差别不在代码写错，而在 RocksDB 的根本工作方式：<b>它从不原地修改数据，一切都是追加</b>。写入是追加一条记录，更新是追加一条更大 seq 的新版本，删除是追加一条墓碑。</p>
+<div class="flow">
+<span class="node">写 · 更新 · 删除</span><span class="arr">→</span><span class="node box">LSM 引擎：一切追加</span><span class="arr">→</span><span class="node">memtable 多版本并存</span><span class="arr">→</span><span class="node">flush / 压实逐层收敛</span><span class="arr">→</span><span class="node">Get 挑出对的那份</span>
+</div>
+<p>一句话本质：它是一个库，不是一台数据库——一个<b>持久的、带版本的、有序的键值映射</b>。seq 是全库递增的序号，每写一条领一个号，是「谁更新」的唯一裁判。写永远不等旧数据，删除永远不挡新写入，空间永远有人负责收拾。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：部件不多，一张表放得下</h2></div>
+<p class="sec-sub">点部件卡片，动画里对应的结构会亮起。</p>
+<div class="quote">「分解要 MECE：同一层粒度一致，不重不漏。」</div>
+<div class="figure"><svg viewBox="0 0 920 216" role="img" xmlns="http://www.w3.org/2000/svg"><text x="80" y="22" font-size="13" fill="#1F1E1A" font-weight="600">/data/metrics/</text><rect x="40" y="36" width="180" height="26" rx="5" fill="#FFFFFF" stroke="#3B3A34"/><text x="52" y="53" font-size="11" fill="#3B3A34">CURRENT</text><text x="240" y="53" font-size="10.5" fill="#6B695F">指着当前生效的 MANIFEST</text><rect x="40" y="66" width="180" height="26" rx="5" fill="#EFF6FF" stroke="#2563EB"/><text x="52" y="83" font-size="11" fill="#3B3A34">MANIFEST-000001</text><text x="240" y="83" font-size="10.5" fill="#6B695F">VersionSet 的持久化账本：现在有哪些 SST、各在哪层</text><rect x="40" y="96" width="180" height="26" rx="5" fill="#FFF6E8" stroke="#EF9F27"/><text x="52" y="113" font-size="11" fill="#3B3A34">000005.log</text><text x="240" y="113" font-size="10.5" fill="#6B695F">WAL：memtable 里还没落盘的数据先记在这</text><rect x="40" y="126" width="180" height="26" rx="5" fill="#FFF6E8" stroke="#EF9F27"/><text x="52" y="143" font-size="11" fill="#3B3A34">000006.sst</text><text x="240" y="143" font-size="10.5" fill="#6B695F">第一本 SST：第一个 memtable 满 64MB flush 出来的</text><rect x="40" y="156" width="180" height="26" rx="5" fill="#FFFFFF" stroke="#B4B2A9"/><text x="52" y="173" font-size="11" fill="#3B3A34">OPTIONS-xxxx</text><text x="240" y="173" font-size="10.5" fill="#6B695F">打开时的参数快照</text><rect x="40" y="186" width="180" height="26" rx="5" fill="#FFFFFF" stroke="#B4B2A9"/><text x="52" y="203" font-size="11" fill="#3B3A34">LOCK</text><text x="240" y="203" font-size="10.5" fill="#6B695F">同一目录只许一个读写实例（DB::Open 的承诺）</text></svg></div>
+<p class="figcap">静态标注图：数据目录里每个文件都有主。编号与下方部件卡、动画里的结构一一对应。</p>
+<div class="partgroup"><div class="gname">写与账本</div><div class="parts">
+<button class="part" data-part="batch"><b>WriteBatch</b><span>一批写的原子单位；组包处领 seq，批内共用一次分配。</span></button>
+<button class="part" data-part="group"><b>组提交（WriteThread）</b><span>leader 把同时到达的写合成一辆车：一次日志追加、至多一次 fsync。</span></button>
+<button class="part" data-part="wal"><b>WAL Writer（000005.log）</b><span>追加式日志；崩溃后把 memtable 补回来的凭据。</span></button>
+<button class="part" data-part="mem"><b>MemTable</b><span>内存账本，跳表实现，写的第一落点。</span></button>
+</div></div>
+<div class="partgroup"><div class="gname">flush、压实与读</div><div class="parts">
+<button class="part" data-part="flush"><b>FlushJob / BuildTable</b><span>memtable → L0 的搬运工；flush 与压实共用 BuildTable。</span></button>
+<button class="part" data-part="comp"><b>Compaction / CompactionJob</b><span>层与层之间的归并重写：去旧版本、消墓碑。</span></button>
+<button class="part" data-part="version"><b>Version / VersionSet</b><span>「当前数据由哪些 SST 组成」的账本，全库一份。</span></button>
+<button class="part" data-part="read"><b>SuperVersion</b><span>memtable + immutable 队列 + Version 的只读打包视图，读路径拿它。</span></button>
+</div></div>
+<p class="hint">这些部件怎么在一条时间轴上接力？切到分步模式，看 4 条记录怎么走完三条流水线。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：一条 KV 的一生，8 个相位</h2></div>
+<p class="sec-sub">第一遍只看橙色点（记录本体）怎么从写流水线走到 L6；第二遍同时看读数条里的「现存版本」怎么 4 → 1 → 0。</p>
+<div class="quote">「动态分析看的是时间轴上的顺序、状态变化和因果链。」</div>
+<table class="grid">
+<tr><th>相位</th><th>阶段</th><th>关键动作</th><th>读数</th></tr>
+<tr><td>0–90°</td><td>① 组包</td><td>Put 装进 WriteBatch，领 seq=7</td><td>SST 0 本</td></tr>
+<tr><td>90–180°</td><td>② 追加 WAL</td><td>整车记录顺序写进 000005.log</td><td class="hot">崩溃可回放</td></tr>
+<tr><td>180–270°</td><td>③ 写 memtable</td><td>跳表插入；seq=8/9/10 陆续入账，谁也不覆盖谁</td><td class="hot">4 条并存</td></tr>
+<tr><td>270–360°</td><td>④ flush 出 L0</td><td>64MB 满 → immutable → BuildTable 顺序写成一个 SST</td><td>L0 1/4</td></tr>
+<tr><td>360–450°</td><td>⑤ L0 攒够 4 个</td><td>四个 memtable 各出一文件，键范围互相重叠</td><td class="hot">L0 4/4 触发压实</td></tr>
+<tr><td>450–540°</td><td>⑥ L0→L1 压实</td><td>归并排序：seq7/8/9 作废丢弃，墓碑必须留下</td><td class="hot">版本 4→1</td></tr>
+<tr><td>540–630°</td><td>⑦ 读层层问</td><td>SuperVersion 快照 → memtable → immutable → L0 从新到旧</td><td class="hot">第一次命中即返回</td></tr>
+<tr><td>630–720°</td><td>⑧ 收敛完成</td><td>墓碑沉到 L6：底下无版本、无快照 → 全部丢弃</td><td class="hot">版本 0</td></tr>
+</table>
+<p>相位零点：0° = 一次 Put 领到 seq=7 开始组包；720° = device_47 在盘上 0 份痕迹。读相位（540–630°）发生在写完与压实之后，是同一时刻轴上的第二幕。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件 × 阶段</h2></div>
+<p class="sec-sub">同一部件在不同阶段扮演不同角色，这张矩阵是排障时的索引。</p>
+<div class="quote">「动静融合的关键是映射：每个部件在每一步里负责什么。」</div>
+<table class="grid">
+<tr><th>部件</th><th>①②③ 写入</th><th>④ flush</th><th>⑤⑥ 压实</th><th>⑦ 读取</th></tr>
+<tr><td>WriteBatch / 组提交</td><td class="hot">组包、合车、领 seq</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>WAL</td><td class="hot">先记账，崩溃凭据</td><td>memtable 落盘后可回收</td><td>—</td><td>—</td></tr>
+<tr><td>MemTable</td><td class="hot">跳表追加新版本</td><td class="act">满 64MB 转 immutable</td><td>—</td><td class="act">从新到旧被问</td></tr>
+<tr><td>L0 SST</td><td>—</td><td class="hot">BuildTable 顺序写</td><td class="act">键范围重叠，逐个被问</td><td class="act">从新到旧逐个问</td></tr>
+<tr><td>CompactionJob</td><td>—</td><td>—</td><td class="hot">归并去旧版本、消墓碑</td><td>—</td></tr>
+<tr><td>Version / SuperVersion</td><td>—</td><td class="act">原子替换账本</td><td class="act">原子替换账本</td><td class="hot">钉住快照，逐层找文件</td></tr>
+</table>
+<p><b>涌现属性：</b>「删除最终完成」不属于任何单个部件——它是「墓碑也是一条记录」+「压实发现底下再无版本、无快照」协同涌现的结果。写路径把账搞乱，压实负责把账理清，这是 LSM 用读的复杂度换写的顺序性之后，自己给自己还债的方式。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：引擎之外还有什么</h2></div>
+<p class="sec-sub">拆掉任何一个外部依赖，前面看到的行为都会变。</p>
+<div class="quote">「环境属性 = 外在关系 + 依赖 + 失效后果。」</div>
+<div class="envcards">
+<div class="env"><b>嵌入方进程</b><span>它是库不是服务：Flink StateBackend、TiKV、MyRocks 把它嵌进自己进程；宿主一退，引擎就没了。</span></div>
+<div class="env"><b>文件系统与 LOCK</b><span>顺序追加、原子 rename 的能力直接支撑「不可变文件 + 原子换账本」；LOCK 保证同目录一个读写实例。</span></div>
+<div class="env"><b>MANIFEST 与 CURRENT</b><span>VersionSet 的持久化账本；丢了它，SST 文件还在盘上却不被认识。</span></div>
+<div class="env"><b>块缓存（默认 32MB）</b><span>读回来的 4KB 块安家在内存里，下次同块直接命中——没有它，热点读要反复碰盘。</span></div>
+<div class="env"><b>WriteOptions</b><span>sync 与 disableWAL 由调用方声明：改变「崩溃丢多少」的承诺，不改流水线形状。</span></div>
+<div class="env"><b>监控计数器</b><span>GET_HIT_L0/L1/L2_AND_UP、STALL_MICROS 等：三条流水线的健康度都从计数器读出来。</span></div>
+</div>
+<p class="figcap">边界：本页画的是 Leveled 分层的默认形状与 happy path；压实怎么挑文件、写停顿怎么踩刹车，见第 5–6 章与第 3 章。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">能说清「一切都是追加」怎么翻转三个怪现象，才算真的懂。</p>
+<div class="quote">「用自己的话能讲清楚，才算真的懂。」</div>
+<div id="quiz"></div>
+</section>
+
+<div class="summary">
+<h2>一页带走</h2>
+<p class="chant">写是追加，读是问答，压实还债。</p>
+<p>· 一切皆追加：写追加记录、更新追加更大 seq 的新版本、删除追加墓碑；旧值从不被原地改。</p>
+<p>· 三条流水线：写（组包→WAL→memtable）、flush+压实（64MB→L0→归并收敛）、读（SuperVersion→从新到旧，第一次命中即返回）。</p>
+<p>· 压实的双重身份：空间回收（4 份痕迹收成 0 份）+ 读优化（该键每层最多一份）。</p>
+<p>· 出厂默认值藏着形状：64MB 写缓冲 ×2、L0 攒 4 个触发、7 层、4KB 块、32MB 块缓存。</p>
+<p>· 边界与简化：动画中的文件名、占用曲线与并发写为演示值；默认值以 RocksDB 11.13 源码为准，压实选型与写停顿见后续章节。</p>
+</div>
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+<script>
+var STEPS=[
+{d:0,t:"① 组包",x:"Put device_47 装进 WriteBatch：批内多条记录共用一次 seq 分配，本条领到 seq=7。此刻 SST 一个字节都还没动。",k:"seq=7 · SST 0 本"},
+{d:90,t:"② 追加 WAL",x:"整车记录顺序写进 000005.log。它是崩溃恢复的凭据：memtable 在内存里，进程挂了就没了，能补回来的只有这份日志。",k:"WAL +1 行"},
+{d:180,t:"③ 写 memtable",x:"记录插进内存跳表，发布 seq 返回。随后 seq=8、seq=9 的 Put 和 seq=10 的墓碑也并排躺进来——同键多版本共存，谁也不覆盖谁。",k:"4 条并存"},
+{d:270,t:"④ flush 出 L0",x:"memtable 攒到 64MB 转 immutable，BuildTable 把整本账顺序写成一个 L0 SST。文件一旦写完就不可变，旧文件一个字节都不改。",k:"L0 1/4 · 不可变"},
+{d:360,t:"⑤ L0 攒够 4 个",x:"四个互不知情的 memtable 各出一个文件，键范围彼此重叠——点查只好逐个问。攒够 level0_file_num_compaction_trigger=4 个，触发压实。",k:"L0 4/4 · 触发压实"},
+{d:450,t:"⑥ L0→L1 压实",x:"几层输入按内部键归并排序，同键从新到旧只留该留的：seq7/8/9 被更新的记录作废丢弃；墓碑必须留下——底下可能还有更老的版本需要它遮挡。",k:"版本 4→1"},
+{d:540,t:"⑦ 读层层问",x:"Get 钉住 SuperVersion 快照，memtable → immutable → L0 从新到旧逐个问。座次即新旧，第一次命中即返回：在 f4 撞到墓碑 → 直接 NotFound，f1/f2/f3 一个都不碰。",k:"NotFound（墓碑）"},
+{d:630,t:"⑧ 收敛完成",x:"墓碑随压实继续下沉，到了最底层发现底下再没有这个键的任何版本，也没有快照需要它——四条记录全部丢弃。删除此刻才真正完成。",k:"版本 0 · 删除完成"}];
+var CHIPS=[{k:"write",l:"写流水线"},{k:"wal",l:"WAL"},{k:"mem",l:"memtable"},{k:"l0",l:"L0 文件"},{k:"comp",l:"压实"},{k:"read",l:"读路径"}];
+var PARTS={"batch":["nw1"],"group":["nw2"],"wal":["nw3","noteW"],"mem":["memBox"],"flush":["memBox","l0shelf"],"comp":["l0shelf","l1shelf","deepStack"],"version":["l0shelf","l1shelf","deepStack"],"read":["nr1","laneR"]};
+var QUIZ=[
+{q:"一次 Put(\"device_47\") 返回 OK 时，盘上的 SST 有几个字节变化？",opts:["整个 memtable 都已经写进 SST","一个字节都没有——数据只在 WAL 和 memtable 里","只有 WAL 落了盘"],a:1,exp:"写流水线只走 ①→④：WAL 追加 + memtable 插入；SST 要等 memtable 攒满 64MB 转 immutable、flush 时才出现。此刻进程崩溃，重启后拿 WAL 回放，seq=7 回来。"},
+{q:"删除 device_47 之后一小时内，盘上它的旧值为什么还在？",opts:["删除操作失败了","删除只是追加一条墓碑，旧值等压实来收","墓碑写错了键"],a:1,exp:"RocksDB 的「删除」不是抹掉旧值，而是追加一条 type 为 deletion 的记录，它和 Put 走完全相同的写路径。旧值被标记作废，等压实收走——删除永远不挡新写入。"},
+{q:"L0 的文件为什么键范围互相重叠？",opts:["写坏了","它们来自四个互不知情的 memtable","压实故意制造重叠"],a:1,exp:"每个 memtable 攒满 64MB 各自 flush 成一个 L0 文件，写的时候互相不知道对方有哪些键。所以 L0 点查要逐个问，攒够 4 个就触发压实，归并成层内不重叠的文件。"},
+{q:"L0→L1 压实后，seq=10 的墓碑为什么不能丢？",opts:["引擎忘了删它","底下可能还有这个键更老的版本，需要它遮挡","墓碑永远不会被删除"],a:1,exp:"墓碑必须随压实继续下沉；到了最底层、发现底下再无此键的版本且没有快照需要它，四条记录才全部丢弃——删除此刻才真正完成。"},
+{q:"时刻 A（墓碑在 L0 的 f4）和时刻 B（4 条痕迹都被压实收走）都返回 NotFound，差别在哪？",opts:["没有差别","A 被墓碑提前终止只问 1 个文件，B 要把所有层问到底","B 更快，因为数据变少了"],a:1,exp:"两种 NotFound 结果相同、成本天差地别：A 在 f4 撞到墓碑直接终止，f1/f2/f3 一个都不碰；B 要问完每一层才知道「真没有」。数据变少的收益，只有压实真正合并清理后才兑现。"}];
+var WP=[[0,104,110],[40,234,110],[90,234,110],[110,364,110],[140,498,110],[180,498,110],[200,640,110],[214,340,234],[270,340,234],[284,204,282],[296,110,335],[340,110,335],[352,208,335],[362,306,335],[372,406,335],[450,406,335],[464,264,378],[488,184,429],[648,184,429],[660,722,219],[668,710,251],[676,698,283],[684,686,315],[692,674,347],[700,640,414],[720,640,414]];
+var WP2=[[540,96,513],[554,220,513],[568,358,513],[582,484,513],[596,608,513],[610,736,513],[622,878,513],[636,878,513],[720,878,513]];
+var MEMPTS=[[0,52],[90,55],[180,57],[200,58],[240,61],[262,63],[268,64],[272,64],[284,4],[300,22],[306,4],[318,18],[324,4],[340,18],[346,4],[380,8],[720,8]];
+function memUsed(pr){
+  if(pr<=MEMPTS[0][0])return MEMPTS[0][1];
+  for(var i=0;i<MEMPTS.length-1;i++){
+    if(pr<MEMPTS[i+1][0]){var t=(pr-MEMPTS[i][0])/(MEMPTS[i+1][0]-MEMPTS[i][0]);return MEMPTS[i][1]+(MEMPTS[i+1][1]-MEMPTS[i][1])*t;}
+  }
+  return MEMPTS[MEMPTS.length-1][1];
+}
+var PERIOD=6000,basePeriod=PERIOD,PHASE_MAX=720,STEP_DUR=600;
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,stepIdx=-1,dots=[],ticking=false,chipEls={};
+function $(id){return document.getElementById(id);}
+function setText(id,s){var n=$(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setOp(id,v){var n=$(id);if(n)n.setAttribute('opacity',Math.max(0,Math.min(1,v)).toFixed(2));}
+function setAttr(id,k,v){var n=$(id);if(n)n.setAttribute(k,v);}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){t=clamp(t,0,1);return t*t*(3-2*t);}
+function ramp(th,a,b){return clamp((th-a)/((b-a)||1),0,1);}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function lerpPts(pts,th){
+  if(th<=pts[0][0])return[pts[0][1],pts[0][2]];
+  for(var i=0;i<pts.length-1;i++){if(th<pts[i+1][0]){var t=smooth((th-pts[i][0])/(pts[i+1][0]-pts[i][0]));return[pts[i][1]+(pts[i+1][1]-pts[i][1])*t,pts[i][2]+(pts[i+1][2]-pts[i][2])*t];}}
+  return[pts[pts.length-1][1],pts[pts.length-1][2]];
+}
+function setChip(k,v){var n=chipEls[k];if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',/^(已|完成|命中|进行|归并|收敛|留下|返回|有)/.test(v));n.classList.toggle('off',/^(待命|—|无|未|0)/.test(v));}
+function stageIdx(pr){var s=0;for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)s=i;}return s;}
+function pageRender(pr,si){
+  var seq=pr<200?7:pr<220?8:pr<240?9:10;
+  setText('roSeq','seq='+seq);
+  var mu=memUsed(pr);
+  setText('roMem',mu.toFixed(0)+'MB /64MB');
+  setAttr('memGauge','width',clamp(mu/64,0,1)*118);
+  var l0=pr<262?0:pr<300?1:pr<318?2:pr<340?3:pr<518?4:0;
+  setText('roL0',l0+' /4');
+  var ver=pr<200?1:pr<220?2:pr<240?3:pr<462?4:pr<480?3:pr<498?2:pr<658?1:0;
+  setText('roVer',ver+' 份');
+  setOp('walLine',pr>=92?1:0.2);
+  setAttr('walLine','width',clamp(ramp(pr,96,150),0,1)*112);
+  var out=1-ramp(pr,272,284);
+  setOp('ch7',ramp(pr,182,188)*out);
+  setOp('ch8',ramp(pr,200,206)*out);
+  setOp('ch9',ramp(pr,218,224)*out);
+  setOp('ch10',ramp(pr,236,242)*out);
+  setOp('f1',0.45+0.55*ramp(pr,262,268)-0.85*ramp(pr,462,470));
+  setOp('f2',0.45+0.55*ramp(pr,300,306)-0.85*ramp(pr,480,488));
+  setOp('f3',0.45+0.55*ramp(pr,318,324)-0.85*ramp(pr,498,506));
+  setOp('f4',0.45+0.55*ramp(pr,340,346)-0.85*ramp(pr,516,524));
+  setOp('l1f',ramp(pr,516,524)*(1-0.85*ramp(pr,656,668)));
+  setOp('vanishNote',0.4+0.6*ramp(pr,640,656));
+  setText('ansX',pr>=604?'撞到墓碑 → NotFound':'命中值 或 NotFound');
+  setChip('write',pr<270?'写入中':'已返回');
+  setChip('wal',pr<96?'待命':pr<180?'追加中':'已落账');
+  setChip('mem',pr<182?'待命':pr<270?'4 条在册':'已换本');
+  setChip('l0',pr<262?'0/4':pr<518?(l0+'/4'):'0（已下沉）');
+  setChip('comp',pr<452?'待命':pr<540?'归并中':'已收敛');
+  setChip('read',pr<540?'待命':pr<630?'问层中':'NotFound');
+}
+function render(th){
+  var pr=norm(th);
+  setText('roPhase',Math.round(pr)+'°');
+  var si=stageIdx(pr);if(mode==='step'&&stepIdx>=0)si=stepIdx;
+  setText('roStep',STEPS[si]?STEPS[si].t:'—');
+  setText('roKey',STEPS[si]?STEPS[si].k:'—');
+  pageRender(pr,si);
+  var p=lerpPts(WP,pr);setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));
+  setOp('tok',clamp((1-0.85*ramp(pr,536,540)+0.85*ramp(pr,624,630))*(1-0.85*ramp(pr,700,714)),0.1,1));
+  var q=lerpPts(WP2,pr);setAttr('tok2','cx',q[0].toFixed(1));setAttr('tok2','cy',q[1].toFixed(1));
+  setOp('tok2',ramp(pr,538,540)*(1-ramp(pr,622,632)));
+}
+function tick(now){
+  ticking=false;
+  var dt=Math.min(50,now-last);last=now;
+  if(run&&mode==='auto')phase=(phase+dt/PERIOD*PHASE_MAX)%PHASE_MAX;
+  if(mode==='step'&&stepTo!==null){
+    stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);var p=stepElapsed/STEP_DUR,e=smooth(p);
+    phase=stepFrom+(stepTo-stepFrom)*e;if(p>=1){phase=stepTo;stepTo=null;}
+  }
+  render(phase);
+  if(run||stepTo!==null){ticking=true;requestAnimationFrame(tick);}
+}
+function wake(){if(ticking)return;ticking=true;last=performance.now();requestAnimationFrame(tick);}
+function setAuto(on){
+  mode='auto';run=on;stepTo=null;var b=$('engBtn');if(b)b.textContent=on?'暂停':'播放';
+  if(on){stepIdx=-1;dots.forEach(function(d){d.classList.remove('on');});
+  setText('stepT','自动运转模式');setText('stepX','点下方步骤点可切换到分步演示，随你点击定格。');wake();}
+}
+window.goStep=function(i){
+  stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+  var target=STEPS[stepIdx].d;
+  if(reduced||Math.abs(target-norm(phase))>180){phase=target;stepTo=null;}
+  else{stepFrom=phase;stepTo=target;stepElapsed=0;}
+  render(phase);wake();
+  var b=$('engBtn');if(b)b.textContent='继续自动运转';
+  dots.forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+  setText('stepT','第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t);
+  setText('stepX',STEPS[stepIdx].x);
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+CHIPS.forEach(function(c){var box=$('stateChips');var s=document.createElement('span');s.className='chip';s.innerHTML=c.l+' <b>--</b>';box.appendChild(s);chipEls[c.k]=s;});
+var stepBar=$('stepBar');
+STEPS.forEach(function(s,n){var b=document.createElement('button');b.className='stepnode';b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+s.t+'</span>';b.onclick=function(){goStep(n);};stepBar.appendChild(b);dots.push(b);});
+var engBtn=$('engBtn');engBtn.textContent=run?'暂停':'播放';
+engBtn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+var spd=$('engSpd');
+if(spd){spd.oninput=function(){speed=parseFloat(spd.value);$('engSpdV').textContent=speed+'×';PERIOD=basePeriod/speed;};}
+document.querySelectorAll('.part').forEach(function(btn){btn.onclick=function(){var ids=(PARTS[btn.dataset.part]||[]);document.querySelectorAll('#eng .hl,#eng2 .hl').forEach(function(n){n.classList.remove('hl');});ids.forEach(function(id){var n=$(id);if(n)n.classList.add('hl');});};});
+var quizBox=$('quiz');QUIZ.forEach(function(q,n){var d=document.createElement('div');d.className='q';var html='<div class="qt">'+(n+1)+'. '+q.q+'</div>';q.opts.forEach(function(o,j){html+='<button class="opt" data-q="'+n+'" data-o="'+j+'">'+o+'</button>';});html+='<div class="exp"><b>答案：</b>'+q.opts[q.a]+'<br>'+q.exp+'</div>';d.innerHTML=html;quizBox.appendChild(d);});
+quizBox.querySelectorAll('.opt').forEach(function(b){b.onclick=function(){var q=QUIZ[+b.dataset.q];var box=b.closest('.q');if(box.classList.contains('done'))return;box.classList.add('done');b.classList.add(+b.dataset.o===q.a?'right':'wrong');box.querySelectorAll('.opt').forEach(function(o){if(+o.dataset.o===q.a)o.classList.add('right');});};});
+if(reduced){run=false;phase=0;render(0);engBtn.textContent='播放';}else{wake();}
+</script>
+</body>
+</html>

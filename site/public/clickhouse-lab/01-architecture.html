@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>一条分析 SQL 的进来与出去：五个站点与两层集群 · ClickHouse 互动原理实验室</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#fff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:1000px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#fff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px;flex-wrap:wrap}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:38px 0 22px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:750px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#fff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:500;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:11.5px;fill:#3B3A34}
+.tn{font-size:12.5px;font-weight:500;fill:#1F1E1A}
+.tag{font-size:10px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:nowrap;overflow-x:auto;max-width:100%;padding-bottom:4px}
+.stepnode{flex:1;min-width:62px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px;flex-wrap:wrap}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+section{padding:34px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .arr{color:#C46A0A;font-weight:600}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.figcap b{color:#3B3A34;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:13.5px;table-layout:fixed}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 9px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+.env span,.env b,.part span,.figcap,.summary p,table.grid td{overflow-wrap:anywhere;word-break:break-word}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#scene [opacity],#scene2 [opacity],#scene3 [opacity]{transition:opacity .22s ease}
+#eng .hl,#eng2 .hl,#eng3 .hl{stroke:#D96C06 !important;stroke-width:2.2 !important}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+.stage circle{fill:#fff;stroke:#B4B2A9;stroke-width:1.4;transition:fill .18s,stroke .18s}
+.stage.on rect:first-of-type{fill:#FFF6E8;stroke:#C46A0A;stroke-width:2}
+.stage.done rect:first-of-type{fill:#EAF3DE;stroke:#639922}
+.stage.done circle{fill:#EAF3DE;stroke:#639922}
+.stage.on circle{fill:#EF9F27;stroke:#C46A0A;stroke-width:2}
+.stage text{font-size:10px;fill:#6B695F}
+.stage.on text{fill:#854F0B;font-weight:600}
+.subview{margin:8px 0 4px;background:#fff;border:1px dashed #D3D1C7;border-radius:10px;padding:8px 10px}
+.subview .viewtitle{font-size:12px;font-weight:600;color:#854F0B;margin-bottom:4px}
+@media (max-width:560px){.page{padding:0 12px 60px}.labbar{padding:8px 12px}.labbar .idx{width:100%;margin-left:0;text-align:right}.hero h1{font-size:24px}.sec-head h2{font-size:18px}.stepnode{min-width:54px}.stepnode .lab2{font-size:9px}}
+@media (prefers-reduced-motion: reduce){#scene [opacity],#scene2 [opacity],#scene3 [opacity]{transition:none}}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：一条分析 SQL 的进来与出去：五个站点与两层集群</a>
+  <span class="idx">第 1 / 13 章</span>
+</div>
+<div class="page">
+<header class="hero">
+<div class="kicker">ARCHITECTURE · 架构总览</div>
+<h1>一条分析 SQL 的进来与出去：五个站点与两层集群</h1>
+<p>同一条订单聚合 SQL，在 MySQL 上要回表 800 万次，在 ClickHouse 上只读几百个压缩块。差别不在 CPU，而在「先裁剪、再列式读、再向量化算」这条链路。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span><span class="mnode">② 静态分解</span><span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span><span class="mnode">⑤ 环境场景</span><span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 440" role="img" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<marker id="aW" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aM" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#6B695F" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<text x="500" y="28" font-size="18" fill="#1F1E1A" text-anchor="middle" font-weight="600">一条分析 SQL 的五个站点</text>
+<text x="500" y="48" font-size="11.5" fill="#6B695F" text-anchor="middle">文本 → AST → QueryTree → QueryPlan → Pipeline → 结果；下方是它真正碰到的存储与集群</text>
+<text x="976" y="24" font-size="10.5" fill="#6B695F" text-anchor="end">橙色：请求流</text>
+<text x="976" y="39" font-size="10.5" fill="#2F6FA8" text-anchor="end">蓝色：内存/计划</text>
+<text x="976" y="54" font-size="10.5" fill="#639922" text-anchor="end">绿色：磁盘/副本</text>
+
+<g class="stage" id="s1"><rect x="20" y="80" width="150" height="104" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="34" y="104" font-size="13" fill="#1F1E1A" font-weight="600">SQL 文本</text>
+<text x="34" y="123" font-size="10.5" fill="#6B695F">SELECT region,</text>
+<text x="34" y="138" font-size="10.5" fill="#6B695F">  COUNT(*), SUM(amount)</text>
+<text x="34" y="153" font-size="10.5" fill="#6B695F">FROM shop.orders</text>
+<text x="34" y="168" font-size="10.5" fill="#6B695F">WHERE event_date=...</text></g>
+
+<g class="stage" id="s2"><rect x="200" y="80" width="140" height="104" rx="10" fill="#fff" stroke="#D3D1C7" stroke-width="1.2"/>
+<text x="214" y="104" font-size="13" fill="#1F1E1A" font-weight="600">① Parser</text>
+<text x="214" y="123" font-size="10.5" fill="#6B695F">Lexer → Token</text>
+<text x="214" y="138" font-size="10.5" fill="#6B695F">递归下降</text>
+<text x="214" y="153" font-size="10.5" fill="#6B695F">ParserSelect...</text>
+<text x="214" y="168" font-size="10.5" fill="#C46A0A">产物：AST</text></g>
+
+<g class="stage" id="s3"><rect x="370" y="80" width="140" height="104" rx="10" fill="#fff" stroke="#D3D1C7" stroke-width="1.2"/>
+<text x="384" y="104" font-size="13" fill="#1F1E1A" font-weight="600">② Analyzer</text>
+<text x="384" y="123" font-size="10.5" fill="#6B695F">绑定表/列/别名</text>
+<text x="384" y="138" font-size="10.5" fill="#6B695F">类型推断</text>
+<text x="384" y="153" font-size="10.5" fill="#6B695F">QueryTree pass</text>
+<text x="384" y="168" font-size="10.5" fill="#2F6FA8">产物：QueryTree</text></g>
+
+<g class="stage" id="s4"><rect x="540" y="80" width="140" height="104" rx="10" fill="#fff" stroke="#D3D1C7" stroke-width="1.2"/>
+<text x="554" y="104" font-size="13" fill="#1F1E1A" font-weight="600">③ Planner</text>
+<text x="554" y="123" font-size="10.5" fill="#6B695F">Read / Filter /</text>
+<text x="554" y="138" font-size="10.5" fill="#6B695F">Aggregate / Sort</text>
+<text x="554" y="153" font-size="10.5" fill="#6B695F">优化器改写</text>
+<text x="554" y="168" font-size="10.5" fill="#2F6FA8">产物：QueryPlan</text></g>
+
+<g class="stage" id="s5"><rect x="710" y="80" width="140" height="104" rx="10" fill="#fff" stroke="#D3D1C7" stroke-width="1.2"/>
+<text x="724" y="104" font-size="13" fill="#1F1E1A" font-weight="600">④ Pipeline</text>
+<text x="724" y="123" font-size="10.5" fill="#6B695F">Processor + Port</text>
+<text x="724" y="138" font-size="10.5" fill="#6B695F">多线程任务驱动</text>
+<text x="724" y="153" font-size="10.5" fill="#6B695F">Chunk 列向量</text>
+<text x="724" y="168" font-size="10.5" fill="#2F6FA8">产物：结果流</text></g>
+
+<rect x="878" y="80" width="102" height="104" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="929" y="106" font-size="13" fill="#1F1E1A" text-anchor="middle" font-weight="600">结果</text>
+<text x="929" y="126" font-size="10.5" fill="#6B695F" text-anchor="middle">region / orders</text>
+<text x="929" y="141" font-size="10.5" fill="#6B695F" text-anchor="middle">/ gmv</text>
+<text x="929" y="162" font-size="10.5" fill="#639922" text-anchor="middle">5 行</text>
+
+<path d="M170 132 L196 132" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/>
+<path d="M340 132 L366 132" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/>
+<path d="M510 132 L536 132" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/>
+<path d="M680 132 L706 132" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/>
+<path d="M850 132 L874 132" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/>
+
+<text x="20" y="212" font-size="12" fill="#C46A0A" font-weight="600">存储：MergeTree 的 part（读的时候只碰需要的列与 granule）</text>
+<rect x="20" y="224" width="220" height="76" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/>
+<text x="34" y="246" font-size="12.5" fill="#1F1E1A" font-weight="600">partition 202610</text>
+<text x="34" y="264" font-size="10.5" fill="#6B695F">目录级切分；分区裁剪先砍掉其他月</text>
+<text x="34" y="280" font-size="10.5" fill="#639922">event_date = '2026-10-01'</text>
+
+<rect x="270" y="224" width="220" height="76" rx="8" fill="#fff" stroke="#639922" stroke-width="1.2"/>
+<text x="284" y="246" font-size="12.5" fill="#1F1E1A" font-weight="600">part 202610_1_1_0</text>
+<text x="284" y="264" font-size="10.5" fill="#6B695F">一次写入/合并产生的不可变目录</text>
+<text x="284" y="280" font-size="10.5" fill="#6B695F">columns.txt / count.txt / checksums</text>
+
+<rect x="520" y="224" width="220" height="76" rx="8" fill="#fff" stroke="#639922" stroke-width="1.2"/>
+<text x="534" y="246" font-size="12.5" fill="#1F1E1A" font-weight="600">granule 8192 行</text>
+<text x="534" y="264" font-size="10.5" fill="#6B695F">索引/读取的最小单位；primary.idx 一条</text>
+<text x="534" y="280" font-size="10.5" fill="#6B695F">本例候选 granule：120/977</text>
+
+<rect x="770" y="224" width="210" height="76" rx="8" fill="#fff" stroke="#639922" stroke-width="1.2"/>
+<text x="784" y="246" font-size="12.5" fill="#1F1E1A" font-weight="600">列文件 .bin + .mrk3</text>
+<text x="784" y="264" font-size="10.5" fill="#6B695F">只读 region/status/amount/date</text>
+<text x="784" y="280" font-size="10.5" fill="#639922">其余 56 列不发生 I/O</text>
+
+<text x="20" y="330" font-size="12" fill="#2F6FA8" font-weight="600">集群：副本与分片（单机之外的另外两层）</text>
+<rect x="20" y="342" width="180" height="54" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="34" y="364" font-size="12.5" fill="#1F1E1A" font-weight="600">Distributed 表</text>
+<text x="34" y="382" font-size="10.5" fill="#6B695F">路由 / 分发 / 合并，不存数据</text>
+
+<rect x="230" y="342" width="230" height="54" rx="8" fill="#fff" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="244" y="364" font-size="12.5" fill="#1F1E1A" font-weight="600">shard 1 / 2 / 3</text>
+<text x="244" y="382" font-size="10.5" fill="#6B695F">每片两副本：A/B、C/D、E/F</text>
+
+<rect x="490" y="342" width="230" height="54" rx="8" fill="#fff" stroke="#2F6FA8" stroke-width="1.2"/>
+<text x="504" y="364" font-size="12.5" fill="#1F1E1A" font-weight="600">ReplicatedMergeTree</text>
+<text x="504" y="382" font-size="10.5" fill="#6B695F">同分片副本：/log + part 拉取</text>
+
+<rect x="750" y="342" width="230" height="54" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/>
+<text x="764" y="364" font-size="12.5" fill="#1F1E1A" font-weight="600">ClickHouse Keeper</text>
+<text x="764" y="382" font-size="10.5" fill="#6B695F">Raft / 会话 / watch / quorum</text>
+
+<circle id="tok" cx="95" cy="132" r="7" fill="#EF9F27" stroke="#D97E06" stroke-width="1.4"/>
+</svg>
+<div class="subview">
+<div class="viewtitle">第二视图 · 同一相位下的 part 读取：索引 → mark → 压缩块 → 列向量</div>
+<svg id="eng2" viewBox="0 0 1000 210" role="img" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<marker id="aW" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="aM" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#6B695F" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<rect x="18" y="14" width="964" height="182" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/>
+<text x="34" y="38" font-size="13" fill="#1F1E1A" font-weight="600">同一个 part：mark 指向压缩块，压缩块里才是列值</text>
+<rect x="34" y="54" width="150" height="58" rx="6" fill="#fff" stroke="#639922" stroke-width="1.1"/>
+<text x="109" y="76" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">primary.idx</text>
+<text x="109" y="94" font-size="10" fill="#6B695F" text-anchor="middle">每 granule 一条键值</text>
+<rect x="204" y="54" width="150" height="58" rx="6" fill="#fff" stroke="#639922" stroke-width="1.1"/>
+<text x="279" y="76" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">region.mrk3</text>
+<text x="279" y="94" font-size="10" fill="#6B695F" text-anchor="middle">压缩偏移 + 解压内偏移</text>
+<rect x="374" y="54" width="200" height="58" rx="6" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.1"/>
+<text x="474" y="76" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">region.bin</text>
+<text x="474" y="94" font-size="10" fill="#6B695F" text-anchor="middle">压缩块 1 | 压缩块 2 | ...</text>
+<rect x="594" y="54" width="170" height="58" rx="6" fill="#fff" stroke="#2F6FA8" stroke-width="1.1"/>
+<text x="679" y="76" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">解压 + 解码</text>
+<text x="679" y="94" font-size="10" fill="#6B695F" text-anchor="middle">只还原需要的 granule</text>
+<rect x="784" y="54" width="180" height="58" rx="6" fill="#EAF3DE" stroke="#639922" stroke-width="1.1"/>
+<text x="874" y="76" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">列向量 Chunk</text>
+<text x="874" y="94" font-size="10" fill="#6B695F" text-anchor="middle">交给过滤/聚合算子</text>
+<path d="M184 83 L200 83" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/>
+<path d="M354 83 L370 83" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/>
+<path d="M574 83 L590 83" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/>
+<path d="M764 83 L780 83" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#aW)"/>
+<text x="34" y="140" font-size="11" fill="#3B3A34">读法：先用 primary.idx 决定「读哪个 granule」，再用 .mrk3 找到「从哪个字节读」，最后只解压一个压缩块。</text>
+<text x="34" y="160" font-size="11" fill="#3B3A34">本例：977 个 granule 中只读 120 个；4 列之外的其他列完全不打开。</text>
+<text x="34" y="180" font-size="10" fill="#6B695F">口径：index_granularity=8192（MergeTreeSettings.cpp:74）；mark 结构见 src/Formats/MarkInCompressedFile.h:17；数值为演示值。</text>
+<circle id="tok2" cx="109" cy="83" r="6" fill="#639922" stroke="#4C7A1A" stroke-width="1.4"/>
+</svg>
+</div>
+</div>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.5" max="2" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm">默认 ≈ 5.6 秒 / 轮</span>
+</div>
+<div class="readout">
+<span class="ro">进度 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">读数 <b id="roKey">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav"><button class="btn" onclick="prevStep()">‹ 上一步</button><button class="btn warn" onclick="nextStep()">下一步 ›</button></span>
+</div>
+<p class="figcap">相位 0° = 收到 SQL，630° = 只读 4 列并完成聚合；橙色令牌是查询当前所在站点。<br>口径：ClickHouse 26.11.1.1-testing；索引粒度见 MergeTreeSettings.cpp:74；动画中的行数、granule 数与线程数为演示值。</p>
+</div>
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：同一条 SQL，为什么字节数差一个数量级</h2></div>
+<p class="sec-sub">先不看代码，只问：查询真的需要读 60 列吗？真的需要读 12 亿行吗？</p>
+<div class="quote">「观察一个系统，先分清它「必须读什么」和「习惯读什么」。」</div>
+<p>订单表 12 亿行、60 列，查询只用 <code>region</code>、<code>status</code>、<code>amount</code>、<code>event_date</code> 四列。行存会把整行 60 列读进来；列存只打开这四个 <code>.bin</code>。这是第一层差距。</p>
+<div class="flow"><span class="node">SQL</span><span class="arr">→</span><span class="node box">分区裁剪</span><span class="arr">→</span><span class="node box">granule 裁剪</span><span class="arr">→</span><span class="node box">列裁剪</span><span class="arr">→</span><span class="node">解压/聚合</span></div>
+<p>第二层是跳过：按月分区砍掉其他月份，主键前缀砍掉不命中的 granule。第三层才是压缩。三层叠加，才是「1 秒 vs 47 秒」的来源。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：五个站点、三个存储层级、两种集群角色</h2></div>
+<p class="sec-sub">点部件卡片，主图里对应的结构会高亮。</p>
+<div class="quote">「分解要 MECE：同一层粒度一致，不重不漏。」</div>
+<div class="partgroup"><div class="gname">查询侧的五站</div><div class="parts">
+<button class="part" data-part="sql"><b>SQL 文本</b><span>用户写的句子；解析前只是字节。</span></button>
+<button class="part" data-part="parser"><b>Parser</b><span>Lexer + 递归下降；产物是 AST。</span></button>
+<button class="part" data-part="planner"><b>Analyzer + Planner</b><span>绑定语义、改写、生成 QueryPlan。</span></button>
+<button class="part" data-part="pipeline"><b>Pipeline</b><span>Processor + Port 图，多线程执行 Chunk 流。</span></button>
+</div></div>
+<div class="partgroup"><div class="gname">存储侧的三个层级</div><div class="parts">
+<button class="part" data-part="merge"><b>partition</b><span>目录级切分，先砍掉不相关月份。</span></button>
+<button class="part" data-part="merge"><b>part</b><span>不可变目录；一次写入/合并的产物。</span></button>
+<button class="part" data-part="merge"><b>granule</b><span>8192 行；索引和 mark 的最小单位。</span></button>
+</div></div>
+<table class="grid">
+<tr><th>层级</th><th>默认值/典型值</th><th>谁决定</th><th>查询时省掉什么</th></tr>
+<tr><td>partition</td><td>按月</td><td>PARTITION BY</td><td>其他月份的所有 part</td></tr>
+<tr><td>part</td><td>几百 MB–几 GB</td><td>插入批次/合并</td><td>不命中的 part（minmax）</td></tr>
+<tr><td>granule</td><td>8192 行</td><td>index_granularity</td><td>不命中的 mark/压缩块</td></tr>
+</table>
+<p class="hint">三个层级不是一回事：partition 管目录，part 管不可变文件，granule 管索引/读取粒度。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：跟着查询走完八个相位</h2></div>
+<p class="sec-sub">用 8 个步骤看解析、计划、裁剪、读取、聚合分别在什么时候发生。</p>
+<div class="quote">「动态分析看的是时间轴上的顺序、状态变化和因果链。」</div>
+<table class="grid">
+<tr><th>相位</th><th>发生了什么</th><th>关键状态</th><th>省掉了什么</th></tr>
+<tr><td>0° 文本</td><td>客户端发 SQL</td><td>还没有 AST</td><td>—</td></tr>
+<tr><td>90° 解析</td><td>Token → AST</td><td>语法错误在此报</td><td>—</td></tr>
+<tr><td>180° 分析</td><td>绑定/类型/改写</td><td>QueryTree</td><td>不存在的列、歧义别名</td></tr>
+<tr><td>270° 规划</td><td>Plan + 优化</td><td>QueryPlan</td><td>多余列、下推不了的过滤</td></tr>
+<tr><td>360° 流水线</td><td>Processor 图</td><td>多线程任务</td><td>串行执行</td></tr>
+<tr><td>450° 分区</td><td>分区裁剪</td><td>1/12 part</td><td>11 个月的数据</td></tr>
+<tr><td>540° granule</td><td>主键裁剪</td><td>120/977</td><td>857 个 granule</td></tr>
+<tr><td>630° 读取</td><td>解压/聚合</td><td>4 列 × 120 块</td><td>56 列 + 大部分行</td></tr>
+</table>
+<p><b>顺序不能倒。</b>没有解析就没有 AST，没有分析就没有类型，没有计划就不知道读哪些列；裁剪发生在读取之前，聚合发生在读取之后。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：每个站点在每一步负责什么</h2></div>
+<p class="sec-sub">把动画里的橙色令牌和每个部件的职责叠起来看。</p>
+<div class="quote">「动静融合的关键是映射：每个部件在每一步里负责什么。」</div>
+<table class="grid">
+<tr><th>站点</th><th>源码入口</th><th>输入</th><th>输出</th></tr>
+<tr><td>Parser</td><td>ParserSelectWithUnionQuery.cpp</td><td>SQL 文本</td><td>AST</td></tr>
+<tr><td>Analyzer</td><td>QueryAnalyzer.h:118</td><td>AST</td><td>QueryTree</td></tr>
+<tr><td>Planner</td><td>Planner.cpp:2477</td><td>QueryTree</td><td>QueryPlan</td></tr>
+<tr><td>Pipeline</td><td>PipelineExecutor.cpp:231</td><td>Plan</td><td>Chunk 流</td></tr>
+<tr><td>MergeTree 读取</td><td>ReadFromMergeTree.cpp:5332</td><td>part/mark</td><td>列向量</td></tr>
+</table>
+<p class="hint">读法：先问「这一步的输出是什么」，再看它依赖上一站的什么产物。五站是一条单向链，不能跳站。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：单机之外还有两层</h2></div>
+<p class="sec-sub">ClickHouse 不是孤岛；副本、分片、Keeper 决定它能不能扛住故障。</p>
+<div class="quote">「环境属性 = 外在关系 + 依赖 + 失效后果。」</div>
+<div class="envcards">
+<div class="env"><b>副本</b><span>同分片多份数据；Keeper 存复制日志，副本拉 part 追赶。</span></div>
+<div class="env"><b>分片</b><span>数据水平切开；Distributed 表负责路由和结果合并。</span></div>
+<div class="env"><b>Keeper</b><span>Raft 协调服务；多数派丢失时写停摆，已有数据可读。</span></div>
+<div class="env"><b>对象存储</b><span>数据湖文件可直接查，但没有本地主键索引，网络是成本。</span></div>
+<div class="env"><b>写入批次</b><span>每次 INSERT 生成 part；小批写入会触发 too many parts。</span></div>
+<div class="env"><b>内存预算</b><span>聚合/排序/JOIN 会物化；max_memory_usage 决定 spill 还是 OOM。</span></div>
+</div>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">能说清「先裁剪、再列读、再向量化」才算真的懂。</p>
+<div id="quiz"></div>
+</section>
+
+<div class="summary">
+<h2>一页带走</h2>
+<p class="chant">ClickHouse 的快首先来自「不读」：分区 → granule → 列，三层裁剪逐级减少 I/O。</p>
+<p>· ClickHouse 的快首先来自「不读」：分区 → granule → 列，三层裁剪逐级减少 I/O。</p>
+<p>· 一条 SQL 走五站：Parser → Analyzer → Planner → Pipeline → 结果；每站的产物不同。</p>
+<p>· MergeTree 的核心是「不可变 part + 后台合并」；更新/删除都是写新版本。</p>
+<p>· 单机之外：ReplicatedMergeTree 管副本，Distributed 管分片，Keeper 管记账。</p>
+<p>· 它不是 MySQL 的替代品：点更新、事务、复杂 JOIN 不是主场。</p>
+</div>
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+<script>
+var STEPS=[{"d": 0, "t": "SQL 文本", "x": "客户端把 SQL 文本发给服务器；此时还没有 AST，也没有执行计划。", "k": "waiting"}, {"d": 90, "t": "解析", "x": "Lexer 切 token，递归下降 Parser 拼出 AST；语法错误在这一站报。", "k": "AST"}, {"d": 180, "t": "分析", "x": "QueryAnalyzer 绑定表/列/别名、推断类型，跑改写 pass；语义错误在这一站报。", "k": "QueryTree"}, {"d": 270, "t": "规划", "x": "Planner 生成 QueryPlan；优化器做过滤下推、列裁剪、PREWHERE、read-in-order。", "k": "QueryPlan"}, {"d": 360, "t": "建流水线", "x": "每个 Plan step 变成 Processor，接成 QueryPipeline；读取步骤接入 MergeTree 源。", "k": "Processor 图"}, {"d": 450, "t": "分区裁剪", "x": "先按 event_date 砍掉其他月份的分区，只留下 202610。", "k": "1/12 part"}, {"d": 540, "t": "granule 裁剪", "x": "主键前缀 (region,status) 把候选 granule 压到 120/977。", "k": "120/977"}, {"d": 630, "t": "列读取 + 聚合", "x": "只读 4 列，按 mark 解压候选块；Chunk 流做过滤、两阶段聚合、排序、LIMIT。", "k": "4 列 / 120 块"}];
+var CHIPS=[{"k": "parse", "l": "解析"}, {"k": "plan", "l": "计划"}, {"k": "parts", "l": "分区"}, {"k": "gran", "l": "granule"}, {"k": "read", "l": "读取"}];
+var PARTS={"sql": ["s1"], "parser": ["s2"], "planner": ["s4"], "pipeline": ["s5"], "merge": ["s3"]};
+var QUIZ=[{"q": "ClickHouse 读得少，最直接的原因是什么？", "opts": ["CPU 主频更高", "只读需要的列，并跳过不命中的 granule", "把所有数据放进了内存"], "a": 1, "exp": "列裁剪 + 分区/主键裁剪让 I/O 量下降；CPU 快只是次要因素。"}, {"q": "AST、QueryTree、QueryPlan 三棵树分别回答什么？", "opts": ["写了什么 / 指的是什么 / 怎么执行", "文件布局 / 编码 / 压缩", "写入 / 合并 / 复制"], "a": 0, "exp": "AST 忠实记录文本结构；QueryTree 绑定语义；QueryPlan 描述执行步骤。"}, {"q": "MergeTree 的 primary.idx 默认每多少行一条？", "opts": ["每行一条", "每 8192 行一条", "每个 part 一条"], "a": 1, "exp": "index_granularity 默认 8192，所以索引是稀疏的，只定位 granule 不定位行。"}, {"q": "Distributed 表自己存数据吗？", "opts": ["存，按分片切", "不存，只负责路由/分发/合并", "只存索引"], "a": 1, "exp": "Distributed 是路由层；数据在底层各分片的本地表里。"}, {"q": "ReplicatedMergeTree 的写入默认是同步还是异步？", "opts": ["默认同步，所有副本确认才返回", "默认异步，副本最终一致；可选 quorum", "默认只写一个副本，其他副本永不复制"], "a": 1, "exp": "默认异步，副本靠 Keeper 复制日志追赶；insert_quorum 才要求 N 个副本确认。"}];
+var TOK=[[165, 205], [270, 132], [440, 132], [610, 132], [775, 132], [929, 132], [620, 262], [400, 262]];
+var TOK2=[[109, 83], [279, 83], [474, 83], [679, 83], [874, 83], [874, 83], [679, 83], [474, 83]];
+
+var PERIOD=5600, PHASE_MAX=720, STEP_DUR=600;
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto', run=!reduced, speed=1, phase=0, last=performance.now();
+var stepFrom=0, stepTo=null, stepElapsed=0, stepIdx=-1, dots=[], ticking=false;
+function $(id){return document.getElementById(id);}
+function setText(id,s){var n=$(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setOp(id,v){var n=$(id);if(n)n.setAttribute('opacity',Math.max(0,Math.min(1,v)).toFixed(2));}
+function setW(id,v){var n=$(id);if(n)n.setAttribute('width',Math.max(0,v).toFixed(1));}
+function setAttr(id,k,v){var n=$(id);if(n)n.setAttribute(k,v);}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){t=clamp(t,0,1);return t*t*(3-2*t);}
+function ramp(x,a,b){return clamp((x-a)/(b-a),0,1);}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function setChip(k,v){var n=chipEls[k];if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',/^(开|是|已|命中|完成|一致|通过|留下|已读|已加密|已解密|写入|可读|生效|追平|选中|返回)/.test(v));n.classList.toggle('off',/^(关|否|待命|—|不|跳过|未|失败|阻塞|只读)/.test(v));}
+function stageAt(th){return clamp(Math.floor(th/(PHASE_MAX/STEPS.length)),0,STEPS.length-1);}
+function lerpPts(pts,th){var i=stageAt(th),a=pts[Math.min(i,pts.length-1)],b=pts[Math.min(i+1,pts.length-1)];var t=smooth((th%(PHASE_MAX/STEPS.length))/(PHASE_MAX/STEPS.length));return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t];}
+function render(th){
+  var pr=norm(th);
+  setText('roPhase',Math.round(pr)+'°');
+  var si=stageAt(pr);
+  if(mode==='step'&&stepIdx>=0)si=stepIdx;
+  setText('roStep',STEPS[si]?STEPS[si].t:'—');
+  setText('roKey',STEPS[si]?STEPS[si].k:'—');
+  document.querySelectorAll('#eng .stage,#eng2 .stage,#eng3 .stage').forEach(function(n,i){});
+  document.querySelectorAll('#eng .stage').forEach(function(n,i){n.classList.toggle('on',i===si);n.classList.toggle('done',i<si);});
+  if(typeof TOK!=='undefined'&&TOK.length){var p=lerpPts(TOK,pr);setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));}
+  if(typeof TOK2!=='undefined'&&TOK2.length){var q=lerpPts(TOK2,pr);setAttr('tok2','cx',q[0].toFixed(1));setAttr('tok2','cy',q[1].toFixed(1));}
+  pageRender(pr,si);
+}
+function tick(now){
+  ticking=false;
+  var dt=Math.min(50,now-last);last=now;
+  if(run&&mode==='auto')phase=(phase+dt/PERIOD*PHASE_MAX)%PHASE_MAX;
+  if(mode==='step'&&stepTo!==null){
+    stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);var p=stepElapsed/STEP_DUR,e=smooth(p);
+    phase=stepFrom+(stepTo-stepFrom)*e;if(p>=1){phase=stepTo;stepTo=null;}
+  }
+  render(phase);
+  if(run||stepTo!==null){ticking=true;requestAnimationFrame(tick);}
+}
+function wake(){if(ticking)return;ticking=true;last=performance.now();requestAnimationFrame(tick);}
+function setAuto(on){
+  mode='auto';run=on;stepTo=null;var b=$('engBtn');if(b)b.textContent=on?'暂停':'播放';
+  if(on){stepIdx=-1;dots.forEach(function(d){d.classList.remove('on');});
+  setText('stepT','自动运转模式');setText('stepX','点下方步骤点可切换到分步演示，随你点击定格。');wake();}
+}
+window.goStep=function(i){
+  stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+  var target=STEPS[stepIdx].d;
+  if(reduced||Math.abs(target-norm(phase))>PHASE_MAX/2){phase=target;stepTo=null;}
+  else{stepFrom=phase;stepTo=target;stepElapsed=0;}
+  render(phase);wake();
+  var b=$('engBtn');if(b)b.textContent='继续自动运转';
+  dots.forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+  setText('stepT','第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t);
+  setText('stepX',STEPS[stepIdx].x);
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+var chipEls={};CHIPS.forEach(function(c){var box=$('stateChips');var s=document.createElement('span');s.className='chip';s.innerHTML=c.l+' <b>--</b>';box.appendChild(s);chipEls[c.k]=s;});
+var stepBar=$('stepBar');
+STEPS.forEach(function(s,n){var b=document.createElement('button');b.className='stepnode';b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+s.t+'</span>';b.onclick=function(){goStep(n);};stepBar.appendChild(b);dots.push(b);});
+var engBtn=$('engBtn');engBtn.textContent=run?'暂停':'播放';
+engBtn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+var spd=$('engSpd');
+if(spd){spd.oninput=function(){speed=parseFloat(spd.value);$('engSpdV').textContent=speed+'×';PERIOD=5600/speed;};}
+document.querySelectorAll('.part').forEach(function(btn){btn.onclick=function(){var ids=(PARTS[btn.dataset.part]||[]);document.querySelectorAll('#eng .hl,#eng2 .hl,#eng3 .hl').forEach(function(n){n.classList.remove('hl');});ids.forEach(function(id){var n=$(id);if(n)n.classList.add('hl');});};});
+var quizBox=$('quiz');QUIZ.forEach(function(q,n){var d=document.createElement('div');d.className='q';var html='<div class="qt">'+(n+1)+'. '+q.q+'</div>';q.opts.forEach(function(o,j){html+='<button class="opt" data-q="'+n+'" data-o="'+j+'">'+o+'</button>';});html+='<div class="exp"><b>答案：</b>'+q.opts[q.a]+'<br>'+q.exp+'</div>';d.innerHTML=html;quizBox.appendChild(d);});
+quizBox.querySelectorAll('.opt').forEach(function(b){b.onclick=function(){var q=QUIZ[+b.dataset.q];var box=b.closest('.q');if(box.classList.contains('done'))return;box.classList.add('done');b.classList.add(+b.dataset.o===q.a?'right':'wrong');box.querySelectorAll('.opt').forEach(function(o){if(+o.dataset.o===q.a)o.classList.add('right');});};});
+if(reduced){run=false;phase=0;render(0);engBtn.textContent='播放';}else{wake();}
+
+
+function pageRender(pr,si){
+  var parsed=pr>=90, planned=pr>=270, piped=pr>=360, part=pr>=450, gran=pr>=540, read=pr>=630;
+  setChip('parse',parsed?'已解析':'待命');
+  setChip('plan',planned?'已生成':'待命');
+  setChip('parts',part?'1/12':'待命');
+  setChip('gran',gran?'120/977':'待命');
+  setChip('read',read?'4 列':'待命');
+  setOp('tok2',ramp(pr,520,545)*(1-ramp(pr,700,715)));
+}
+
+</script>
+</body>
+</html>

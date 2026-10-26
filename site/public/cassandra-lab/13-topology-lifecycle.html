@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>拓扑变更与节点生命周期 · Cassandra 互动原理实验室 第 14 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:960px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:720px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:600;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:12px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:600;fill:#1F1E1A}
+.tag{font-size:10.5px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:66px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .outbranch{display:inline-flex;flex-direction:column;align-items:flex-start;gap:6px}
+.flow .outline{display:inline-flex;align-items:center;gap:8px}
+.flow .flownote{font-size:12px;color:#6B695F;font-weight:600;margin-right:4px}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 10px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+#eng [opacity]{transition:opacity .28s ease}
+#eng2 [opacity]{transition:opacity .28s ease}
+@media (prefers-reduced-motion: reduce){#eng [opacity],#eng2 [opacity]{transition:none}}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:8px 4px 0;font-size:12px;color:#6B695F}
+.legend i{display:inline-block;width:18px;height:0;border-top:2px solid #C46A0A;vertical-align:middle;margin-right:5px}
+.legend i.g{border-color:#639922}
+.legend i.r{border-color:#E24B4A}
+.legend i.b{border-color:#2F6FA8}
+.legend i.dash{border-top-style:dashed}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：拓扑变更与节点生命周期</a>
+  <span class="idx">第 14 / 15 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · TOPOLOGY &amp; NODE LIFECYCLE</div>
+<h1>先进写表拉数据，再换读表退旧主</h1>
+<p>node6 入列 43 分钟全记录：分 16 个 token、CMS 账本上三个事务（StartJoin→MidJoin→FinishJoin）、双归属窗口里 streaming 拉齐 150GB、Auto Repair 补最后一刀。切「node4 强摘」看 removenode 的镜像线：死者零参与、幸存者互拷 180GB 补回 RF=3。读数与正文第 14 章完全同口径。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span>
+<span class="mnode">② 静态分解</span>
+<span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span>
+<span class="mnode">⑤ 环境场景</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 560" role="img" xmlns="http://www.w3.org/2000/svg"><title>node6 入列三段式与 node4 强摘</title><defs><marker id="tA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="tB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#2F6FA8" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="tG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="tR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker></defs><text class="th" x="500" y="24" text-anchor="middle" id="engTitle">node6 入列：分 token → 双归属 streaming 150GB → 三段式 JOIN</text><text class="ts" x="500" y="44" text-anchor="middle" id="engSub">5 节点 + node6｜demo 300GB、RF=3、num_tokens=16｜t0 10:00 启动 → t4 10:43 NORMAL（教学时间轴）</text><text x="972" y="24" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">橙色：入列流程</text><text x="972" y="40" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">蓝色：CMS 事务 / streaming</text><text x="972" y="56" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色：数据到位 / 完成</text><text x="972" y="72" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">红色：死节点 / 风险</text><g id="stStrip"><rect id="st0" x="28" y="64" width="172" height="52" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.2"/><text id="stL0" x="38" y="84" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">J1 报到</text><text id="stS0" x="38" y="102" font-size="9.5" fill="#6B695F" text-anchor="start">seed=node1·Register</text><rect id="st1" x="212" y="64" width="172" height="52" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/><text id="stL1" x="222" y="84" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">J2 分 token</text><text id="stS1" x="222" y="102" font-size="9.5" fill="#6B695F" text-anchor="start">allocateTokens:270-291</text><rect id="st2" x="396" y="64" width="172" height="52" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.2"/><text id="stL2" x="406" y="84" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">J3 双归属拉数</text><text id="stS2" x="406" y="102" font-size="9.5" fill="#6B695F" text-anchor="start">StartJoin(E95)+16 流</text><rect id="st3" x="580" y="64" width="172" height="52" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/><text id="stL3" x="590" y="84" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">J4 三段式 JOIN</text><text id="stS3" x="590" y="102" font-size="9.5" fill="#6B695F" text-anchor="start">MidJoin→FinishJoin</text><rect id="st4" x="764" y="64" width="208" height="52" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/><text id="stL4" x="774" y="84" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">J5 补账收尾</text><text id="stS4" x="774" y="102" font-size="9.5" fill="#6B695F" text-anchor="start">AutoRepair→UN</text></g>
+<g id="gJ"><rect x="28" y="128" width="264" height="308" rx="10" fill="#ffffff" stroke="#3B3A34" stroke-width="1.2"/><text x="160" y="150" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">令牌环（示意单环，实际 vnode 16 段）</text><circle cx="160" cy="290" r="96" fill="none" stroke="#B4B2A9" stroke-width="1.2" stroke-dasharray="4 3"/><circle id="rn1" cx="160" cy="194" r="12" fill="#ffffff" stroke="#3B3A34" stroke-width="1.6"/><text x="160" y="198" font-size="8.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">n1</text><text x="160" y="178" font-size="8.5" fill="#6B695F" text-anchor="middle">seed</text><circle id="rn2" cx="251" cy="260" r="12" fill="#ffffff" stroke="#3B3A34" stroke-width="1.6"/><text x="251" y="264" font-size="8.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">n2</text><circle id="rn3" cx="216" cy="368" r="12" fill="#ffffff" stroke="#3B3A34" stroke-width="1.6"/><text x="216" y="372" font-size="8.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">n3</text><circle id="rn4" cx="104" cy="368" r="12" fill="#ffffff" stroke="#3B3A34" stroke-width="1.6"/><text x="104" y="372" font-size="8.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">n4</text><circle id="rn5" cx="69" cy="260" r="12" fill="#ffffff" stroke="#3B3A34" stroke-width="1.6"/><text x="69" y="264" font-size="8.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">n5</text><circle id="rn6" cx="160" cy="290" r="14" fill="#FBFAF6" stroke="#B4B2A9" stroke-width="1.4" stroke-dasharray="3 2"/><text id="rn6t" x="160" y="294" font-size="8.5" fill="#8A877C" text-anchor="middle" font-weight="600">n6</text><text id="ringNote" x="42" y="412" font-size="9.5" fill="#6B695F" text-anchor="start">node6 尚未入环：不持 token、不服务读写</text><text id="ringNote2" x="42" y="428" font-size="9.5" fill="#6B695F" text-anchor="start">每个节点实持 16 token（num_tokens:16，yaml:42）</text>
+<rect x="302" y="128" width="406" height="118" rx="10" fill="#ffffff" stroke="#2F6FA8" stroke-width="1.3"/><text x="505" y="148" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">CMS 账本（ClusterMetadataService.commit:697，每事务一个 epoch）</text><rect id="ep1" x="316" y="158" width="378" height="20" rx="5" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1"/><text x="326" y="172" font-size="9.5" fill="#3B3A34" text-anchor="start" font-weight="600">E94 稳态：5 节点 × 16 token，读写副本表就绪</text><rect id="ep2" x="316" y="182" width="378" height="20" rx="5" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1"/><text id="ep2t" x="326" y="196" font-size="9.5" fill="#8A877C" text-anchor="start">E95 StartJoin：node6 进写副本表（addToWrites）</text><rect id="ep3" x="316" y="206" width="378" height="20" rx="5" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1"/><text id="ep3t" x="326" y="220" font-size="9.5" fill="#8A877C" text-anchor="start">E96 MidJoin：node6 进读副本表（moveReads）</text><rect id="ep4" x="316" y="230" width="378" height="12" rx="5" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1"/><text id="ep4t" x="326" y="240" font-size="8.5" fill="#8A877C" text-anchor="start">E97 FinishJoin：旧副本退写表（removeFromWrites）→ NORMAL</text>
+<rect x="302" y="254" width="406" height="88" rx="10" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="505" y="274" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">双归属窗口（PrepareJoin.java:52-85 类注释）</text><text id="dw1" x="316" y="294" font-size="9.5" fill="#3B3A34" text-anchor="start" font-weight="600">写副本表含 node6？否</text><text id="dw2" x="316" y="310" font-size="9.5" fill="#3B3A34" text-anchor="start" font-weight="600">读副本表含 node6？否</text><text id="dw3" x="316" y="326" font-size="9.5" fill="#3B3A34" text-anchor="start" font-weight="600">旧 owner：读写都在（唯一持有者）</text><text id="dw4" x="560" y="294" font-size="9.5" fill="#6B695F" text-anchor="start">窗口期间线上读写不停：</text><text id="dw5" x="560" y="310" font-size="9.5" fill="#6B695F" text-anchor="start">旧 owner 照常服务读，</text><text id="dw6" x="560" y="326" font-size="9.5" fill="#6B695F" text-anchor="start">node6 只收写不服务读</text>
+<rect x="302" y="350" width="406" height="86" rx="10" fill="#ffffff" stroke="#639922" stroke-width="1.3"/><text x="505" y="370" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">streaming：16 段并行拉 150GB（StreamPlan(BOOTSTRAP)）</text><g id="seg16"></g><text id="smT" x="316" y="424" font-size="9.5" fill="#3B3A34" text-anchor="start" font-weight="600">进度 0.0GB / 150GB（≈62MB/s，40 分钟）</text><text id="smN" x="692" y="424" font-size="9" fill="#6B695F" text-anchor="end">源=现任读副本·断点续传</text>
+<rect x="718" y="128" width="254" height="150" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.2"/><text x="845" y="150" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">数据量算术（300GB 全量）</text><text x="732" y="172" font-size="10" fill="#3B3A34" text-anchor="start">扩容前：每节点 3/5×300 = 180GB</text><text x="732" y="190" font-size="10" fill="#3B3A34" text-anchor="start">扩容后：每节点 3/6×300 = 150GB</text><text x="732" y="208" font-size="10" fill="#C46A0A" text-anchor="start" font-weight="600">每老机流出 30GB（各让 1/6）</text><text x="732" y="226" font-size="10" fill="#639922" text-anchor="start" font-weight="600">node6 流入 150GB = 5×30GB</text><text x="732" y="246" font-size="9.5" fill="#6B695F" text-anchor="start">16 token → 16 份流 ≈9.4GB/份</text><text x="732" y="264" font-size="9.5" fill="#6B695F" text-anchor="start">vnode 摊薄：并行 + 可续传</text>
+<rect id="statBox" x="718" y="286" width="254" height="150" rx="10" fill="#ffffff" stroke="#2F6FA8" stroke-width="1.2"/><text x="845" y="306" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">nodetool status 眼中</text><text id="ns1" x="732" y="328" font-size="10.5" fill="#3B3A34" text-anchor="start">node1~node5　UN（Up Normal）</text><text id="ns2" x="732" y="348" font-size="10.5" fill="#8A877C" text-anchor="start">node6　—（未报到）</text><text id="ns3" x="732" y="372" font-size="9.5" fill="#6B695F" text-anchor="start">UJ = Up Joining：进程活、正在入列</text><text id="ns4" x="732" y="388" font-size="9.5" fill="#6B695F" text-anchor="start">J 阶段数据目录已在进流量——</text><text id="ns5" x="732" y="404" font-size="9.5" fill="#6B695F" text-anchor="start">账本（写副本表）说它是副本，它就收写</text><text id="ns6" x="732" y="424" font-size="9.5" fill="#639922" text-anchor="start" font-weight="600">完成后 UN，与老节点无异</text></g>
+<g id="gM" opacity="0"><rect x="28" y="128" width="264" height="308" rx="10" fill="#ffffff" stroke="#3B3A34" stroke-width="1.2"/><text x="160" y="150" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">令牌环：node4 强摘（5→4）</text><circle cx="160" cy="290" r="96" fill="none" stroke="#B4B2A9" stroke-width="1.2" stroke-dasharray="4 3"/><circle cx="160" cy="194" r="12" fill="#ffffff" stroke="#3B3A34" stroke-width="1.6"/><text x="160" y="198" font-size="8.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">n1</text><circle id="mn2" cx="251" cy="260" r="12" fill="#ffffff" stroke="#3B3A34" stroke-width="1.6"/><text x="251" y="264" font-size="8.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">n2</text><circle id="mn3" cx="216" cy="368" r="12" fill="#ffffff" stroke="#3B3A34" stroke-width="1.6"/><text x="216" y="372" font-size="8.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">n3</text><circle id="mn4" cx="104" cy="368" r="12" fill="#FCEBEB" stroke="#E24B4A" stroke-width="2"/><text x="104" y="372" font-size="8.5" fill="#E24B4A" text-anchor="middle" font-weight="600">n4</text><line x1="95" y1="359" x2="113" y2="377" stroke="#E24B4A" stroke-width="2"/><line x1="113" y1="359" x2="95" y2="377" stroke="#E24B4A" stroke-width="2"/><circle id="mn5" cx="69" cy="260" r="12" fill="#ffffff" stroke="#3B3A34" stroke-width="1.6"/><text x="69" y="264" font-size="8.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">n5</text><text id="mRing1" x="42" y="412" font-size="9.5" fill="#E24B4A" text-anchor="start" font-weight="600">node4：主板烧毁、死透（DN，phi&gt;8 持续）</text><text id="mRing2" x="42" y="428" font-size="9.5" fill="#6B695F" text-anchor="start">它的 180GB 由剩余 4 台从「另两个活副本」翻拷</text>
+<rect x="302" y="128" width="406" height="180" rx="10" fill="#ffffff" stroke="#E24B4A" stroke-width="1.3"/><text x="505" y="150" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">removenode 五步（SingleNodeSequences.removeNode:127-156）</text><text id="ms1" x="316" y="174" font-size="10" fill="#3B3A34" text-anchor="start" font-weight="600">① 运维在 node1：nodetool removenode &lt;node4 hostId&gt;</text><text id="ms2" x="316" y="194" font-size="10" fill="#3B3A34" text-anchor="start" font-weight="600">② 预检：不能摘自己（:131）；活着会被拒（:136）</text><text id="ms3" x="316" y="214" font-size="10" fill="#3B3A34" text-anchor="start" font-weight="600">③ PrepareLeave(REMOVENODE)：placement 重算、段重新指派</text><text id="ms4" x="316" y="234" font-size="10" fill="#639922" text-anchor="start" font-weight="600">④ 幸存者互拷补 RF=3（RESTORE_REPLICA_COUNT:23）</text><text id="ms5" x="316" y="254" font-size="10" fill="#3B3A34" text-anchor="start" font-weight="600">⑤ 广播 LEFT（unsafeBroadcastLeftStatus:156）→ 环 5→4</text><text id="ms6" x="316" y="278" font-size="9.5" fill="#6B695F" text-anchor="start">死者全程 0 字节参与——数据重分布不依赖死节点</text><text id="ms7" x="316" y="296" font-size="9.5" fill="#6B695F" text-anchor="start">LockedRanges：与其它变更动同一批 range 会被拒</text>
+<rect x="302" y="316" width="406" height="120" rx="10" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.2"/><text x="505" y="336" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">对照组：decommission（node5 活着退场）</text><text id="md1" x="316" y="358" font-size="9.5" fill="#3B3A34" text-anchor="start">PrepareLeave(UNBOOTSTRAP)：标 LEAVING、重开交割账本</text><text id="md2" x="316" y="376" font-size="9.5" fill="#3B3A34" text-anchor="start">反向 streaming：node5 亲手推数据（UnbootstrapStreams:211）</text><text id="md3" x="316" y="394" font-size="9.5" fill="#3B3A34" text-anchor="start">已传段跳过（:195-203）；期间照常服务读写</text><text id="md4" x="316" y="412" font-size="9.5" fill="#3B3A34" text-anchor="start">收尾：交 hint（streamHints）→ 广播 LEFT → 关网</text><text id="md5" x="316" y="430" font-size="9.5" fill="#6B695F" text-anchor="start">镜像律：退场者流出（活）vs 幸存者翻拷（死）</text>
+<rect x="718" y="128" width="254" height="150" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.2"/><text x="845" y="150" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">缩容 5→4 的账</text><text x="732" y="172" font-size="10" fill="#3B3A34" text-anchor="start">剩余 4 台：180 → 225GB（3/4×300）</text><text x="732" y="190" font-size="10" fill="#639922" text-anchor="start" font-weight="600">每台再接 45GB，总流入 4×45=180GB</text><text x="732" y="208" font-size="10" fill="#E24B4A" text-anchor="start" font-weight="600">全部从幸存副本的读带宽出</text><text x="732" y="226" font-size="10" fill="#3B3A34" text-anchor="start">replace 对照：环不变、仅新机进 180GB</text><text x="732" y="246" font-size="9.5" fill="#6B695F" text-anchor="start">盘还活着优先 replace（token 不动）</text><text x="732" y="264" font-size="9.5" fill="#6B695F" text-anchor="start">摘完补一轮全量 repair（第 13 章）</text>
+<rect x="718" y="286" width="254" height="150" rx="10" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/><text x="845" y="306" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">风险窗口：摘除前后</text><text id="mk1" x="732" y="328" font-size="9.5" fill="#3B3A34" text-anchor="start" font-weight="600">14:00 node4 卡死起：它的 range 只剩 2 副本</text><text id="mk2" x="732" y="346" font-size="9.5" fill="#3B3A34" text-anchor="start" font-weight="600">QUORUM=2 靠剩两台撑——读写暂时无感</text><text id="mk3" x="732" y="368" font-size="9.5" fill="#E24B4A" text-anchor="start" font-weight="600">此时再挂任何一台：这些 range 直接</text><text id="mk4" x="732" y="386" font-size="9.5" fill="#E24B4A" text-anchor="start" font-weight="600">Unavailable（2 台剩 1，凑不齐 2）</text><text id="mk5" x="732" y="408" font-size="9.5" fill="#6B695F" text-anchor="start">真正的痛在卡死那一刻，不在摘除这一刻；</text><text id="mk6" x="732" y="426" font-size="9.5" fill="#6B695F" text-anchor="start">死节点不宜久留——尽快摘/替换恢复 RF=3</text></g>
+<text id="engFoot" x="28" y="466" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">读法：站条随相位点亮；入列模式看账本事务、双归属表与 16 段流；强摘模式看五步与风险窗口。</text>
+<text id="engFoot2" x="28" y="484" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">口径：apache/cassandra master（7.0-SNAPSHOT）；demo 300GB、RF=3、QUORUM=2、num_tokens=16 与正文第 14 章一致。</text>
+<text id="engFoot3" x="28" y="502" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">环图为单环示意（实际 vnode 16 段）；epoch E94→E97 为教学编号，事务语义与 PrepareJoin 三段式一致。</text>
+<circle id="tok" cx="-20" cy="-20" r="8" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/></svg>
+<svg id="eng2" viewBox="0 0 1000 180" role="img" xmlns="http://www.w3.org/2000/svg"><text x="40" y="26" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">相位总线：node6 入列 / node4 强摘 各一条 0°→720°</text><text x="960" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">切换模式时相位归零</text><rect id="seg0" x="40" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg0" x="89.1" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">报到</text><text id="sd0" x="89.1" y="96" font-size="10" fill="#6B695F" text-anchor="middle">0°</text><rect id="seg1" x="142.2" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg1" x="191.3" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd1" x="191.3" y="96" font-size="10" fill="#6B695F" text-anchor="middle">90°</text><rect id="seg2" x="244.4" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg2" x="293.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd2" x="293.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle">180°</text><rect id="seg3" x="346.7" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg3" x="395.8" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd3" x="395.8" y="96" font-size="10" fill="#6B695F" text-anchor="middle">270°</text><rect id="seg4" x="448.9" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg4" x="498" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd4" x="498" y="96" font-size="10" fill="#6B695F" text-anchor="middle">360°</text><rect id="seg5" x="551.1" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg5" x="600.2" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd5" x="600.2" y="96" font-size="10" fill="#6B695F" text-anchor="middle">450°</text><rect id="seg6" x="653.3" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg6" x="702.4" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd6" x="702.4" y="96" font-size="10" fill="#6B695F" text-anchor="middle">540°</text><rect id="seg7" x="755.6" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg7" x="804.7" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">--</text><text id="sd7" x="804.7" y="96" font-size="10" fill="#6B695F" text-anchor="middle">630°</text><rect id="seg8" x="857.8" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text id="sg8" x="906.9" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">复盘</text><text id="sd8" x="906.9" y="96" font-size="10" fill="#6B695F" text-anchor="middle">680°</text><line id="subNow" x1="40" y1="44" x2="40" y2="126" stroke="#C46A0A" stroke-width="2"/><text x="500" y="152" font-size="11" fill="#6B695F" text-anchor="middle" font-weight="400">每格是一个可定格的关键时刻；分步时所有视图冻结到同一相位。</text></svg>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<button class="btn warn" id="scenBtn">切到 node4 强摘</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 轮 / 6.4 秒</span>
+</div>
+
+<div class="readout">
+<span class="ro">相位 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">模式 <b id="roScen">node6 入列</b></span>
+<span class="ro">epoch <b id="roEp">E94</b></span>
+<span class="ro">已拉 <b id="roGB">0.0GB</b></span>
+<span class="ro">写表含 n6 <b id="roW">否</b></span>
+<span class="ro">读表含 n6 <b id="roRd">否</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格；橙色按钮切换「node6 入列 / node4 强摘」两条线。</span>
+<span class="snav">
+<button class="btn" onclick="prevStep()">‹ 上一步</button>
+<button class="btn warn" onclick="nextStep()">下一步 ›</button>
+</span>
+</div>
+<div class="legend"><span><i></i>入列流程</span><span><i class="b"></i>CMS 事务 / streaming</span><span><i class="g"></i>数据到位 / 完成</span><span><i class="r"></i>死节点 / 风险</span></div>
+<p class="figcap">入列 0°=t0 报到、720°=复盘；强摘模式同相位总线另走一轮。<br>口径：apache/cassandra master（7.0-SNAPSHOT）；150GB/30GB×5/45GB×4 与正文第 14 章手算完全一致。</p>
+</div>
+</div>
+
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：先把它当黑盒</h2></div>
+<p class="sec-sub">新机器一启动、还没进环，数据目录就在进流量；死机器一台，摘掉它线上毫无感觉。</p>
+<div class="quote"><i>先把系统当黑盒：只看输入、输出和边界，不急着解释内部。</i></div>
+
+<p>黑盒视角三句话：<b>node6 启动后 43 分钟自己变成 UN</b>——没有敲任何入列命令（auto_bootstrap 默认开）；<b>UJ 期间它已经在收写</b>（数据目录进流量），但客户端读永远找不到它；<b>node4 强摘前后线上读写无感</b>——QUORUM 的账从它卡死那一刻就重算了。三件「没人指挥却自己发生的事」，背后是同一本账本在推进。</p>
+<div class="flow">
+<span class="node">新节点启动 / 死节点强摘（输入）</span><span class="arr">→</span>
+<span class="node box">拓扑变更（黑盒）</span>
+<span class="outbranch">
+<span class="outline"><span class="arr">→</span><span class="node">入列：分 token → 拉 150GB → 三段式 JOIN → UN</span></span>
+<span class="outline"><span class="arr">→</span><span class="node">强摘：placement 重算 → 幸存者互拷 180GB → LEFT</span></span>
+<span class="outline"><span class="arr">→</span><span class="node">全程：线上读写不停（双归属窗口 / QUORUM 重算）</span></span>
+</span>
+</div>
+<p>反直觉的点先记一个：removenode 不是「把 node4 的数据搬走」——死节点一个字节都交不出来。它是让<b>幸存者从另外两个活副本把第三份重新抄齐</b>。数据流向和直觉相反。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：部件各管什么</h2></div>
+<p class="sec-sub">一套账本（CMS）、一套搬运工（streaming）、四个序列（进/出/摘/替）。点下面的部件卡，动画里对应部分会亮起。</p>
+<div class="quote"><i>结构分解要 MECE：同一层只放同一粒度的部件。</i></div>
+<div class="figure"><svg viewBox="0 0 920 250" role="img" xmlns="http://www.w3.org/2000/svg"><text x="460" y="22" font-size="15" fill="#1F1E1A" text-anchor="middle" font-weight="600">账本 + 搬运工 + 四序列（tcm/ 与 streaming/ 包）</text><text x="460" y="42" font-size="11.5" fill="#6B695F" text-anchor="middle" font-weight="400">拓扑变更 = CMS 事务（Transformation+epoch）；数据搬运 = streaming 通用底座</text><rect x="20" y="64" width="280" height="130" rx="10" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/><text x="34" y="88" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">① 账本：CMS/TCM</text><text x="34" y="110" font-size="10.5" fill="#6B695F" text-anchor="start">ClusterMetadataService:109（commit:697）</text><text x="34" y="128" font-size="10.5" fill="#3B3A34" text-anchor="start">Transformation:81 + LockedRanges 防打架</text><text x="34" y="146" font-size="10.5" fill="#3B3A34" text-anchor="start">PlacementProvider:31 / UniformRangePlacement:83</text><text x="34" y="168" font-size="10.5" fill="#6B695F" text-anchor="start">老 gossip STATUS 已退役（兼容层）</text><rect x="320" y="64" width="280" height="130" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="334" y="88" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">② 搬运工：streaming/</text><text x="334" y="110" font-size="10.5" fill="#6B695F" text-anchor="start">StreamPlan:45（execute:201）</text><text x="334" y="128" font-size="10.5" fill="#3B3A34" text-anchor="start">StreamSession:173 状态机（:246-251）</text><text x="334" y="146" font-size="10.5" fill="#3B3A34" text-anchor="start">操作码：BOOTSTRAP/DECOMMISSION/</text><text x="334" y="164" font-size="10.5" fill="#3B3A34" text-anchor="start">REPAIR/RESTORE_REPLICA_COUNT（:21-29）</text><text x="334" y="182" font-size="10.5" fill="#6B695F" text-anchor="start">子 range 为单位、断点续传</text><rect x="620" y="64" width="280" height="130" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="634" y="88" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">③ 四序列（tcm/sequences/）</text><text x="634" y="110" font-size="10.5" fill="#6B695F" text-anchor="start">BootstrapAndJoin:89（PrepareJoin 三段式）</text><text x="634" y="128" font-size="10.5" fill="#3B3A34" text-anchor="start">UnbootstrapAndLeave + UnbootstrapStreams:58</text><text x="634" y="146" font-size="10.5" fill="#3B3A34" text-anchor="start">RemoveNodeStreams:92（REMOVENODE）</text><text x="634" y="164" font-size="10.5" fill="#3B3A34" text-anchor="start">BootstrapAndReplace:82（继承 token）</text><text x="634" y="182" font-size="10.5" fill="#6B695F" text-anchor="start">SingleNodeSequences:55 静态入口</text><path d="M300 128 L316 128" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#tG)"/><path d="M600 128 L616 128" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#tA)"/><rect x="20" y="204" width="880" height="40" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.2"/><text x="460" y="222" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">入口命令：nodetool decommission（StorageService:3565）/ removenode（:3716）/ bootstrap resume；replace 走启动参数</text><text x="460" y="238" font-size="10.5" fill="#6B695F" text-anchor="middle">状态机：StorageService.Mode:481（STARTING/JOINING/NORMAL/LEAVING/DECOMMISSIONED…）；后悔药 abortdecommission / abortremovenode</text></svg></div>
+<div class="partgroup"><div class="gname">入列线</div><div class="parts"><button class="part" data-part="ring"><b>1. 令牌环</b><span>node6 从灰到实；强摘模式下 node4 打红叉。</span></button><button class="part" data-part="cms"><b>2. CMS 账本</b><span>E94→E97 三个事务逐条点亮：addToWrites→moveReads→removeFromWrites。</span></button><button class="part" data-part="dual"><b>3. 双归属窗口</b><span>写表/读表是否含 node6 的四行状态，随相位翻转。</span></button><button class="part" data-part="stream"><b>4. 16 段流</b><span>150GB 进度条与 62MB/s；vnode 摊薄的可视化。</span></button></div></div>
+<div class="partgroup"><div class="gname">强摘线</div><div class="parts"><button class="part" data-part="msteps"><b>5. removenode 五步</b><span>预检→PrepareLeave→互拷→LEFT，死者零参与。</span></button><button class="part" data-part="risk"><b>6. 风险窗口</b><span>卡死到摘除之间：2 副本撑 QUORUM，再挂一台即 Unavailable。</span></button></div></div>
+<p class="hint">静态图与动画共用同一套编号和口径；把动画暂停，它就是一张可打印的结构图。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：一步一停看顺序</h2></div>
+<p class="sec-sub">两条线各八个关键时刻——入列线盯「账本翻到第几页、双归属窗口开合」，强摘线盯「placement 何时重算、数据从哪来」。</p>
+<div class="quote"><i>动态分析看三件事：顺序、状态、触发条件。</i></div>
+
+<table class="grid">
+<tr><th>相位</th><th>node6 入列（J）</th><th>node4 强摘（M）</th></tr>
+<tr><td>0°</td><td>t0 10:00 启动：seed=node1、Register 领 NodeId</td><td>node4 主板烧毁死透：DN、phi&gt;8 持续</td></tr>
+<tr><td>90°</td><td>t1 分 token：allocateTokens:270-291 挑 16 个均衡位</td><td>运维在 node1 敲 removenode &lt;hostId&gt;</td></tr>
+<tr><td>180°</td><td class="act">t2 StartJoin(E95)：进写表、16 份流开拉</td><td>预检三拒：不能摘自己 / 活着 / 有进行中序列</td></tr>
+<tr><td class="hot">270°</td><td class="act">streaming 中：双归属收写、旧 owner 照常服务读</td><td class="hot">PrepareLeave(REMOVENODE)：placement 重算</td></tr>
+<tr><td>360°</td><td class="act">t3 10:42 流完 150GB → MidJoin(E96) 进读表</td><td class="act">幸存者互拷：4 台各 45GB（RESTORE_REPLICA_COUNT）</td></tr>
+<tr><td>450°</td><td>t4 FinishJoin(E97)：旧副本退写表 → NORMAL</td><td>补齐 RF=3；对照 decommission：死者亲手交割</td></tr>
+<tr><td class="hot">540°</td><td class="hot">Auto Repair 增量补账；nodetool status → UN</td><td class="hot">广播 LEFT（:156）；风险窗口复盘：再挂一台即 Unavailable</td></tr>
+<tr><td>630°</td><td>复盘：先进写表拉数据、再换读表退旧主</td><td>复盘：死者零参与、幸存者翻拷、搬完必补修</td></tr>
+</table>
+<p>盯两张高亮行：J 线 270° 的「双归属」是入列不停写的全部秘密——窗口内同一个 range 新旧两个 owner 并存；M 线 270° 的「placement 重算」发生在任何数据移动之前——账本先行，搬运随后，这正是 CMS 事务化的意义。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件 × 阶段</h2></div>
+<p class="sec-sub">同一批部件在进与出两趟里接力——搬运工不变，换的只是操作码和方向。</p>
+<div class="quote"><i>把部件放回阶段里，才能看清谁在什么时候接力。</i></div>
+
+<table class="grid">
+<tr><th>阶段</th><th>bootstrap（进）</th><th>removenode（摘）</th><th>第 13 章对应</th></tr>
+<tr><td>记账</td><td>PrepareJoin 三事务（E95~E97）</td><td>PrepareLeave(REMOVENODE) 一事务</td><td>repair 的 session id 同在 CMS 记账</td></tr>
+<tr><td>搬运</td><td>StreamPlan(BOOTSTRAP)：node6 拉 150GB</td><td>RESTORE_REPLICA_COUNT：4 台各进 45GB</td><td class="hot">StreamPlan(REPAIR) 同一底座</td></tr>
+<tr><td>窗口</td><td>双归属：先加写、后换读、再退写</td><td>QUORUM 靠剩 2 副本撑（无窗口概念）</td><td>hint 窗口 3h（第 7 章）</td></tr>
+<tr><td>收尾</td><td>Auto Repair 增量补账</td><td>摘后补一轮全量 repair</td><td class="hot">搬完必补修：粗调+微调</td></tr>
+</table>
+<p>表里两格绿色是两章的扣合点：<b>repair 与拓扑变更共用同一套 streaming，且搬完必补修</b>。RocksDB 对照（第 1 章）：它的「搬家」是同机换目录（db_paths 按层放盘、MANIFEST 原子切账），没有跨网搬运、也没有双归属——单机独占一个目录（LOCK 文件），一致性只涉及一台。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：它依赖什么才能成立</h2></div>
+<p class="sec-sub">拆掉任意一个外部依赖，拓扑变更的行为都会变。</p>
+<div class="quote"><i>任何机制都有环境前提；拆掉外部依赖，它就不再成立。</i></div>
+<div class="envcards">
+<div class="env"><b>seed 可达</b><span>新节点至少要认识一个 seed（yaml:755-764）；seed 全挂则报到失败、入列卡在 STARTING。</span></div>
+<div class="env"><b>schema 一致</b><span>入列前要等全集群表结构对齐（CassandraRelevantProperties:91-96）——否则数据搬来了表结构不认识。</span></div>
+<div class="env"><b>网络带宽</b><span>150GB/40 分钟 ≈ 62MB/s 持续；万兆以下网卡会拉长窗口，双归属期写放大更久。</span></div>
+<div class="env"><b>磁盘余量</b><span>缩容后每台 225GB：接手前余量必须够；removenode 一次摘多台接近平方级叠加。</span></div>
+<div class="env"><b>LockedRanges</b><span>并发变更动同一批 range 会被 CMS 拒绝——排期错峰，别指望锁兜底。</span></div>
+<div class="env"><b>断点续传</b><span>已交割 range 记在 system 表，重启跳过（BootstrapAndJoin:378-381）；nodetool bootstrap resume 接管。</span></div>
+</div>
+<p class="figcap">边界：本页环图为单环示意（实际 vnode 16 段）；replace 走 PrepareReplace 继承 token，本页只在算术卡对照。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">六个问题，检查你是否能在边界上做判断。</p>
+<div class="quote"><i>自测不是复述结论，而是检查你能否在边界上做判断。</i></div>
+<div id="quiz"></div>
+</section>
+
+
+<div class="summary">
+<h2>一页带走</h2>
+
+<p class="chant">先进写表拉数据、再换读表退旧主；死者零参与、幸存者翻拷、搬完必补修。</p>
+<p>· 入列线：t0 Register 领 NodeId → t1 allocateTokens 挑 16 个均衡位 → t2 StartJoin(E95) 进写表 + StreamPlan(BOOTSTRAP) 16 份流拉 150GB（双归属窗口：收写不服务读）→ t3 MidJoin(E96) 进读表 → t4 FinishJoin(E97) 旧副本退写表 → Auto Repair 增量补账 → UN。</p>
+<p>· 强摘线：预检（:131 不能摘自己 / :136 活着请 decommission）→ PrepareLeave(REMOVENODE) placement 重算 → 4 台各从另两个活副本进 45GB（RESTORE_REPLICA_COUNT）→ 广播 LEFT。镜像律：decommission 数据从退场者流出，removenode 数据在幸存者间翻拷。</p>
+<p>· 账：5→6 每老机出 30GB（1/6）、node6 进 150GB；5→4 四台各进 45GB；replace 环不变、新机独进 180GB。RocksDB 对照：单机按层放目录（db_paths）+ LOCK 独占，没有拓扑——跨网搬运与双归属窗口是集群才有的命题。</p>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+</div>
+
+<script>
+(function(){
+var PERIOD=6400,PHASE_MAX=720;
+var STJ=[{"d":0,"t":"t0 报到","x":"10:00 node6 启动：读 cassandra.yaml（num_tokens=16、seeds=node1:7000），向 seed 报到。Register 事务在 CMS 登记一个 NodeId——它的身份证；此刻它是 REGISTERED，不持任何 token，nodetool status 里还看不到它。auto_bootstrap 默认开（CassandraRelevantProperties:85），普通加节点不需要敲命令。"},{"d":90,"t":"t1 分 token","x":"10:01 BootStrapper.allocateTokens（dht/BootStrapper.java:270-291）→ TokenAllocation 模拟负载挑 16 个最均衡的 token 位（allocate_tokens_for_local_replication_factor:3，yaml:59）——不是随机撒。分完等 schema 一致（全集群表结构对齐，:91-96 有专门等待与超时），否则数据搬来了表结构不认识。"},{"d":180,"t":"t2 StartJoin","x":"10:02 PrepareJoin 第一段提交（E95）：StartJoin=addToWrites，node6 进「写副本表」。coordinator 按账本办事——账本说它是副本，它就收写（第 7 章：写发给全部副本）。双归属窗口开启：旧 owner 还在读写表里，node6 只收写不服务读。同一时刻 StreamPlan(StreamOperation.BOOTSTRAP)（BootStrapper:123）开 16 份并行流。"},{"d":270,"t":"streaming 中","x":"10:02~10:42 拉数据：对每段 range 从「现任读副本」拉（老 placement 的 reads，BootstrapAndJoin 的 movementMap）。16 token=16 份流 ≈9.4GB/份，总 150GB、≈62MB/s 持续 40 分钟。流过来的 SSTable 自带 SAI 索引文件（第 11 章）；窗口期间新写入按 ts 归并（第 7 章的裁判）。断点续传：已交割段记账，重启跳过。"},{"d":360,"t":"t3 MidJoin","x":"10:42 流完。MidJoin(E96)=moveReads：node6 进「读副本表」，开始对外服务读——入列前它会先把用户表的索引预构建任务跑完（executePreJoinTasksBlocking），保证进读表那一刻就能服务按值查询。此刻新旧的读交接完成，旧 owner 只剩「还在写表里」。"},{"d":450,"t":"t4 FinishJoin","x":"10:43 FinishJoin(E97)=removeFromWrites：交出数据的旧副本退出写副本表——双归属窗口合拢。node6 状态 NORMAL，nodetool status 显示 UN，与老节点无异。三个事务、三个 epoch，中途崩溃从 CMS 日志重放续跑（MultiStepOperation）。"},{"d":540,"t":"补账收尾","x":"BootstrapAndJoin 在 MidJoin 后调用 AutoRepairUtils.runRepairOnNewlyBootstrappedNodeIfEnabled()——刚搬来的数据立刻对账（第 13 章的伏笔在此兑现）：流式是「当时快照」，之后窗口期的写入差异靠这次增量 repair 抹平。搬是粗调、修是微调，两把刀一起才敢说数据一样。"},{"d":630,"t":"复盘","x":"口诀：先进写表拉数据、再换读表退旧主。整个入列 43 分钟线上读写一秒不停；账本三翻页（E95/E96/E97）每一步都可重放；LockedRanges 挡住并发改环。这就是 CMS 事务化拓扑变更的全部优雅。"}];
+var STM=[{"d":0,"t":"死透确认","x":"node4 主板烧毁，进程没了、盘也没了。第 5 章的 phi 判决早已把它标 DN；hint 窗口（3h）也在流逝。决策点：盘还活着 → 优先 replace（新机继承 token，把盘插过去/或从幸存副本拉）；盘也毁了 → removenode（全环重分布）。本例盘毁，走强摘。"},{"d":90,"t":"敲下命令","x":"运维在 node1（任意存活节点）执行 nodetool removenode <node4 的 hostId>。StorageService.removeNode（:3716）转投 SingleNodeSequences.removeNode（tcm/sequences/:127）——7.0 的拓扑变更入口全在这套 CMS 序列里，不再是老 gossip STATUS。"},{"d":180,"t":"预检三拒","x":"序列先自检：不能摘自己（:131「Cannot remove self」）；hostId 必须存在（不在环上摘什么）；目标必须不活着（:136「Node is alive and owns this ID. Use decommission command」）。三条守住一个口径：活节点自愿退场走 decommission，removenode 只摘死者——两条路径混用会导致数据交割逻辑错乱。"},{"d":270,"t":"placement 重算","x":"PrepareLeave(toRemove, force, REMOVENODE) 提交：CMS 重算 placement，node4 名下的段重新指派给幸存者——注意这是先改账本、后搬数据，LockedRanges 同时锁住这批 range 防止并发变更插队。此刻起 node4 在账本上已经「不存在」，但数据层面的 RF 还没补齐。"},{"d":360,"t":"幸存者互拷","x":"接手者们开流：StreamOperation.RESTORE_REPLICA_COUNT（streaming/StreamOperation.java:23 注释「Handles removeNode」）——4 台各从「该 range 其余两个活副本」拉 45GB，总 180GB。对照 decommission 的镜像：那边是退场者亲手推（UnbootstrapStreams:211，DECOMMISSION）；这边死者零参与，全部翻拷自幸存副本的读带宽。"},{"d":450,"t":"补齐 RF","x":"流完：每个原本「node4 在场才有 3 份」的 range 重新凑齐 RF=3。运维惯例：摘除后补一轮全量 repair——翻拷是「当时快照」，之后差异仍要对账（第 13 章）。若当初选 replace：环不变、仅新机器进 180GB、其余 0 流量——盘活着就别 removenode。"},{"d":540,"t":"广播 LEFT","x":"SingleNodeSequences:156 unsafeBroadcastLeftStatus：替 node4 向全集群广播 LEFT，它从令牌环上正式消失，nodetool status 不再列出。收尾对照 decommission 的体面三步：交 hint（streamHints）→ 广播 LEFT → Gossiper 关网（第 5 章 GossipShutdown）——死者这三步全由协调者代办。"},{"d":630,"t":"风险复盘","x":"复盘：真正的痛在 node4 卡死那一刻，不在摘除这一刻——从 14:00 起它的 range 只剩 2 副本撑 QUORUM=2，再挂任何一台这些 range 直接 Unavailable（2 剩 1 凑不齐 2）。死节点不宜久留：尽快 replace 或 removenode 恢复 RF=3。口诀：死者零参与、幸存者翻拷、搬完必补修。"}];
+var STJ_LABEL=[["J1 报到","Register 领 NodeId"],["J2 分 token","allocateTokens:270-291"],["J3 双归属拉数","StartJoin(E95)+16 流"],["J4 三段式 JOIN","MidJoin→FinishJoin"],["J5 补账收尾","AutoRepair→UN"]];
+var STM_LABEL=[["M1 死透确认","DN·盘毁走强摘"],["M2 预检三拒",":131/:136 活摘拒"],["M3 placement 重算","PrepareLeave 提交"],["M4 幸存者互拷","45GB×4 翻拷"],["M5 摘除完成","广播 LEFT"]];
+var PARTS={"ring":["ringNote","rn6","rn6t"],"cms":["ep1","ep2","ep2t","ep3","ep3t","ep4","ep4t"],"dual":["dw1","dw2","dw3"],"stream":["seg16","smT","smN"],"msteps":["ms1","ms2","ms3","ms4","ms5"],"risk":["mk1","mk2","mk3","mk4"]};
+var CHIPS=[{"k":"scen","l":"模式"},{"k":"ep","l":"epoch"},{"k":"gb","l":"已拉"},{"k":"w","l":"写表含 n6"},{"k":"rd","l":"读表含 n6"}];
+var QUIZ=[{"q":"node6 还没进环（UJ），为什么数据目录已经在进流量？","opts":["bug；应该等进环才收写","StartJoin（addToWrites）已把它写进写副本表，coordinator 按账本把第三份写发给它——双归属窗口的开始","因为它偷读了别人的数据"],"a":1,"exp":"PrepareJoin 三段式的第一段只进写表、不进读表：收写但不服务读，客户端完全无感。等 MidJoin 进读表、FinishJoin 旧主退写表，窗口才合拢。"},{"q":"decommission 和 removenode 的本质区别？","opts":["命令长度不同","谁活着：decommission 是活节点亲手把数据推给接手者再走；removenode 是集群摘死节点，数据由幸存者从另两个活副本翻拷补齐","一个删数据一个不删"],"a":1,"exp":"SingleNodeSequences:136 写得直白：活节点请走 decommission。镜像律：退场者流出（活、StreamPlan(DECOMMISSION)）vs 幸存者翻拷（死、RESTORE_REPLICA_COUNT）。"},{"q":"死节点盘还完好，为什么优先 replace 而不是 removenode？","opts":["replace 更快一定","replace 让新机器继承死者的 token：环形状不变、只有新机器进 180GB、其余节点 0 流量；removenode 是四方各进 45GB、全环搬家","removenode 会丢数据"],"a":1,"exp":"replace 走 PrepareReplace/BootstrapAndReplace:82，从幸存副本拉数据但 token 不动。removenode 之后每台 180→225GB，翻拷全压在幸存者读带宽上。"},{"q":"streaming 的四种操作码分别对应什么场景？","opts":["只是名字不同","BOOTSTRAP=入列拉数、DECOMMISSION=退场推数、REPAIR=差异补齐（第 13 章）、RESTORE_REPLICA_COUNT=摘除补 RF——同一底座四种用法","分别对应四种压缩策略"],"a":1,"exp":"streaming/StreamOperation.java:21-29。四场景共用 StreamPlan/StreamSession 状态机（INITIALIZED→PREPARING→STREAMING→WAIT_COMPLETE→COMPLETE），子 range 为单位、断点续传。"},{"q":"两个序列同时改同一批 range 会怎样？","opts":["都会成功，数据取最新的","CMS 的 LockedRanges 拒绝后到的：PrepareJoin/PrepareLeave 提交时检查 range 锁，被锁即 Rejected——账本不会打架","集群会脑裂"],"a":1,"exp":"这是 7.0 拓扑变更=CMS 事务的核心红利：epoch 单调、日志全局有序，老 gossip STATUS 先到先得的打架问题被结构性解决。运维上仍要排期错峰。"},{"q":"「搬完必补修」的原因是？","opts":["streaming 会损坏数据","流式拿到的是「当时快照」，窗口期/摘除后的写入差异不会自动跟上——BootstrapAndJoin 完成即触发 Auto Repair 增量；removenode 后惯例补一轮全量","repair 比 streaming 便宜"],"a":1,"exp":"搬是粗调（成块地搬、双归属保证不停写）、修是微调（零碎地抹、Merkle 保证不用全量对拷）——第 13、14 两章是一件事的两半。"}];
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var scenBtn=document.getElementById('scenBtn');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,STEP_DUR=650;
+var stepIdx=-1;
+var SCEN='J',STEPS=STJ;
+var el={};
+document.querySelectorAll('#eng [id],#eng2 [id]').forEach(function(n){el[n.id]=n;});
+(function buildSeg16(){
+ var g=el['seg16'];if(!g)return;
+ var s='';
+ for(var i=0;i<16;i++){var x=316+i*22.4;s+='<rect id="sg16_'+i+'" x="'+x.toFixed(1)+'" y="382" width="18" height="14" rx="2" fill="#ECEAE2"/>';}
+ g.innerHTML=s;
+ for(var i=0;i<16;i++){el['sg16_'+i]=g.querySelector('#sg16_'+i);}
+})();
+function setOp(id,v){var n=typeof id==='string'?el[id]:id;if(n)n.setAttribute('opacity',v.toFixed(2));}
+function setText(id,s){var n=el[id]||document.getElementById(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setAttr(id,k,v){var n=el[id];if(n)n.setAttribute(k,v);}
+function setFill(id,v){var n=el[id];if(n)n.setAttribute('fill',v);}
+function setStroke(id,v){var n=el[id];if(n)n.setAttribute('stroke',v);}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function smooth(t){return t*t*(3-2*t);}
+function lerp2(a,b,t){return a+(b-a)*t;}
+function band(id,a,b,lo,hi){setOp(id,(pr>=a&&pr<b)?(hi===undefined?1:hi):(lo===undefined?0.14:lo));}
+var pr=0;
+function applyScen(){
+ var L=SCEN==='J'?STJ_LABEL:STM_LABEL;
+ for(var i=0;i<5;i++){setText('stL'+i,L[i][0]);setText('stS'+i,L[i][1]);setText('sg'+(i+1),L[i][0].split(' ')[0]);}
+ setText('sg5',SCEN==='J'?'JOIN':'互拷');
+ setText('sg6',SCEN==='J'?'补账':'LEFT');
+ setText('sg7',SCEN==='J'?'复盘':'风险');
+ setText('engTitle',SCEN==='J'?'node6 入列：分 token → 双归属 streaming 150GB → 三段式 JOIN':'node4 强摘：死者零参与、幸存者互拷 180GB 补回 RF=3');
+ setText('engSub',SCEN==='J'?'5 节点 + node6｜demo 300GB、RF=3、num_tokens=16｜t0 10:00 启动 → t4 10:43 NORMAL（教学时间轴）':'nodetool removenode（SingleNodeSequences:127-156）｜对照 decommission：退场者亲手交割｜4 台各进 45GB');
+ setOp('gJ',SCEN==='J'?1:0);setOp('gM',SCEN==='J'?0:1);
+ scenBtn.textContent=SCEN==='J'?'切到 node4 强摘':'切到 node6 入列';
+ setText('roScen',SCEN==='J'?'node6 入列':'node4 强摘');
+ setChip('scen',SCEN==='J'?'入列':'强摘',SCEN==='J');
+}
+function jState(){
+ if(pr<90)return{ep:'E94',gb:0,w:'否',rd:'否',note:'REGISTERED·不持 token'};
+ if(pr<180)return{ep:'E94',gb:0,w:'否',rd:'否',note:'16 token 已定·等 schema'};
+ if(pr<360){var g=Math.min(150,(pr-180)/180*150);return{ep:'E95',gb:g,w:'是',rd:'否',note:'双归属窗口开·16 流并行'};}
+ if(pr<450)return{ep:'E96',gb:150,w:'是',rd:'是',note:'进读表·索引预构建'};
+ return{ep:'E97',gb:150,w:'是',rd:'是',note:'NORMAL·AutoRepair 补账'};
+}
+function mState(){
+ if(pr<90)return{n:'node4 DN；RF 实际 2 撑 QUORUM'};
+ if(pr<180)return{n:'removenode 已敲·预检中'};
+ if(pr<270)return{n:'PrepareLeave(REMOVENODE) 已提交'};
+ if(pr<360)return{n:'互拷 45GB×4 进行中'};
+ if(pr<450)return{n:'RF=3 恢复 ✓'};
+ if(pr<540)return{n:'LEFT 广播·环 5→4'};
+ return{n:'复盘：死者零参与'};
+}
+function renderScene(){
+ band('st0',0,90);band('st1',90,180);band('st2',180,360);band('st3',360,450);band('st4',450,720);
+ if(SCEN==='J'){
+  var st=jState();
+  setText('roEp',st.ep);setText('roW',st.w);setText('roRd',st.rd);
+  setText('roGB',st.gb.toFixed(1)+'GB');
+  var epOn=function(id,on){setStroke(id,on?'#2F6FA8':'#D3D1C7');setFill(id,on?'#EAF2FA':'#FBFAF6');};
+  epOn('ep1',true);
+  epOn('ep2',pr>=180);setText('ep2t',pr>=180?'E95 StartJoin：node6 进写副本表（addToWrites）':'E95 StartJoin：（未提交）');
+  epOn('ep3',pr>=360);setText('ep3t',pr>=360?'E96 MidJoin：node6 进读副本表（moveReads）':'E96 MidJoin：（未提交）');
+  epOn('ep4',pr>=450);setText('ep4t',pr>=450?'E97 FinishJoin：旧副本退写表 → NORMAL':'E97 FinishJoin：（未提交）');
+  setText('dw1','写副本表含 node6？'+st.w);
+  setText('dw2','读副本表含 node6？'+st.rd);
+  setText('dw3',pr<180?'旧 owner：读写都在（唯一持有者）':pr<360?'旧 owner：读写都在（双归属中）':pr<450?'旧 owner：读已交出、写仍在':'旧 owner：已退出写表（窗口合拢）');
+  setFill('dw1',st.w==='是'?'#C46A0A':'#3B3A34');
+  setFill('dw2',st.rd==='是'?'#2F6FA8':'#3B3A34');
+  var done=Math.round(16*st.gb/150);
+  for(var i=0;i<16;i++){var n=el['sg16_'+i];if(n){setFill(n,i<done?'#639922':'#ECEAE2');}}
+  setText('smT','进度 '+st.gb.toFixed(1)+'GB / 150GB（≈62MB/s，40 分钟）'+(st.gb>=150?' ✓ 拉齐':''));
+  setFill('rn6',pr<90?'#FBFAF6':pr<180?'#FFF6E8':pr<450?'#EAF3DE':'#EAF3DE');
+  setStroke('rn6',pr<90?'#B4B2A9':pr<180?'#C46A0A':pr<450?'#639922':'#639922');
+  setAttr('rn6','stroke-dasharray',pr<450?'3 2':'none');
+  setFill('rn6t',pr<90?'#8A877C':'#1F1E1A');
+  setText('ringNote',pr<90?'node6 尚未入环：不持 token、不服务读写':pr<180?'node6 已分 16 token：等待 StartJoin 提交':pr<360?'node6 双归属中：收写、拉数据、不服务读':pr<450?'node6 已进读表：新旧交接完成':'node6 NORMAL：环 5→6 完成');
+  setText('ns2',pr<90?'node6　—（未报到）':pr<450?'node6　UJ（Up Joining，正在入列）':'node6　UN（Up Normal）✓');
+  setFill('ns2',pr<90?'#8A877C':pr<450?'#C46A0A':'#639922');
+  setChip('ep',st.ep,st.ep==='E97');
+  setChip('gb',st.gb.toFixed(0)+'GB/150',st.gb>=150);
+  setChip('w',st.w,st.w==='是');
+  setChip('rd',st.rd,st.rd==='是');
+ }else{
+  var m=mState();
+  setText('roEp','—');setText('roGB','—');setText('roW','—');setText('roRd','—');
+  setText('mRing1',pr<180?'node4：主板烧毁、死透（DN，phi>8 持续）':pr<270?'预检通过：node4 不在 live 名单 → 可摘':pr<360?'PrepareLeave(REMOVENODE)：账本先行、搬运随后':pr<450?'互拷中：4 台各从另两个活副本拉 45GB':'已摘除：环 5→4，RF=3 恢复');
+  var msOn=function(id,on,col){setFill(id,on?(col||'#3B3A34'):'#8A877C');};
+  msOn('ms1',pr>=0);msOn('ms2',pr>=90);msOn('ms3',pr>=180);msOn('ms4',pr>=270,'#639922');msOn('ms5',pr>=540);
+  msOn('md1',pr>=450,'#6B695F');msOn('md2',pr>=450,'#6B695F');msOn('md3',pr>=450,'#6B695F');msOn('md4',pr>=450,'#6B695F');msOn('md5',pr>=450,'#6B695F');
+  setChip('ep','REMOVENODE',pr>=180);
+  setChip('gb','45GB×4',pr>=270);
+  setChip('w','死者 0 参与',true);
+  setChip('rd','RF=3',pr>=450);
+ }
+}
+function setChip(k,v,on){var n=document.querySelector('#stateChips .chip[data-k="'+k+'"]');if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',!!on);n.classList.toggle('off',!on);}
+function tokPath(){
+ if(SCEN==='J'){
+  if(pr<90)return[160,290];
+  if(pr<180)return[lerp2(160,505,(pr-90)/90),lerp2(290,192,(pr-90)/90)];
+  if(pr<360)return[505,lerp2(192,389,(pr-180)/180)];
+  if(pr<450)return[lerp2(505,505,(pr-360)/90),395];
+  return[lerp2(505,845,(pr-450)/90),lerp2(395,361,(pr-450)/90)];
+ }
+ if(pr<90)return[104,368];
+ if(pr<180)return[lerp2(104,505,(pr-90)/90),lerp2(368,174,(pr-90)/90)];
+ if(pr<270)return[505,214];
+ if(pr<360)return[lerp2(505,505,(pr-270)/90),244];
+ if(pr<450)return[lerp2(505,845,(pr-360)/90),lerp2(244,208,(pr-360)/90)];
+ return[845,208];
+}
+function renderSub(th){
+ var p=norm(th); var si=0;
+ for(var i=0;i<STEPS.length;i++){if(p>=STEPS[i].d)si=i;}
+ for(var i=0;i<9;i++){var on=(i===si)||(i===8&&si>=STEPS.length-1);setOp('seg'+i,on?1:0.35);}
+ var x=40+(p/PHASE_MAX)*920;
+ setAttr('subNow','x1',x.toFixed(1)); setAttr('subNow','x2',x.toFixed(1));
+}
+function render(th){
+ pr=norm(th);
+ setText('roPhase',Math.round(pr)+'°');
+ var si=0;for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)si=i;}
+ if(mode==='step'&&stepIdx>=0)si=stepIdx;
+ setText('roStep',STEPS[si]?STEPS[si].t:'—');
+ var tp=tokPath();
+ if(tp){setAttr('tok','cx',tp[0].toFixed(1));setAttr('tok','cy',tp[1].toFixed(1));setOp('tok',1);}
+ else{setOp('tok',0);}
+ renderScene();
+ if(typeof renderSub==='function')renderSub(th,pr,si);
+}
+function buildStepbar(){
+ stepBar.innerHTML='';
+ for(var s=0;s<STEPS.length;s++){(function(n){
+  var b=document.createElement('button');b.className='stepnode';
+  b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+  b.onclick=function(){goStep(n);};stepBar.appendChild(b);
+ })(s);}
+}
+function tick(now){
+ var dt=Math.min(50,now-last);last=now;
+ if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+ if(mode==='step'&&stepTo!==null){
+  stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);
+  var p=stepElapsed/STEP_DUR;var e=smooth(p);
+  phase=stepFrom+(stepTo-stepFrom)*e;
+  if(p>=1){phase=((stepTo%PERIOD)+PERIOD)%PERIOD;stepTo=null;}
+ }
+ render(phase/PERIOD*PHASE_MAX);
+ requestAnimationFrame(tick);
+}
+function setAuto(on){
+ mode='auto';run=on;stepTo=null;btn.textContent=on?'暂停':'播放';
+ if(on){stepIdx=-1;document.querySelectorAll('.stepnode').forEach(function(d){d.classList.remove('on');});
+ stepT.textContent='自动运转模式';stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格；橙色按钮切换「node6 入列 / node4 强摘」两条线。';}
+}
+window.goStep=function(i){
+ stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+ var target=STEPS[stepIdx].d/PHASE_MAX*PERIOD;var delta=target-phase;
+ if(reduced||Math.abs(delta)>PERIOD/3){phase=target;stepTo=null;render(target/PERIOD*PHASE_MAX+0.01);}
+ else{stepFrom=phase;stepTo=phase+delta;stepElapsed=0;render(phase/PERIOD*PHASE_MAX+0.01);}
+ btn.textContent='继续自动运转';
+ document.querySelectorAll('.stepnode').forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+ stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+ stepX.textContent=STEPS[stepIdx].x;
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+btn.textContent=run?'暂停':'播放';
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+scenBtn.onclick=function(){SCEN=SCEN==='J'?'M':'J';STEPS=SCEN==='J'?STJ:STM;phase=0;stepIdx=-1;applyScen();buildStepbar();setAuto(true);render(0.01);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+buildStepbar();
+applyScen();
+CHIPS.forEach(function(c){var sp=document.createElement('span');sp.className='chip';sp.setAttribute('data-k',c.k);sp.innerHTML=c.l+' <b>--</b>';document.getElementById('stateChips').appendChild(sp);});
+document.querySelectorAll('.part').forEach(function(b){
+  b.onclick=function(){
+    var ids=PARTS[b.getAttribute('data-part')]||[];
+    ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+    document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+    setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+  };
+});
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+  var d=document.createElement('div');d.className='q';
+  var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+  it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+  h+='<div class="exp">'+it.exp+'</div>';d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+  var b=e.target.closest('.opt');if(!b)return;var box2=b.parentElement;if(box2.classList.contains('done'))return;
+  box2.classList.add('done');
+  var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+  box2.querySelectorAll('.opt').forEach(function(x,n){x.classList.add(n===QUIZ[qi].a?'right':'wrong');});
+});
+var BASE=(location.pathname.split('/cassandra-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/cassandra/lab';
+document.getElementById('lnkArt').href=BASE+'/cassandra/operations/02-topology-lifecycle';
+
+requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

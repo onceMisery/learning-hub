@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>块缓存架构：读过的块留在内存里 · RocksDB 互动原理实验室 第 10 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#fff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:960px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#fff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:38px 0 22px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:710px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#fff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:500;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:11.5px;fill:#3B3A34}
+.tn{font-size:12.5px;font-weight:500;fill:#1F1E1A}
+.tag{font-size:10px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:68px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+section{padding:34px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .arr{color:#C46A0A;font-weight:600}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.figcap b{color:#3B3A34;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:13.5px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 9px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#scene [opacity],#scene2 [opacity]{transition:opacity .22s ease}
+#eng .hl,#eng2 .hl{stroke:#D96C06 !important;stroke-width:2.2 !important}
+.subview{margin:8px 0 4px;background:#fff;border:1px dashed #D3D1C7;border-radius:10px;padding:8px 10px}
+.subview .viewtitle{font-size:12px;font-weight:600;color:#854F0B;margin-bottom:4px}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+@media (prefers-reduced-motion: reduce){#scene [opacity],#scene2 [opacity]{transition:none}}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：块缓存架构：读过的块留在内存里</a>
+  <span class="idx">第 10 / 12 章</span>
+</div>
+<div class="page">
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · 块缓存架构</div>
+<h1>读过的块留下：128 位键、64 把锁、三池 LRU</h1>
+<p>500 QPS 的点查压测，NVMe 读 IOPS 打满——可这些 key 十秒内都被读过。STATS 里 BLOCK_CACHE_MISS 一路涨、HIT 几乎不动：每次 Get 都真的去读了盘。这页看一个 4KB 块怎么在分片 LRU 里安家、被找到、在容量不够时被礼貌地请走——以及为什么正在用的块永远挤不走。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span><span class="mnode">② 静态分解</span><span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span><span class="mnode">⑤ 环境场景</span><span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 614" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>分片 LRU 的进与出</title>
+<defs>
+<marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="g" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<text class="th" x="500" y="22" text-anchor="middle">一次 Get 在缓存里：拼 128 位键 → 选片 → 查哈希 → 命中分岔 → 插入/驱逐 → pin 保护</text>
+<text class="ts" x="500" y="40" text-anchor="middle">主图 = 读请求 / 缓存键 / 分片 / 片内结构 / 三池驱逐 五块；副图 = 一个 8KB 块的一生（同一相位）</text>
+<text class="tag" x="958" y="22" text-anchor="end">琥珀点 = 请求 / 块的当前位置</text>
+<text class="tag" x="958" y="38" text-anchor="end">绿 = 命中 · 红 = 驱逐 / 报错</text>
+<g id="scene">
+<g class="stage" id="st0"><circle cx="58" cy="66" r="13"/><text x="58" y="70" text-anchor="middle">1</text><text x="58" y="94" text-anchor="middle">Get 请求</text></g>
+<line x1="74" y1="66" x2="166" y2="66" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st1"><circle cx="182" cy="66" r="13"/><text x="182" y="70" text-anchor="middle">2</text><text x="182" y="94" text-anchor="middle">拼 128 位键</text></g>
+<line x1="198" y1="66" x2="290" y2="66" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st2"><circle cx="306" cy="66" r="13"/><text x="306" y="70" text-anchor="middle">3</text><text x="306" y="94" text-anchor="middle">哈希选片</text></g>
+<line x1="322" y1="66" x2="414" y2="66" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st3"><circle cx="430" cy="66" r="13"/><text x="430" y="70" text-anchor="middle">4</text><text x="430" y="94" text-anchor="middle">查哈希表</text></g>
+<line x1="446" y1="66" x2="538" y2="66" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st4"><circle cx="554" cy="66" r="13"/><text x="554" y="70" text-anchor="middle">5</text><text x="554" y="94" text-anchor="middle">命中 / 未命中</text></g>
+<line x1="570" y1="66" x2="662" y2="66" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st5"><circle cx="678" cy="66" r="13"/><text x="678" y="70" text-anchor="middle">6</text><text x="678" y="94" text-anchor="middle">读盘插入</text></g>
+<line x1="694" y1="66" x2="786" y2="66" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st6"><circle cx="802" cy="66" r="13"/><text x="802" y="70" text-anchor="middle">7</text><text x="802" y="94" text-anchor="middle">容量驱逐</text></g>
+<line x1="818" y1="66" x2="910" y2="66" stroke="#D3D1C7" stroke-width="1.2"/>
+<g class="stage" id="st7"><circle cx="926" cy="66" r="13"/><text x="926" y="70" text-anchor="middle">8</text><text x="926" y="94" text-anchor="middle">pin 护住</text></g>
+
+<rect x="40" y="112" width="290" height="182" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/>
+<text class="tn" x="52" y="132">读请求：Get 的三个分岔</text>
+<rect id="getBox" x="52" y="142" width="266" height="42" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/>
+<text class="tb" x="185" y="160" text-anchor="middle">Get("device_47") → 索引给出 BlockHandle</text>
+<text class="tag" x="185" y="176" text-anchor="middle">块在 SST 里的 (offset=0x12000, size=4KB)</text>
+<line x1="185" y1="186" x2="88" y2="196" stroke="#C46A0A" stroke-width="1.1" marker-end="url(#a)"/>
+<line x1="185" y1="186" x2="185" y2="196" stroke="#C46A0A" stroke-width="1.1" marker-end="url(#a)"/>
+<line x1="185" y1="186" x2="280" y2="196" stroke="#C46A0A" stroke-width="1.1" marker-end="url(#a)"/>
+<rect id="brHit" x="52" y="198" width="82" height="44" rx="6" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/>
+<text class="tb" x="93" y="216" text-anchor="middle">① 命中</text>
+<text class="tag" x="93" y="232" text-anchor="middle">0 次盘读</text>
+<rect id="brMiss" x="142" y="198" width="82" height="44" rx="6" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/>
+<text class="tb" x="183" y="216" text-anchor="middle">② miss</text>
+<text class="tag" x="183" y="232" text-anchor="middle">读盘→Insert</text>
+<rect id="brFill" x="232" y="198" width="86" height="44" rx="6" fill="#F5F4EF" stroke="#B4B2A9" stroke-width="1.1" stroke-dasharray="3 2"/>
+<text class="tb" x="275" y="214" text-anchor="middle">③ fill_cache</text>
+<text class="tag" x="275" y="228" text-anchor="middle">=false：读完就丢</text>
+<text class="tag" x="52" y="258">默认块 4KB（table.h:400）——读路径最小 I/O 单位</text>
+<text class="tag" x="52" y="274">行没有独立地址、块有：能寻址才能做缓存键</text>
+<text class="tag" x="52" y="290">SST 不可变 → 键永不失效：无脏页、无失效协议</text>
+
+<rect x="350" y="112" width="290" height="182" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/>
+<text class="tn" x="362" y="132">缓存键：128 位怎么拼</text>
+<rect id="keyIn" x="362" y="140" width="266" height="30" rx="6" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/>
+<text class="tb" x="495" y="159" text-anchor="middle">db_id（UUID）+ db_session_id + file_number=7</text>
+<line x1="495" y1="172" x2="495" y2="180" stroke="#C46A0A" stroke-width="1.2" marker-end="url(#a)"/>
+<rect id="keyUid" x="362" y="182" width="126" height="28" rx="6" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/>
+<text class="tag" x="425" y="200" text-anchor="middle">GetSstInternalUniqueId</text>
+<rect id="keyBase" x="500" y="182" width="128" height="28" rx="6" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/>
+<text class="tag" x="564" y="200" text-anchor="middle">FromInternalUniqueId</text>
+<line x1="495" y1="212" x2="495" y2="220" stroke="#C46A0A" stroke-width="1.2" marker-end="url(#a)"/>
+<rect id="keyOut" x="362" y="222" width="266" height="30" rx="6" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/>
+<text class="tb" x="495" y="241" text-anchor="middle">键 = ( file_num_etc64 , offset_etc64 ^ 0x4800 )</text>
+<text class="tag" x="362" y="266">偏移右移 2 位参与异或：0x12000&gt;&gt;2 = 0x4800，低 2 位无损丢</text>
+<text class="tag" x="362" y="282">同文件所有键共享前 8 字节（CommonPrefixSlice）</text>
+<text class="tag" x="362" y="298">全程异或 + 位反转：热路径一条指令（cache_key.h 注释）</text>
+
+<rect x="660" y="112" width="300" height="182" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/>
+<text class="tn" x="672" y="132">分片：把一把锁拆成 64 把</text>
+<g id="shardRow">
+<rect x="672" y="142" width="30" height="24" rx="4" fill="#FFFFFF" stroke="#D3D1C7"/><text class="tag" x="687" y="158" text-anchor="middle">0</text>
+<rect x="706" y="142" width="30" height="24" rx="4" fill="#FFFFFF" stroke="#D3D1C7"/><text class="tag" x="721" y="158" text-anchor="middle">1</text>
+<rect x="740" y="142" width="30" height="24" rx="4" fill="#FFFFFF" stroke="#D3D1C7"/><text class="tag" x="755" y="158" text-anchor="middle">2</text>
+<rect id="shardHit" x="774" y="142" width="30" height="24" rx="4" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.4"/><text class="tag" x="789" y="158" text-anchor="middle">3</text>
+<rect x="808" y="142" width="30" height="24" rx="4" fill="#FFFFFF" stroke="#D3D1C7"/><text class="tag" x="823" y="158" text-anchor="middle">4</text>
+<rect x="842" y="142" width="30" height="24" rx="4" fill="#FFFFFF" stroke="#D3D1C7"/><text class="tag" x="857" y="158" text-anchor="middle">…</text>
+<rect x="876" y="142" width="64" height="24" rx="4" fill="#FFFFFF" stroke="#D3D1C7"/><text class="tag" x="908" y="158" text-anchor="middle">63</text>
+</g>
+<text class="tag" x="672" y="182">哈希低 N 位选片 → 片 #3（演示值）；每片独立哈希表 + LRU + 锁</text>
+<rect id="shardF" x="672" y="192" width="276" height="30" rx="6" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/>
+<text class="tb" x="810" y="211" text-anchor="middle">分片数 = 2^min(log2(容量/512KB), 6)，封顶 64</text>
+<text class="tag" x="672" y="238">8GB → 64 片 × 128MB；32MB → 64 片 × 512KB</text>
+<text class="tag" x="672" y="254">哈希低位选片、高位做表索引，两不干扰</text>
+<text class="tag" x="672" y="270">hash_seed 按主机名派生：防全机房「齐步走」挤爆同一片</text>
+<text class="tag" x="672" y="286">底线：单热块仍抢同一把锁——分片治多键并发，不治单键并发</text>
+
+<rect x="40" y="314" width="450" height="200" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/>
+<text class="tn" x="52" y="332">片内：哈希表 + LRU 链 + 引用计数</text>
+<rect id="hashBox" x="52" y="344" width="150" height="56" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/>
+<text class="tb" x="127" y="364" text-anchor="middle">片 #3 哈希表</text>
+<text class="tag" x="127" y="382" text-anchor="middle">128 位键 → 条目指针</text>
+<line x1="204" y1="372" x2="216" y2="372" stroke="#C46A0A" stroke-width="1.3" marker-end="url(#a)"/>
+<rect id="lruBox" x="218" y="344" width="262" height="56" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.2"/>
+<text class="tb" x="349" y="362" text-anchor="middle">LRU 链：最新端 ●—●—●—● 最旧端</text>
+<text class="tag" x="349" y="382" text-anchor="middle">驱逐只扫链（EvictFromLRU），链尾先走</text>
+<rect id="pinBox" x="52" y="416" width="150" height="50" rx="7" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text class="tb" x="127" y="436" text-anchor="middle">被引用 refs≥1</text>
+<text class="tag" x="127" y="452" text-anchor="middle">不在链上：驱逐碰不到</text>
+<rect id="pinEx" x="218" y="416" width="262" height="82" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/>
+<text class="tag" x="230" y="436">T1 Get 命中块 B → LRU_Remove(B)，B.refs=1</text>
+<text class="tag" x="230" y="454">T2 并发 Insert 新块 C → 只扫链，B 不在链上</text>
+<text class="tag" x="230" y="472">T1 用完 Release(B) → refs=0，回链继续服务</text>
+<text class="tag" x="230" y="490">句柄包在 CachableEntry，挂迭代器清理链 pin 住</text>
+
+<rect x="510" y="314" width="450" height="200" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.2"/>
+<text class="tn" x="522" y="332">三池与驱逐顺序（high_pri_pool_ratio=0.5）</text>
+<rect id="poolHigh" x="522" y="346" width="130" height="34" rx="6" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/>
+<text class="tb" x="587" y="360" text-anchor="middle">高优先池 50%</text>
+<text class="tag" x="587" y="374" text-anchor="middle">命中过的块 / index+filter</text>
+<rect id="poolLow" x="664" y="346" width="130" height="34" rx="6" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/>
+<text class="tb" x="729" y="360" text-anchor="middle">低优先池</text>
+<text class="tag" x="729" y="374" text-anchor="middle">默认关闭（ratio=0）</text>
+<rect id="poolBottom" x="806" y="346" width="138" height="34" rx="6" fill="#F5F4EF" stroke="#B4B2A9" stroke-width="1.2"/>
+<text class="tb" x="875" y="360" text-anchor="middle">底池</text>
+<text class="tag" x="875" y="374" text-anchor="middle">没读过的 data / 预热 BOTTOM</text>
+<line x1="806" y1="388" x2="800" y2="396" stroke="#C46A0A" stroke-width="1.2" marker-end="url(#a)"/>
+<line x1="664" y1="388" x2="658" y2="396" stroke="#C46A0A" stroke-width="1.2" marker-end="url(#a)"/>
+<text class="tag" x="522" y="406">池满向下一级溢出（MaintainPoolSize）；驱逐顺序：底池最旧 → 低池 → 高池</text>
+<rect id="strictBox" x="522" y="418" width="422" height="80" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/>
+<text class="tag" x="534" y="438">预算 10MB、已用 9.9MB 全被引用，再插 0.5MB：</text>
+<text class="tag" x="534" y="456">strict=false（默认）：照样插入，usage=10.4MB 短暂超限，宁超不让读失败</text>
+<text class="tag" x="534" y="474" fill="#A33A39">strict=true：EvictFromLRU 空手 → Insert 报 MemoryLimit，上层改为直读盘</text>
+<text class="tag" x="534" y="492">charge 显式记账：条目元数据一并计入（kFullChargeCacheMetadata）</text>
+</g>
+<circle id="tok" cx="185" cy="162" r="7" fill="#EF9F27" stroke="#D97E06" stroke-width="1.4"/>
+</svg>
+
+<div class="subview">
+<div class="viewtitle">第二视图 · 一个 8KB 块的一生：从 miss 插入到底池，到命中升池，再到容量驱逐（与主图同一相位）</div>
+<svg id="eng2" viewBox="0 0 1000 232" role="img" xmlns="http://www.w3.org/2000/svg">
+<g id="scene2">
+<text class="tn" x="40" y="22">时间线（片容量 128MB，high_pri=0.5）</text>
+<rect id="t0" x="40" y="36" width="150" height="56" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/>
+<text class="tb" x="115" y="56" text-anchor="middle">T0 miss 读盘</text>
+<text class="tag" x="115" y="74" text-anchor="middle">Insert(LOW) → 底池链头</text>
+<line x1="192" y1="64" x2="210" y2="64" stroke="#C46A0A" stroke-width="1.3" marker-end="url(#a)"/>
+<rect id="t1" x="212" y="36" width="150" height="56" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/>
+<text class="tb" x="287" y="56" text-anchor="middle">T1 Get 命中</text>
+<text class="tag" x="287" y="74" text-anchor="middle">移出链，refs=1</text>
+<line x1="364" y1="64" x2="382" y2="64" stroke="#C46A0A" stroke-width="1.3" marker-end="url(#a)"/>
+<rect id="t2" x="384" y="36" width="168" height="56" rx="7" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/>
+<text class="tb" x="468" y="56" text-anchor="middle">T2 Release 回链</text>
+<text class="tag" x="468" y="74" text-anchor="middle">HasHit=true → 高优先池</text>
+<line x1="554" y1="64" x2="572" y2="64" stroke="#C46A0A" stroke-width="1.3" marker-end="url(#a)"/>
+<rect id="t3" x="574" y="36" width="168" height="56" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/>
+<text class="tb" x="658" y="56" text-anchor="middle">T3 高池超 64MB</text>
+<text class="tag" x="658" y="74" text-anchor="middle">池尾最旧挤到低池/底池</text>
+<line x1="744" y1="64" x2="762" y2="64" stroke="#C46A0A" stroke-width="1.3" marker-end="url(#a)"/>
+<rect id="t4" x="764" y="36" width="196" height="56" rx="7" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/>
+<text class="tb" x="862" y="56" text-anchor="middle">T4 整片满</text>
+<text class="tag" x="862" y="74" text-anchor="middle">底池链尾先走，这个块大概率活着</text>
+<text class="tn" x="40" y="122">另一条命：LRUCache vs HyperClockCache（11.13 默认 32MB AutoHCC）</text>
+<rect x="40" y="134" width="300" height="62" rx="7" fill="#FFFFFF" stroke="#3B3A34" stroke-width="1.1"/>
+<text class="tag" x="52" y="154">LRUCache：每片一把互斥锁，读写都锁；三池强隔离；</text>
+<text class="tag" x="52" y="170">可当通用记账本（第三篇的占位条目就住这）</text>
+<text class="tag" x="52" y="188">老 Clock 已删：NewClockCache 只剩返回 LRUCache 的兼容壳</text>
+<rect x="356" y="134" width="300" height="62" rx="7" fill="#FFF6E8" stroke="#EF9F27" stroke-width="1.2"/>
+<text class="tag" x="368" y="154">HyperClockCache：无锁原子引用计数，单热块无明显热点；</text>
+<text class="tag" x="368" y="170">头文件原话：官方现在推荐它取代 LRUCache</text>
+<text class="tag" x="368" y="188">压力下允许略超内存 3~5%（eviction_effort_cap 默认 30）</text>
+<text class="tag" x="672" y="154">选法：高并发点查 → HCC；</text>
+<text class="tag" x="672" y="170">严格优先级隔离 / 通用记账 → LRUCache。</text>
+<text class="tag" x="672" y="188">换 HCC 后内存涨几个点属预期。</text>
+<text class="tag" x="40" y="216">读法：主图第 ⑥ 步看 T0 的插入；第 ⑤ 步命中对应 T1/T2；第 ⑦ 步容量驱逐对应 T3/T4。口径：lru_cache.cc:256-336（三池落位与溢出）、clock_cache.cc:3601-3611（兼容壳）。</text>
+</g>
+<circle id="tok2" cx="115" cy="64" r="6" fill="#639922" stroke="#4C7A1A" stroke-width="1.4"/>
+</svg>
+</div>
+
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.5" max="2" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm">默认 ≈ 6 秒 / 轮</span>
+</div>
+<div class="readout">
+<span class="ro">进度 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">读数 <b id="roKey">--</b></span>
+<span class="ro">分片 <b id="roShard">--</b></span>
+<span class="ro">块状态 <b id="roState">--</b></span>
+<span class="ro">驱逐者 <b id="roEvict">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav"><button class="btn" onclick="prevStep()">‹ 上一步</button><button class="btn warn" onclick="nextStep()">下一步 ›</button></span>
+</div>
+<p class="figcap">进度 0° = Get 进来，720° = pin 保护落定。演示时刻：block 4KB、offset=0x12000、8GB 缓存 64 片、命中片 #3 为演示值；橙点 = 请求 / 块的当前位置。<br>口径：RocksDB 11.13.0；键拼法 cache_key.cc:310-348 / cache_key.h:130-158、分片算法 sharded_cache.cc:129-139、三池与驱逐 lru_cache.cc:256-336、pin 状态机 lru_cache.h:32-48、strict 分支 lru_cache.cc:372-428、默认 32MB AutoHCC block_based_table_factory.cc:627-630。</p>
+</div>
+</div>
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：重复读全部砸到盘上</h2></div>
+<p class="sec-sub">先不拆机制，只看缓存缺位时对外表现什么。</p>
+<div class="quote">「观察一个系统，先分清它的静态结构、动态过程和外部依赖。」</div>
+<p>点查压测 QPS 上不去、<code>iostat</code> 读 IOPS 打满、STATS 里 <code>BLOCK_CACHE_MISS</code> 一路涨——三个信号指向同一件事：<b>每次 Get 都真的去读了盘</b>。把块缓存想成阅览室的书架：SST 是库房，读过的块复印一份上架；SST 写完不再改，架上永远是最新的复印本——不存在「书改版了架上还是旧的」，也就不需要任何失效协议。</p>
+<div class="flow">
+<span class="node">Get</span><span class="arr">→</span><span class="node box">拼 128 位键</span><span class="arr">→</span><span class="node">选片查哈希</span><span class="arr">→</span><span class="node">命中：0 次盘读</span><span class="arr">/</span><span class="node">miss：读盘插入</span>
+</div>
+<p>一句话本质：<b>缓存「块」是因为块可寻址；键永不失效是因为 SST 不可变</b>。这两条前提一成立，剩下的都是工程问题：怎么拼键不撞车、怎么拆锁、驱逐先请走谁。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：键、片、池、句柄</h2></div>
+<p class="sec-sub">点部件卡片，动画里对应的结构会亮起。</p>
+<div class="quote">「分解要 MECE：同一层粒度一致，不重不漏。」</div>
+<div class="partgroup"><div class="gname">键与寻址</div><div class="parts">
+<button class="part" data-part="keyin"><b>三样原料</b><span>db_id（UUID）+ db_session_id（20 字符）+ file_number，前两个持久在 TableProperties，重启后仍拼出同样的键。</span></button>
+<button class="part" data-part="uid"><b>GetSstInternalUniqueId</b><span>三样压成 128 位内部 ID；再经 FromInternalUniqueId 可逆变换得到文件基键。</span></button>
+<button class="part" data-part="keyout"><b>WithOffset：偏移参与异或</b><span>键 = (file_num_etc64, offset_etc64 ^ (offset&gt;&gt;2))；右移 2 位无损，data block 与嵌入式 blob 共用键空间不撞键。</span></button>
+</div></div>
+<div class="partgroup"><div class="gname">分片与并发</div><div class="parts">
+<button class="part" data-part="shard"><b>默认分片算法</b><span>分片数 = 2^min(log2(容量/512KB), 6)，封顶 64 片；哈希低位选片、高位做表索引。</span></button>
+<button class="part" data-part="seed"><b>hash_seed</b><span>按主机名派生：全机房同一个种子会让大 filter 齐刷刷挤爆同一片。</span></button>
+</div></div>
+<div class="partgroup"><div class="gname">池与保护</div><div class="parts">
+<button class="part" data-part="pools"><b>三池 LRU</b><span>高优先池默认 50%；命中过升最高可用池；驱逐顺序底池最旧 → 低池 → 高池。</span></button>
+<button class="part" data-part="pin"><b>refs 引用计数</b><span>refs≥1 不在 LRU 链上，驱逐只扫链——正在用的块挤不走；句柄挂在 CachableEntry。</span></button>
+<button class="part" data-part="strict"><b>strict_capacity_limit</b><span>false：短暂超限也不让读失败；true：插不进当场报 MemoryLimit。</span></button>
+</div></div>
+<p class="hint">谁住缓存由 CacheEntryRole 决定：data/index/filter/压缩字典都进；TableProperties 不进；还有一类「不存数据只占额度」的占位条目——它是第三篇的主角，先留个钩子。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：一次 Get 的 8 个相位</h2></div>
+<p class="sec-sub">第一遍看橙点从请求走到 pin；第二遍对照副图时间线，看 8KB 块何时升池、何时出局。</p>
+<div class="quote">「动态分析看的是时间轴上的顺序、状态变化和因果链。」</div>
+<table class="grid">
+<tr><th>相位</th><th>阶段</th><th>关键动作</th><th>读数</th></tr>
+<tr><td>0–90°</td><td>Get 请求</td><td>索引给出 BlockHandle(offset=0x12000, 4KB)</td><td>offset 0x12000</td></tr>
+<tr><td>90–180°</td><td>拼 128 位键</td><td class="hot">三样原料 → 内部 ID → 基键 → 异或 0x4800</td><td class="hot">128 位就绪</td></tr>
+<tr><td>180–270°</td><td>哈希选片</td><td>低 N 位选中片 #3；每片独立表 + 链 + 锁</td><td>片 3/64</td></tr>
+<tr><td>270–360°</td><td>查哈希表</td><td>片内哈希表查键</td><td>miss（演示）</td></tr>
+<tr><td>360–450°</td><td>命中 / 未命中分岔</td><td class="hot">命中 0 次盘读；miss 读盘；fill_cache=false 读完就丢</td><td class="hot">走 miss 分支</td></tr>
+<tr><td>450–540°</td><td>读盘插入</td><td>解压成块对象，Insert(LOW) 进底池链头</td><td>charge≈4KB+元数据</td></tr>
+<tr><td>540–630°</td><td>容量驱逐</td><td>整片满：底池链尾先走，命中过的块活得久</td><td>底池最旧 4KB</td></tr>
+<tr><td>630–720°</td><td>pin 保护</td><td class="hot">refs=1 移出链，并发 Insert 碰不到它</td><td class="hot">refs=1 免死</td></tr>
+</table>
+<p>相位零点：0° = Get 进来；720° = pin 保护落定。值得分步细看的两处：第 ② 步键的逐段拼出（0x4800 = 0x12000&gt;&gt;2）；第 ⑧ 步「Insert C 为什么挤不掉 B」——因为驱逐只扫链，而 B 不在链上。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件 × 阶段</h2></div>
+<p class="sec-sub">竖看是一次读的旅程，横看是一个部件的完整职责。</p>
+<div class="quote">「把部件放回阶段里，才能看清谁在什么时候接力。」</div>
+<table class="grid">
+<tr><th>部件</th><th>拼键</th><th>选片</th><th>查找</th><th>miss 插入</th><th>驱逐</th><th>pin</th></tr>
+<tr><td>OffsetableCacheKey</td><td class="hot">基键 + 偏移异或</td><td>—</td><td class="act">供键</td><td class="act">供键</td><td>—</td><td>—</td></tr>
+<tr><td>哈希分片</td><td>—</td><td class="hot">低 N 位选片</td><td class="act">锁住该片</td><td class="act">锁住该片</td><td class="act">锁住该片</td><td>—</td></tr>
+<tr><td>片内哈希表</td><td>—</td><td>—</td><td class="hot">键→条目</td><td class="act">登记新条目</td><td class="act">摘除条目</td><td>—</td></tr>
+<tr><td>LRU 三池链</td><td>—</td><td>—</td><td class="act">命中移链</td><td class="hot">按池落位</td><td class="hot">底池尾先走</td><td class="act">移出链</td></tr>
+<tr><td>refs / CachableEntry</td><td>—</td><td>—</td><td class="act">refs+1</td><td>—</td><td>—</td><td class="hot">refs≥1 免死</td></tr>
+<tr><td>strict 闸门</td><td>—</td><td>—</td><td>—</td><td class="act">满则驱逐/报错</td><td class="act">MemoryLimit 分支</td><td>—</td></tr>
+</table>
+<p><b>涌现属性：</b>「正在用的块永远不会被挤走」不属于任何单个部件——哈希表负责找得到、LRU 链负责请得走、refs 负责「请不动」，三者合起来才成立。全被 pin 住时缓存短暂「超卖」，这正是 strict 闸门要裁决的场景。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：缓存不是孤岛</h2></div>
+<p class="sec-sub">拆掉任何一个外部依赖或默认值，前面看到的行为都会变。</p>
+<div class="quote">「环境属性 = 外在关系 + 依赖 + 失效后果。」</div>
+<div class="envcards">
+<div class="env"><b>默认 32MB 块缓存</b><span>不显式配容量时只有 32MB AutoHCC——玩具规模，生产几乎一定要给足。</span></div>
+<div class="env"><b>cache_index_and_filter_blocks</b><span>默认 false：index/filter 随 table reader 常驻、不在缓存口径里；打开才进缓存吃 HIGH 池。</span></div>
+<div class="env"><b>巨型 filter 块</b><span>非分区 filter 几十 MB，挤进同一片搅乱 LRU；hash_seed 别写死、片至少 512KB。</span></div>
+<div class="env"><b>压实 / 扫描读</b><span>fill_cache=false：搬数据的后台任务不配占用前台热点；扫描工具不带它会把缓存洗成冷水澡。</span></div>
+<div class="env"><b>jemalloc nodump</b><span>8GB 缓存一崩 core dump 就 8GB+；MemoryAllocator 把缓存内存标 MADV_DONTDUMP。</span></div>
+<div class="env"><b>迭代器泄漏</b><span>句柄挂在迭代器清理链上：迭代器不死块不还——长尾排查先查 pinned usage。</span></div>
+</div>
+<p class="figcap">边界：本页讲一级块缓存；被驱逐的块是扔掉还是收进便宜的柜子，是下一章二级缓存的事；占位条目怎么把别的内存记进这本账，是第三篇的事。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">能说清「键为什么 128 位、块为什么挤不走」，才算真的懂块缓存。</p>
+<div class="quote">「用自己的话能讲清楚，才算真的懂。」</div>
+<div id="quiz"></div>
+</section>
+
+<div class="summary">
+<h2>一页带走</h2>
+<p class="chant">块可寻址才能缓存，SST 不可变键才不失效；驱逐只扫链，pin 住的碰不到。</p>
+<p>· 缓存键 128 位：db_id + db_session_id + file_number 派生基键，偏移右移 2 位异或进来——跨重启稳定、跨 DB 全局唯一、热路径一条指令。</p>
+<p>· 分片 = 2^min(log2(容量/512KB), 6) 封顶 64 片：治多键并发，不治单键并发；hash_seed 按主机派生防齐步走。</p>
+<p>· 三池 LRU：高优先池 50%，命中过升池，驱逐顺序底池最旧 → 低池 → 高池；压实预热块给 BOTTOM 最先走。</p>
+<p>· refs 引用计数是免死金牌：refs≥1 不在链上，驱逐只扫链；全 pinned 时靠 strict 决定「短暂超限」还是「当场 MemoryLimit」。</p>
+<p>· LRU vs Clock：老 Clock 已删，11.13 推荐 HyperClockCache（默认 32MB AutoHCC）；要严格优先级或当记账本时 LRUCache 更稳。</p>
+</div>
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+<script>
+var STEPS=[
+{d:0,t:"① Get 请求",x:"Get(\"device_47\") 走到索引：索引给出 BlockHandle(offset=0x12000, size=4KB)——这是块在 SST 里的地址。读路径最小 I/O 单位就是块：行没有独立地址，能寻址才能做缓存键。",k:"offset 0x12000"},
+{d:90,t:"② 拼 128 位键",x:"db_id（UUID）+ db_session_id（20 字符）+ file_number=7 → GetSstInternalUniqueId 压成 128 位内部 ID → FromInternalUniqueId 得文件基键 → 键 = (file_num_etc64, offset_etc64 ^ 0x4800)。0x4800 = 0x12000>>2：低 2 位无损丢，换来与嵌入式 blob 共用键空间不撞键。前两个原料持久在 TableProperties 里，重启后仍拼出同一个键。",k:"128 位就绪"},
+{d:180,t:"③ 哈希选片",x:"键的哈希值取低 N 位选中片 #3（演示值）。分片数 = 2^min(log2(容量/512KB), 6) 封顶 64：8GB → 64 片 × 128MB；32MB → 64 片 × 512KB。每片独立哈希表 + LRU + 锁——把一把锁拆成 64 把，几百个并发读不再挤一条链。hash_seed 按主机名派生，防全机房把同一个大 filter 挤进同一片。",k:"片 3/64"},
+{d:270,t:"④ 查哈希表",x:"锁住片 #3，在片内哈希表里查这 128 位键。此刻三分岔：①命中——拿句柄直接在内存块里找 key，盘一次没碰；②miss——继续下一步读盘；③fill_cache=false（压实读、扫描工具）——读完就丢，不污染缓存。本演示走 miss。",k:"miss"},
+{d:360,t:"⑤ 命中 / 未命中分岔",x:"miss：一次预读整个 4KB 块（这正是块是 I/O 单位的原因）→ 解析成内存对象 → Insert(Priority::LOW)：没命中过的 data block 落底池链头。charge 按解压后真实内存记账，条目元数据一并计入（kFullChargeCacheMetadata）——配 8GB 就真吃 8GB。",k:"Insert(LOW)"},
+{d:450,t:"⑥ 读盘插入",x:"块 B 进链之后开始服务。对照副图时间线：T0 miss 插入底池；T1 下次 Get 命中 → refs+1、移出链；T2 Release 回链且 HasHit=true → 升进高优先池——从此活得比没读过的块久。",k:"T2 升高池"},
+{d:540,t:"⑦ 容量驱逐",x:"整片满时 EvictFromLRU 只扫链，从底池链尾开始请：没被读过一次的 data block 最先出局，命中过的数据块和高优先的 index/filter 活得最久；高池超 50% 时池尾下沉（MaintainPoolSize）。这期的牺牲者是底池最旧的 4KB 块。",k:"底池最旧"},
+{d:630,t:"⑧ pin 护住",x:"正被人用的块挤不走：Lookup 命中时 refs+1 并移出 LRU 链——驱逐只扫链，B 根本不在链上，并发 Insert 512KB 顶掉的是链尾的别人。strict=false（默认）时全 pinned 也照样插入、短暂超限；strict=true 则当场报 MemoryLimit，宁失败不超支。",k:"refs=1 免死"}];
+var CHIPS=[{k:"req",l:"请求"},{k:"key",l:"缓存键"},{k:"shard",l:"分片"},{k:"lookup",l:"查找"},{k:"evict",l:"驱逐"},{k:"pin",l:"pin 保护"}];
+var PARTS={"keyin":["keyIn"],"uid":["keyUid","keyBase"],"keyout":["keyOut"],"shard":["shardRow","shardF","shardHit"],"seed":["shardF"],"pools":["poolHigh","poolLow","poolBottom"],"pin":["pinBox","pinEx"],"strict":["strictBox"],"hash":["hashBox"],"lru":["lruBox"],"get":["getBox"],"hit":["brHit"],"miss":["brMiss","brFill"],"tl":["t0","t1","t2","t3","t4"]};
+var QUIZ=[
+{q:"为什么缓存「块」而不是「行」？",opts:["块更小省内存","行在磁盘上没有独立地址；块有 BlockHandle 可寻址，能寻址才能做缓存键","行会经常更新，块不会"],a:1,exp:"读路径的最小 I/O 单位就是块：索引给出 BlockHandle → 一次预读整块 → 块内二分。键必须能稳定指向一段字节，行给不出这个地址。"},
+{q:"128 位键跨重启、跨 DB 都不撞，靠的是什么？",opts:["文件路径 + 偏移","db_id + db_session_id + file_number 派生，前两个持久在 TableProperties 里，重启后拼出同样的键","每次启动随机生成"],a:1,exp:"OS page cache 拿路径当键，一个 cp 出来的副本就是两套缓存；RocksDB 把全局唯一 ID 做进键里，备份、导入导出到别的机器都不撞。"},
+{q:"8GB 的 LRUCache 默认分几片、每片多大？",opts:["8 片 × 1GB","64 片 × 128MB（2^min(log2(8GB/512KB),6)=64）","1 片 8GB"],a:1,exp:"分片数 = 2^min(log2(容量/512KB), 6) 封顶 64；32MB 的默认缓存也是 64 片（每片 512KB）。片治多键并发，单热块仍要抢同一把锁。"},
+{q:"正在被迭代器使用的块，为什么容量满了也挤不走？",opts:["它有更高的优先级","Lookup 命中时 refs+1 并移出 LRU 链，而驱逐只扫链——它根本不在被扫的名单里","它被单独存放在另一个缓存"],a:1,exp:"refs≥1 = 不在链上 = 驱逐碰不到；句柄挂在 CachableEntry、随迭代器清理链释放。全被 pin 住时缓存会短暂「超卖」。"},
+{q:"strict_capacity_limit=true 且腾不出空间时，Insert 会怎样？",opts:["静默丢弃新块","排队等待","直接失败返回 MemoryLimit，上层放弃缓存改为直读盘"],a:2,exp:"默认 false 是宁超一点内存也不让读失败；把缓存当统一记账本（第三篇）时才开 true——那时插不进就该报错而不是悄悄超支。"},
+{q:"11.13 里关于 Clock 缓存的现状，哪句是对的？",opts:["Clock 比 LRU 新、推荐用","老 Clock 已删除，NewClockCache 只剩返回 LRUCache 的兼容壳；现在推荐的是 HyperClockCache（默认 32MB AutoHCC）","Clock 和 LRU 完全等价"],a:1,exp:"头文件原话「HYPERCLOCKCACHE IS NOW GENERALLY RECOMMENDED OVER LRUCACHE」；HCC 无锁靠原子引用计数，单热块无明显热点，压力下允许略超 3~5%。"}];
+var WP=[[0,185,162],[76,185,162],[92,495,160],[176,495,160],[182,425,156],[262,425,156],[268,789,158],[364,789,158],[370,127,364],[452,127,364],[458,127,436],[542,127,436],[548,587,364],[638,587,364],[644,587,364],[720,185,162]];
+var WP2=[[0,115,64],[88,115,64],[92,287,64],[176,287,64],[182,468,64],[262,468,64],[268,658,64],[352,658,64],[358,862,64],[452,862,64],[458,468,64],[542,468,64],[548,862,64],[638,862,64],[644,115,64],[720,115,64]];
+var PERIOD=6000,basePeriod=PERIOD,PHASE_MAX=720,STEP_DUR=600;
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,stepIdx=-1,dots=[],ticking=false,chipEls={};
+function $(id){return document.getElementById(id);}
+function setText(id,s){var n=$(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setOp(id,v){var n=$(id);if(n)n.setAttribute('opacity',Math.max(0,Math.min(1,v)).toFixed(2));}
+function setAttr(id,k,v){var n=$(id);if(n)n.setAttribute(k,v);}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){t=clamp(t,0,1);return t*t*(3-2*t);}
+function ramp(th,a,b){return clamp((th-a)/((b-a)||1),0,1);}
+function win(pr,a,b){return clamp(ramp(pr,a,a+6)*(1-ramp(pr,b-6,b)),0,1);}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function lerpPts(pts,th){
+  if(th<=pts[0][0])return[pts[0][1],pts[0][2]];
+  for(var i=0;i<pts.length-1;i++){if(th<pts[i+1][0]){var t=smooth((th-pts[i][0])/(pts[i+1][0]-pts[i][0]));return[pts[i][1]+(pts[i+1][1]-pts[i][1])*t,pts[i][2]+(pts[i+1][2]-pts[i][2])*t];}}
+  return[pts[pts.length-1][1],pts[pts.length-1][2]];
+}
+function setChip(k,v){var n=chipEls[k];if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',/^(已|完成|命中|免死|底池|refs|128|片 3)/.test(v));n.classList.toggle('off',/^(待命|—)/.test(v));}
+function stageIdx(pr){var s=0;for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)s=i;}return s;}
+function pageRender(pr,si){
+  setOp('getBox',win(pr,0,90)+0.3);
+  setOp('brHit',win(pr,360,450)+0.3);
+  setOp('brMiss',win(pr,360,460)+0.3);
+  setOp('brFill',win(pr,360,455)+0.3);
+  setOp('keyIn',win(pr,90,180)+0.3);
+  setOp('keyUid',win(pr,120,210)+0.3);
+  setOp('keyBase',win(pr,150,240)+0.3);
+  setOp('keyOut',win(pr,170,265)+0.3);
+  setOp('shardRow',win(pr,180,275)+0.3);
+  setOp('shardHit',pr>=180?1:0.3);
+  setOp('shardF',win(pr,190,280)+0.3);
+  setOp('hashBox',win(pr,270,365)+0.3);
+  setOp('lruBox',win(pr,450,545)+0.3);
+  setOp('pinBox',win(pr,630,720)+0.3);
+  setOp('pinEx',win(pr,630,720)+0.3);
+  setOp('poolHigh',win(pr,540,635)+0.3);
+  setOp('poolLow',win(pr,540,638)+0.3);
+  setOp('poolBottom',win(pr,540,640)+0.3);
+  setOp('strictBox',win(pr,630,720)+0.3);
+  setOp('t0',win(pr,450,545)+0.3);
+  setOp('t1',win(pr,500,590)+0.3);
+  setOp('t2',win(pr,520,610)+0.3);
+  setOp('t3',win(pr,540,635)+0.3);
+  setOp('t4',win(pr,550,645)+0.3);
+  setText('roShard',pr<180?'—':'片 3 / 64');
+  setText('roState',pr<270?'—':(pr<360?'查哈希表':(pr<450?'走 miss 分支':(pr<540?'块 B 底池链头':(pr<630?'T2 升高池':'refs=1 免死')))));
+  setText('roEvict',pr<540?'—':(pr<630?'底池最旧 4KB':'—（B 不在链上）'));
+  setChip('req',pr<90?'待命':'已到');
+  setChip('key',pr<90?'待命':(pr<180?'拼接中':'128 位就绪'));
+  setChip('shard',pr<180?'待命':'片 3/64');
+  setChip('lookup',pr<270?'待命':(pr<360?'查表中':'miss'));
+  setChip('evict',pr<540?'待命':(pr<630?'底池最旧':'本轮未请走'));
+  setChip('pin',pr<630?'待命':'refs=1 免死');
+}
+function render(th){
+  var pr=norm(th);
+  setText('roPhase',Math.round(pr)+'°');
+  var si=stageIdx(pr);if(mode==='step'&&stepIdx>=0)si=stepIdx;
+  setText('roStep',STEPS[si]?STEPS[si].t:'—');
+  setText('roKey',STEPS[si]?STEPS[si].k:'—');
+  pageRender(pr,si);
+  var p=lerpPts(WP,pr);setAttr('tok','cx',p[0].toFixed(1));setAttr('tok','cy',p[1].toFixed(1));
+  var q=lerpPts(WP2,pr);setAttr('tok2','cx',q[0].toFixed(1));setAttr('tok2','cy',q[1].toFixed(1));
+}
+function tick(now){
+  ticking=false;
+  var dt=Math.min(50,now-last);last=now;
+  if(run&&mode==='auto')phase=(phase+dt/PERIOD*PHASE_MAX)%PHASE_MAX;
+  if(mode==='step'&&stepTo!==null){
+    stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);var p=stepElapsed/STEP_DUR,e=smooth(p);
+    phase=stepFrom+(stepTo-stepFrom)*e;if(p>=1){phase=stepTo;stepTo=null;}
+  }
+  render(phase);
+  if(run||stepTo!==null){ticking=true;requestAnimationFrame(tick);}
+}
+function wake(){if(ticking)return;ticking=true;last=performance.now();requestAnimationFrame(tick);}
+function setAuto(on){
+  mode='auto';run=on;stepTo=null;var b=$('engBtn');if(b)b.textContent=on?'暂停':'播放';
+  if(on){stepIdx=-1;dots.forEach(function(d){d.classList.remove('on');});
+  setText('stepT','自动运转模式');setText('stepX','点下方步骤点可切换到分步演示，随你点击定格。');wake();}
+}
+window.goStep=function(i){
+  stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+  var target=STEPS[stepIdx].d;
+  if(reduced||Math.abs(target-norm(phase))>180){phase=target;stepTo=null;}
+  else{stepFrom=phase;stepTo=target;stepElapsed=0;}
+  render(phase);wake();
+  var b=$('engBtn');if(b)b.textContent='继续自动运转';
+  dots.forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+  setText('stepT','第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t);
+  setText('stepX',STEPS[stepIdx].x);
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+CHIPS.forEach(function(c){var box=$('stateChips');var s=document.createElement('span');s.className='chip';s.innerHTML=c.l+' <b>--</b>';box.appendChild(s);chipEls[c.k]=s;});
+var stepBar=$('stepBar');
+STEPS.forEach(function(s,n){var b=document.createElement('button');b.className='stepnode';b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+s.t+'</span>';b.onclick=function(){goStep(n);};stepBar.appendChild(b);dots.push(b);});
+var engBtn=$('engBtn');engBtn.textContent=run?'暂停':'播放';
+engBtn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+var spd=$('engSpd');
+if(spd){spd.oninput=function(){speed=parseFloat(spd.value);$('engSpdV').textContent=speed+'×';PERIOD=basePeriod/speed;};}
+document.querySelectorAll('.part').forEach(function(btn){btn.onclick=function(){var ids=(PARTS[btn.dataset.part]||[]);document.querySelectorAll('#eng .hl,#eng2 .hl').forEach(function(n){n.classList.remove('hl');});ids.forEach(function(id){var n=$(id);if(n)n.classList.add('hl');});};});
+var quizBox=$('quiz');QUIZ.forEach(function(q,n){var d=document.createElement('div');d.className='q';var html='<div class="qt">'+(n+1)+'. '+q.q+'</div>';q.opts.forEach(function(o,j){html+='<button class="opt" data-q="'+n+'" data-o="'+j+'">'+o+'</button>';});html+='<div class="exp"><b>答案：</b>'+q.opts[q.a]+'<br>'+q.exp+'</div>';d.innerHTML=html;quizBox.appendChild(d);});
+quizBox.querySelectorAll('.opt').forEach(function(b){b.onclick=function(){var q=QUIZ[+b.dataset.q];var box=b.closest('.q');if(box.classList.contains('done'))return;box.classList.add('done');b.classList.add(+b.dataset.o===q.a?'right':'wrong');box.querySelectorAll('.opt').forEach(function(o){if(+o.dataset.o===q.a)o.classList.add('right');});};});
+if(reduced){run=false;phase=0;render(0);engBtn.textContent='播放';}else{wake();}
+</script>
+</body>
+</html>

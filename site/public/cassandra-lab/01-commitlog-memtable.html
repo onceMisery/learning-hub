@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>提交日志与内存表 · Cassandra 互动原理实验室 第 2 章</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#ffffff;color:#1F1E1A;font-family:"Microsoft YaHei",sans-serif;line-height:1.75;font-size:15px}
+.page{max-width:960px;margin:0 auto;padding:0 20px 80px}
+.labbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;background:#ffffff;border-bottom:1px solid #ECEAE2;padding:9px 20px;font-size:13px}
+.labbar a{color:#C46A0A;text-decoration:none;font-weight:500}
+.labbar a:hover{text-decoration:underline}
+.labbar .idx{margin-left:auto;color:#6B695F;font-variant-numeric:tabular-nums}
+.hero{padding:40px 0 24px;border-bottom:1px solid #ECEAE2}
+.hero .kicker{font-size:13px;color:#C46A0A;font-weight:500;letter-spacing:2px}
+.hero h1{font-size:29px;font-weight:600;margin:8px 0 10px;line-height:1.4}
+.hero p{color:#6B695F;margin:0;max-width:720px}
+.method-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.method-chain .mnode{display:block;width:100%;text-align:center;background:#1F1E1A;color:#F5F4EF;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500}
+@media (max-width:560px){.method-chain{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lab{background:#ffffff;padding:12px 0 10px;border-bottom:1px solid #ECEAE2}
+.lab .frame{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:6px 10px 2px}
+svg{width:100%;height:auto;display:block}
+.th{font-size:15px;font-weight:600;fill:#1F1E1A}
+.ts{font-size:12px;fill:#6B695F}
+.tb{font-size:12px;fill:#3B3A34}
+.tn{font-size:13px;font-weight:600;fill:#1F1E1A}
+.tag{font-size:10.5px;fill:#6B695F}
+.ctrl{display:flex;align-items:center;gap:14px;margin:6px 4px 2px;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.btn{padding:5px 16px;border-radius:8px;border:1px solid #D3D1C7;background:#ffffff;color:#1F1E1A;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#888780}
+.btn.warn{background:#FFF6E8;border-color:#EF9F27;color:#854F0B}
+.spd{display:flex;align-items:center;gap:8px}
+.spd input{width:100px;accent-color:#C46A0A}
+.rpm{margin-left:auto;font-variant-numeric:tabular-nums}
+.stepbar{display:flex;align-items:center;gap:0;margin:8px 4px 0;flex-wrap:wrap}
+.stepnode{flex:1;min-width:66px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;background:none;border:none;font-family:inherit;padding:4px 0}
+.stepnode .dot{width:26px;height:26px;border-radius:50%;border:1.5px solid #B4B2A9;background:#fff;color:#6B695F;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2}
+.stepnode .lab2{font-size:10.5px;color:#8A877C;margin-top:4px;white-space:nowrap}
+.stepnode.on .dot{background:#EF9F27;border-color:#D97E06;color:#1F1E1A;font-weight:600}
+.stepnode.on .lab2{color:#854F0B;font-weight:600}
+.steppanel{display:flex;align-items:center;gap:12px;margin:8px 4px 2px;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:8px 14px;font-size:13px}
+.steppanel .st{flex:none;font-weight:600;color:#854F0B;white-space:nowrap}
+.steppanel .sx{color:#3B3A34}
+.steppanel .snav{margin-left:auto;flex:none;display:flex;gap:8px}
+.steppanel .snav button{padding:3px 12px;font-size:12px}
+.modebar{display:flex;align-items:center;gap:8px;margin:6px 4px 0;font-size:13px;color:#6B695F;flex-wrap:wrap}
+.modebar .mlabel{font-weight:600;color:#3B3A34}
+.modebtn{padding:5px 12px;border-radius:8px;border:1px solid #D3D1C7;background:#fff;color:#1F1E1A;font-size:12.5px;cursor:pointer;font-family:inherit}
+.modebtn:hover{border-color:#888780}
+.modebtn.on{background:#FFF6E8;border-color:#EF9F27;color:#854F0B;font-weight:600}
+section{padding:36px 0 6px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-num{flex:none;width:30px;height:30px;border-radius:50%;background:#1F1E1A;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.sec-head h2{font-size:21px;font-weight:600;margin:0}
+.sec-sub{color:#6B695F;font-size:14px;margin:0 0 16px 42px}
+.quote{border-left:3px solid #EF9F27;background:#FBFAF6;padding:10px 16px;margin:0 0 18px 42px;font-size:13px;color:#6B695F;border-radius:0 8px 8px 0}
+.quote i{font-style:normal;color:#8A877C}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FBFAF6;border:1px solid #ECEAE2;border-radius:12px;padding:16px}
+.flow .node{background:#fff;border:1px solid #D3D1C7;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}
+.flow .node.box{border-style:dashed;border-color:#C46A0A;background:#FFF6E8}
+.flow .outbranch{display:inline-flex;flex-direction:column;align-items:flex-start;gap:6px}
+.flow .outline{display:inline-flex;align-items:center;gap:8px}
+.flow .flownote{font-size:12px;color:#6B695F;font-weight:600;margin-right:4px}
+.flow .arr{color:#C46A0A;font-weight:600}
+.partgroup{margin-bottom:16px}
+.partgroup .gname{font-size:13px;font-weight:600;color:#854F0B;margin-bottom:8px}
+.parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.part{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;transition:border-color .15s;text-align:left;font-family:inherit;font-size:14px}
+.part:hover{border-color:#C46A0A}
+.part b{display:block;font-weight:600;margin-bottom:2px}
+.part span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.hint{font-size:13px;color:#C46A0A;margin:10px 0 0}
+table.grid{width:100%;border-collapse:collapse;font-size:14px}
+table.grid td,table.grid th{border:1px solid #ECEAE2;padding:8px 10px;text-align:center;vertical-align:top}
+table.grid th{background:#FBFAF6;font-weight:600}
+table.grid td:first-child{font-weight:600;text-align:left;background:#FBFAF6}
+table.grid td.hot{background:#FFF1D6;color:#854F0B;font-weight:600}
+table.grid td.act{background:#FAEEDA}
+.envcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.env{border:1px solid #ECEAE2;border-radius:10px;padding:12px 14px;background:#fff}
+.env b{display:block;font-weight:600;margin-bottom:2px;font-size:14px}
+.env span{color:#6B695F;font-size:13px;line-height:1.5;display:block}
+.q{border:1px solid #ECEAE2;border-radius:12px;padding:16px;margin-bottom:14px;background:#fff}
+.q .qt{font-weight:600;margin-bottom:10px}
+.q .opt{display:block;width:100%;text-align:left;border:1px solid #ECEAE2;background:#FBFAF6;border-radius:8px;padding:9px 14px;margin:6px 0;cursor:pointer;font-size:14px;font-family:inherit}
+.q .opt:hover{border-color:#888780}
+.q .opt.right{background:#EAF3DE;border-color:#639922}
+.q .opt.wrong{background:#FCEBEB;border-color:#E24B4A}
+.q .exp{display:none;font-size:13px;color:#6B695F;margin-top:8px;border-top:1px dashed #ECEAE2;padding-top:8px}
+.q.done .exp{display:block}
+.summary{background:#1F1E1A;color:#F5F4EF;border-radius:14px;padding:26px 28px;margin-top:40px}
+.summary h2{margin:0 0 10px;font-size:19px}
+.summary p{margin:6px 0;color:#D3D1C7;font-size:14px}
+.summary .chant{font-size:17px;color:#FAC775;font-weight:600;letter-spacing:1px}
+.backtop{position:fixed;right:22px;bottom:22px;z-index:20}
+#eng .hl,#eng .hl *{stroke:#D96C06 !important}
+#eng [opacity]{transition:opacity .28s ease}
+#eng2 [opacity]{transition:opacity .28s ease}
+@media (prefers-reduced-motion: reduce){#eng [opacity],#eng2 [opacity]{transition:none}}
+.figure{background:#FBFAF6;border:1px solid #ECEAE2;border-radius:14px;padding:14px 16px;margin:12px 0}
+.figcap{font-size:12px;color:#6B695F;margin:8px 2px 0;line-height:1.6}
+.readout{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:8px 4px 0;background:#FFF6E8;border:1px solid #F2D9A7;border-radius:10px;padding:7px 12px;font-size:13px;color:#6B695F}
+.readout .ro{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}
+.readout .ro b{color:#854F0B;font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 4px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #D3D1C7;background:#FBFAF6;border-radius:999px;padding:2px 10px;font-size:12px;color:#3B3A34}
+.chip b{font-weight:600;color:#1F1E1A}
+.chip.on{background:#EAF3DE;border-color:#639922}
+.chip.off{background:#F5F4EF}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:8px 4px 0;font-size:12px;color:#6B695F}
+.legend i{display:inline-block;width:18px;height:0;border-top:2px solid #C46A0A;vertical-align:middle;margin-right:5px}
+.legend i.g{border-color:#639922}
+.legend i.r{border-color:#E24B4A}
+.legend i.dash{border-top-style:dashed}
+</style>
+</head>
+<body>
+<div class="labbar">
+  <a href="#" id="lnkBack">← 返回实验室</a>
+  <a href="#" id="lnkArt">阅读文章：提交日志与内存表：先记账，再落内存</a>
+  <span class="idx">第 2 / 15 章</span>
+</div>
+<div class="page">
+
+<header class="hero">
+<div class="kicker">INTERACTIVE LESSON · COMMITLOG &amp; MEMTABLE</div>
+<h1>先记账，再落内存</h1>
+<p>一笔写入先追加进全节点共用的 CommitLog，再进每表一本的 Memtable；flush 时把书签夹进 SSTable；崩溃恢复时按书签跳过已落盘的部分。id=47 的两笔写入、一次 flush、一次掉电，走完整个生命周期。</p>
+<div class="method-chain">
+<span class="mnode">① 表象观察</span>
+<span class="mnode">② 静态分解</span>
+<span class="mnode">③ 动态分析</span>
+<span class="mnode">④ 动静融合</span>
+<span class="mnode">⑤ 环境场景</span>
+<span class="mnode">⑥ 复盘自测</span>
+</div>
+</header>
+
+<div class="lab" id="lab">
+<div class="frame">
+<svg id="eng" viewBox="0 0 1000 560" role="img" xmlns="http://www.w3.org/2000/svg"><title>提交日志与内存表</title><defs><marker id="flw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="flwG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker><marker id="flwR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker></defs><text class="th" x="500" y="24" text-anchor="middle">先记账，再落内存：一段流水的完整一生</text><text class="ts" x="500" y="44" text-anchor="middle">绿色是流水账（全节点一本），蓝色是内存账（每表一本）；flush 在盘上夹书签，恢复按书签跳过已落盘的</text><text x="990" y="24" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">橙色：写入路径</text><text x="990" y="40" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色：落盘 / 书签 / 回放</text><text x="990" y="56" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">红色：崩溃 / 跳过</text><g id="wrBox"><rect x="28" y="84" width="150" height="64" rx="9" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="103" y="106" font-size="13" fill="#1F1E1A" text-anchor="middle" font-weight="600">写入请求</text><text x="103" y="124" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">副本本地 Keyspace.apply</text><text x="103" y="140" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">先记账，再落内存</text></g><g id="clFrame"><rect x="200" y="60" width="440" height="130" rx="9" fill="#ffffff" stroke="#639922" stroke-width="1.2"/><text x="420" y="80" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">CommitLog（全节点一本 · 默认 32MiB/段）</text><g id="cseg1"><rect x="216" y="88" width="204" height="64" rx="6" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/><text x="318" y="103" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">段 1</text><text id="s1a" x="318" y="120" font-size="10" fill="#3B3A34" text-anchor="middle" font-weight="400">pos 8192 · id=47 阿福 ts=1001</text><text id="s1b" x="318" y="138" font-size="10" fill="#3B3A34" text-anchor="middle" font-weight="400">pos 9408 · id=47 阿福2 ts=1005</text></g><g id="cseg2"><rect x="436" y="88" width="188" height="64" rx="6" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/><text x="530" y="103" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">段 2（当前在写）</text><text id="s2a" x="530" y="122" font-size="10" fill="#3B3A34" text-anchor="middle" font-weight="400">pos 0 · id=48 大壮 ts=2001</text><text id="s2b" x="530" y="140" font-size="9.5" fill="#6B695F" text-anchor="middle" font-weight="400">（随 flush 出现的新段）</text></g><text x="420" y="178" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">只追加 · 每笔带 CRC · 写满滚动（cassandra.yaml:691）</text></g><g id="mtBox"><rect x="672" y="60" width="230" height="130" rx="9" fill="#ffffff" stroke="#2F6FA8" stroke-width="1.2"/><text x="787" y="82" font-size="12" fill="#1F1E1A" text-anchor="middle" font-weight="600">Memtable（users 表）</text><text id="mt1" x="787" y="104" font-size="10.5" fill="#3B3A34" text-anchor="middle" font-weight="400">id=47 阿福/31（ts=1001）</text><text id="mt2" x="787" y="126" font-size="10.5" fill="#3B3A34" text-anchor="middle" font-weight="400">id=47 阿福2（ts=1005）</text><text id="mt3" x="787" y="148" font-size="10.5" fill="#3B3A34" text-anchor="middle" font-weight="400">id=48 大壮/28（ts=2001）</text><text x="787" y="172" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">每表一本 · 默认跳表账本</text></g><text id="syncNote" x="28" y="212" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">③ periodic（默认）：后台线程按 commitlog_sync_period=10000ms 一拍 fsync，写返回只等追加；batch 档才每笔等盘。</text><text x="28" y="246" font-size="13" fill="#639922" text-anchor="start" font-weight="600">flush 流水线：封账、写盘、夹书签、报账（④⑤）</text><g id="fullBox"><rect x="28" y="258" width="180" height="58" rx="9" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="118" y="280" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">Memtable 满</text><text x="118" y="297" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">switchMemtable 封账</text><text x="118" y="312" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">ColumnFamilyStore.java:1080</text></g><path id="f1" d="M208 287 L224 287" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flwG)"/><g id="flushBox"><rect x="228" y="258" width="280" height="58" rx="9" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="368" y="280" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">flush → SSTable-00001</text><text id="bookMark" x="368" y="297" font-size="10.5" fill="#854F0B" text-anchor="middle" font-weight="600">书签 [段1:0, 段1:9408] 进元数据</text><text x="368" y="312" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">Flushing.java:248 · StatsMetadata.java:62</text></g><path id="f2" d="M508 287 L524 287" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flwG)"/><g id="recycleBox"><rect x="528" y="258" width="220" height="58" rx="9" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="638" y="280" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">PostFlush 报账</text><text x="638" y="297" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">段 1 标净（markClean）→ 可回收</text><text x="638" y="312" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">ColumnFamilyStore.java:1199-1204</text></g><path id="f3" d="M748 287 L764 287" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flwG)"/><g id="newSegBox"><rect x="768" y="258" width="204" height="58" rx="9" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="870" y="280" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">新写入落段 2</text><text x="870" y="297" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">id=48 大壮 · ts=2001</text><text x="870" y="312" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">越过书签的位置才安全</text></g><text x="28" y="346" font-size="13" fill="#E24B4A" text-anchor="start" font-weight="600">崩溃与恢复：按书签跳过已落盘的（⑥⑦）</text><g id="crashBox"><rect x="28" y="368" width="150" height="58" rx="9" fill="#FFF6E8" stroke="#E24B4A" stroke-width="1.3"/><text x="103" y="390" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">node2 掉电</text><text x="103" y="407" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">内存账全灭，段文件还在</text><text x="103" y="422" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">最坏丢 10s（periodic）</text></g><path id="f4" d="M178 397 L196 397" fill="none" stroke="#E24B4A" stroke-width="1.6" marker-end="url(#flwR)"/><g id="replayerBox"><rect x="200" y="368" width="270" height="58" rx="9" fill="#FFF6E8" stroke="#E24B4A" stroke-width="1.3"/><text x="335" y="390" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">CommitLogReplayer.construct</text><text x="335" y="407" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">persistedIntervals 收各表书签（:338）</text><text x="335" y="422" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">firstNotCovered 定全局起点（:375）</text></g><path id="f5" d="M470 397 L486 397" fill="none" stroke="#E24B4A" stroke-width="1.6" marker-end="url(#flwR)"/><g id="skipBox"><rect x="490" y="368" width="220" height="58" rx="9" fill="#ffffff" stroke="#B4B2A9" stroke-width="1.2" stroke-dasharray="6 4"/><text x="600" y="390" font-size="12.5" fill="#E24B4A" text-anchor="middle" font-weight="600">段 1：id=47 → 跳过</text><text x="600" y="407" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">落在书签区间 = 已落盘</text><text x="600" y="422" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">shouldReplay（Replayer.java:313）</text></g><path id="f6" d="M710 397 L726 397" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#flwG)"/><g id="replayBox"><rect x="730" y="368" width="242" height="58" rx="9" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="851" y="390" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">段 2：id=48 → 回放</text><text x="851" y="407" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">重新 apply，不再记 CommitLog（:325）</text><text x="851" y="422" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">replayedCount+1（:318）</text></g><text id="resultNote" x="28" y="452" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">结果：id=47 从 SSTable-00001 读；id=48 回到 Memtable。真正可能丢的只有崩溃前 10s 里没被 fsync 的几笔。</text><text x="28" y="478" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">源码：db/commitlog/CommitLog.java:301（add）· db/memtable/Flushing.java:248（书签进元数据）· db/commitlog/CommitLogReplayer.java:313（逐笔过滤）</text><text x="28" y="498" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">口径：apache/cassandra master（7.0-SNAPSHOT）· 出厂默认 commitlog_sync=periodic / 10000ms、段 32MiB · 演示假设 id=48 已被上一次 fsync 覆盖</text><text x="28" y="518" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">读法：看段 1 的状态变化（记账中 → 可回收 → 跳过）和 Memtable 行数（2 → 0 → 1）；两行读数把书签机制的全部因果串起来。</text><circle id="tok" cx="-20" cy="-20" r="8" fill="#EF9F27" stroke="#D97E06" stroke-width="1.5"/><circle id="tokB" cx="-20" cy="-20" r="8" fill="#639922" stroke="#4A7519" stroke-width="1.5"/></svg>
+<svg id="eng2" viewBox="0 0 1000 180" role="img" xmlns="http://www.w3.org/2000/svg"><text x="40" y="26" font-size="13" fill="#1F1E1A" text-anchor="start" font-weight="600">相位总线：自动与分步共用同一进度</text><text x="960" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">0° → 720°</text><rect id="seg0" x="40" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="89.1" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">写入</text><text x="89.1" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">0°</text><rect id="seg1" x="142.2" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="191.3" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">再写一笔</text><text x="191.3" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">80°</text><rect id="seg2" x="244.4" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="293.5" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">sync</text><text x="293.5" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">160°</text><rect id="seg3" x="346.7" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="395.8" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">封账</text><text x="395.8" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">240°</text><rect id="seg4" x="448.9" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="498" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">flush</text><text x="498" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">320°</text><rect id="seg5" x="551.1" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="600.2" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">回收</text><text x="600.2" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">400°</text><rect id="seg6" x="653.3" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="702.4" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">落段2</text><text x="702.4" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">480°</text><rect id="seg7" x="755.6" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="804.7" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">崩溃</text><text x="804.7" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">560°</text><rect id="seg8" x="857.8" y="52" width="98.2" height="58" rx="7" fill="#ffffff" stroke="#C46A0A" stroke-width="1.3"/><text x="906.9" y="76" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">回放过滤</text><text x="906.9" y="96" font-size="10" fill="#6B695F" text-anchor="middle" font-weight="400">640°</text><line id="subNow" x1="40" y1="44" x2="40" y2="126" stroke="#C46A0A" stroke-width="2"/><text x="500" y="152" font-size="11" fill="#6B695F" text-anchor="middle" font-weight="400">每格是一个可定格的关键时刻；分步时所有视图冻结到同一相位。</text></svg>
+<div class="ctrl">
+<button class="btn" id="engBtn">暂停</button>
+<span class="spd"><span>速度</span><input type="range" id="engSpd" min="0.25" max="2.5" step="0.25" value="1"><span id="engSpdV">1×</span></span>
+<span class="rpm" id="engNote">演示速度 ≈ 1 轮 / 6.0 秒</span>
+</div>
+
+<div class="readout">
+<span class="ro">相位 <b id="roPhase">--</b></span>
+<span class="ro">阶段 <b id="roStep">--</b></span>
+<span class="ro">段 1 状态 <b id="roSeg1">--</b></span>
+<span class="ro">Memtable <b id="roMT">--</b></span>
+<span class="ro">最坏丢失窗口 <b id="roLose">--</b></span>
+</div>
+<div class="chips" id="stateChips"></div>
+<div class="stepbar" id="stepBar"></div>
+<div class="steppanel">
+<span class="st" id="stepT">自动运转模式</span>
+<span class="sx" id="stepX">点下方步骤点可切换到分步演示，随你点击定格。</span>
+<span class="snav">
+<button class="btn" onclick="prevStep()">‹ 上一步</button>
+<button class="btn warn" onclick="nextStep()">下一步 ›</button>
+</span>
+</div>
+<div class="legend"><span><i></i>写入路径</span><span><i class="g"></i>落盘 / 书签 / 回放</span><span><i class="r"></i>崩溃 / 跳过</span><span><i class="dash"></i>已落盘（不再依赖日志）</span></div>
+<p class="figcap">进度 0° = 第一笔写入追加进段 1，720° = 崩溃恢复完成、id=48 回到内存账；分步定格的是关键时刻，不代表真实耗时。<br>口径：apache/cassandra master（7.0-SNAPSHOT）；出厂默认 commitlog_sync=periodic / 10000ms、段 32MiB；演示假设崩溃时段 2 已被上一次 fsync 覆盖——若没赶上那拍，id=48 就是 10s 窗口的代价。</p>
+</div>
+</div>
+
+
+<section>
+<div class="sec-head"><span class="sec-num">1</span><h2>表象观察：先把它当黑盒</h2></div>
+<p class="sec-sub">不急着拆类，只看它对外表现出什么。</p>
+<div class="quote"><i>先把系统当黑盒：只看输入、输出和边界，不急着解释内部。</i></div>
+
+<p>站在客户端的角度，这一层对外的表现是两句话：<b>写入永远快得可疑</b>——返回时数据显然没在机械盘上走一圈；<b>崩溃后数据「基本」都在</b>——除了配置允许的那个小窗口。又快又不太丢，这两件事同时成立，中间一定有一本账在兜着。</p>
+<div class="flow">
+<span class="node">写入请求</span><span class="arr">→</span>
+<span class="node box">先追加日志（快）</span>
+<span class="outbranch">
+<span class="outline"><span class="arr">→</span><span class="node">写内存账（快）</span><span class="arr">→</span><span class="node">返回 OK</span></span>
+<span class="outline"><span class="arr">↳</span><span class="node">后台定期拍盘 + flush</span></span>
+</span>
+</div>
+<p>黑盒承诺：只要磁盘没坏，崩溃后「最后一次成功 fsync 之后」的账都能从日志里捡回来。它不承诺「写返回时已在磁盘上」——periodic 档的最坏丢失窗口就是 sync 周期那 10 秒。</p>
+<p>先记住一个反直觉的点：<b>日志不是「备份数据」，日志在 flush 之前就是数据本体</b>。下一节把黑盒拆开看这本账长什么样。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">2</span><h2>静态分解：部件各管什么</h2></div>
+<p class="sec-sub">先把结构钉住，再让时间进来。点下面的部件卡，动画里对应部分会亮起。</p>
+<div class="quote"><i>结构分解要 MECE：同一层只放同一粒度的部件。</i></div>
+<div class="figure"><svg viewBox="0 0 920 250" role="img" xmlns="http://www.w3.org/2000/svg"><text x="460" y="22" font-size="15" fill="#1F1E1A" text-anchor="middle" font-weight="600">两本账与一张书签</text><text x="460" y="42" font-size="11.5" fill="#6B695F" text-anchor="middle" font-weight="400">流水账保命，内存账服务，书签决定恢复时从哪读、读到哪扔</text><rect x="20" y="66" width="280" height="104" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/><text x="34" y="90" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">① CommitLog（节点级单例）</text><text x="34" y="110" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">CommitLog.java:80 · add():301</text><text x="34" y="126" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">段 32MiB 滚动（yaml:691）</text><text x="34" y="142" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">全部表的流水混记，每笔带表 id</text><text x="34" y="158" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">sync 档位：periodic / batch / group</text><rect x="330" y="66" width="270" height="104" rx="10" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/><text x="344" y="90" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">② Memtable（每表一本）</text><text x="344" y="110" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">接口 Memtable.java:60</text><text x="344" y="126" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">默认 SkipListMemtable.java:68</text><text x="344" y="142" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">TrieMemtable.java:91（第 4 章）</text><text x="344" y="158" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">内存来源 memtable_allocation_type</text><rect x="630" y="66" width="270" height="104" rx="10" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/><text x="644" y="90" font-size="12.5" fill="#1F1E1A" text-anchor="start" font-weight="600">③ 书签 CommitLogPosition</text><text x="644" y="110" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">CommitLogPosition.java:35（旧名 ReplayPosition）</text><text x="644" y="126" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">= 段 id + 段内偏移</text><text x="644" y="142" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">flush 时写进 SSTable 元数据</text><text x="644" y="158" font-size="10.5" fill="#6B695F" text-anchor="start" font-weight="400">StatsMetadata.commitLogIntervals:62</text><path d="M300 118 L326 118" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><path d="M600 118 L626 118" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#flw)"/><rect x="20" y="188" width="880" height="44" rx="10" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.2"/><text x="460" y="207" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">顺序是硬性的：先 ① 后 ②（Keyspace.java:437-438）——反过来的话，崩溃时会留下没有日志凭据的内存数据</text><text x="460" y="224" font-size="10.5" fill="#6B695F" text-anchor="middle" font-weight="400">flush 之后：③ 让流水账知道「哪些区间不用再管」，也让恢复知道「哪些区间不用再演」。</text></svg></div>
+<div class="partgroup"><div class="gname">账本与写入</div><div class="parts"><button class="part" data-part="write"><b>1. 写入请求</b><span>副本本地 apply；顺序硬性：先日志后内存。</span></button><button class="part" data-part="commitlog"><b>2. CommitLog</b><span>全节点一本的追加流水账，段 32MiB 滚动，每笔带 CRC。</span></button><button class="part" data-part="seg1"><b>3. 段 1</b><span>id=47 两笔的归宿；flush 后从「记账中」变「可回收」。</span></button><button class="part" data-part="memtable"><b>4. Memtable</b><span>每表一本的内存账，读路径第一站；满则封账 flush。</span></button></div></div><div class="partgroup"><div class="gname">落盘与书签</div><div class="parts"><button class="part" data-part="flush"><b>5. flush + 书签</b><span>写 SSTable 时把覆盖的日志区间夹进元数据。</span></button><button class="part" data-part="recycle"><b>6. 段回收</b><span>PostFlush 报账；所有表都越过的段才回收复用。</span></button></div></div><div class="partgroup"><div class="gname">崩溃恢复</div><div class="parts"><button class="part" data-part="crash"><b>7. 崩溃</b><span>内存全灭；风险窗口 = 最后一次 fsync 之后的部分。</span></button><button class="part" data-part="replayer"><b>8. 回放过滤</b><span>收书签定起点，逐笔判断：段 1 跳过、段 2 回放。</span></button></div></div>
+<p class="hint">静态图与动画共用同一套编号和口径；把动画暂停，它就是一张可打印的结构图。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">3</span><h2>动态分析：一步一停看顺序</h2></div>
+<p class="sec-sub">重点不是记住箭头，而是记住每一步「谁在等谁」。</p>
+<div class="quote"><i>动态分析看三件事：顺序、状态、触发条件。</i></div>
+
+<table class="grid">
+<tr><th>相位</th><th>谁在等谁</th><th>失败会怎样</th></tr>
+<tr><td>写入</td><td>写线程等段内空间分配</td><td>盘满 → 写失败，节点被踢出服务</td></tr>
+<tr><td>再写一笔</td><td>同上，追加到同一段</td><td>CRC 写坏 → 恢复时该笔被丢弃</td></tr>
+<tr><td>sync</td><td>后台线程按 10s 一拍 fsync</td><td>盘慢 → 写线程被 periodic 的滞后保护摁住</td></tr>
+<tr><td class="hot">封账</td><td>写线程等新 Memtable 就位</td><td>flush 跟不上 → 内存胀，见第 3 章</td></tr>
+<tr><td>flush</td><td>flush 线程等 SSTable 写完</td><td>写盘失败 → 旧账不能放，报 flush 失败</td></tr>
+<tr><td>回收</td><td>PostFlush 等 CommitLog 标净</td><td>其他表没越过 → 段继续留着，不阻塞</td></tr>
+<tr><td>落段 2</td><td>写线程等新段创建</td><td>建段失败 → 写入报错</td></tr>
+<tr><td class="hot">崩溃</td><td>——（没人等谁）</td><td>最后 10s 未 fsync 的流水 = 丢失候选</td></tr>
+<tr><td>回放过滤</td><td>恢复线程逐笔问 shouldReplay</td><td>段文件损坏 → 停在该段，前面的照常回放</td></tr>
+</table>
+<p>这张表里最值得盯的是两行高亮：「封账」是写路径和 flush 的交接点——新账本的下界就是旧账本的上界；「崩溃」是唯一没有等待关系的一行——它把前面所有步骤的「没做完」一次性暴露出来，而书签就是为此准备的清单。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">4</span><h2>动静融合：部件 × 阶段</h2></div>
+<p class="sec-sub">同一部件在不同阶段扮演不同角色，这张矩阵是排障时的索引。</p>
+<div class="quote"><i>把部件放回阶段里，才能看清谁在什么时候接力。</i></div>
+
+<table class="grid">
+<tr><th>部件</th><th>写入</th><th>flush</th><th>崩溃后</th></tr>
+<tr><td>CommitLog</td><td>追加 + CRC</td><td>被报账标净、回收</td><td>回放的数据源</td></tr>
+<tr><td>Memtable</td><td>唯一写入口</td><td>转只读，写盘后清空</td><td>由回放重建</td></tr>
+<tr><td>SSTable</td><td>不存在</td><td>flush 的产物，携带书签</td><td>回放过滤的依据</td></tr>
+<tr><td>sync 线程</td><td>定期拍盘（periodic）</td><td>——</td><td>决定了「安全线」位置</td></tr>
+<tr><td>Replayer</td><td>——</td><td>——</td><td>收书签、算起点、逐笔过滤</td></tr>
+</table>
+<p>注意 CommitLog 的三个身份：写入时它是流水账，flush 后它是「待回收的旧卷」，崩溃后它是唯一的数据源。同一份文件在三个阶段被三种眼光看待——排障时先问「现在是哪个阶段」，再决定这堆段文件该留该删。</p>
+
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">5</span><h2>环境场景：它依赖什么才能成立</h2></div>
+<p class="sec-sub">拆掉任意一个外部依赖，前面看到的行为都会变。</p>
+<div class="quote"><i>任何机制都有环境前提；拆掉外部依赖，它就不再成立。</i></div>
+<div class="envcards">
+<div class="env"><b>commitlog_sync</b><span>periodic / batch / group（yaml:665）；改它等于改「最坏丢多少」与「写延迟」的合同。</span></div>
+<div class="env"><b>commitlog_sync_period</b><span>10000ms（yaml:667）；periodic 档的丢数据窗口，也是 sync 线程的节拍器。</span></div>
+<div class="env"><b>commitlog_segment_size</b><span>32MiB（yaml:691）；太大回收慢、太小段太碎，改动前先看 flush 频率。</span></div>
+<div class="env"><b>memtable_allocation_type</b><span>heap_buffers（yaml:886）；决定内存账吃 JVM 堆还是堆外。</span></div>
+<div class="env"><b>独立的 commitlog 盘</b><span>生产部署把日志与数据分盘：流水账是顺序写，别和 SSTable 的随机读写抢道。</span></div>
+</div>
+<p class="figcap">边界：本页画的是单机视角；副本层面的持久化承诺（CL 与 ack 的关系）见第 7 章。演示假设崩溃时段 2 已被上一次 fsync 覆盖，真实场景里它可能落在窗口内。</p>
+</section>
+
+<section>
+<div class="sec-head"><span class="sec-num">6</span><h2>复盘自测</h2></div>
+<p class="sec-sub">六个问题，检查你是否能在边界上做判断。</p>
+<div class="quote"><i>自测不是复述结论，而是检查你能否在边界上做判断。</i></div>
+<div id="quiz"></div>
+</section>
+
+
+<div class="summary">
+<h2>一页带走</h2>
+
+<p class="chant">先上纸带再上账，flush 夹书签；恢复跳过已落盘，最坏丢一拍。</p>
+<p>· CommitLog 全节点一本、只追加、每笔带 CRC；Memtable 每表一本，是数据的最新住址。</p>
+<p>· 写返回只等「追加 + 内存」；periodic 档的最坏丢失窗口 = sync 周期（默认 10s）。</p>
+<p>· 书签（CommitLogPosition）随 flush 进 SSTable 元数据，回收与恢复都靠它定界。</p>
+
+</div>
+<a class="btn backtop" href="#lab">↑ 回到动画</a>
+</div>
+
+<script>
+(function(){
+var PERIOD=6000,PHASE_MAX=720;
+var STEPS=[{"d":0,"t":"写入","x":"INSERT id=47 阿福：先追加 CommitLog 段 1（pos 8192），再进 Memtable——顺序硬性。"},{"d":80,"t":"再写一笔","x":"UPDATE name=阿福2（pos 9408）；两个版本在段 1 和内存账里并存，谁也不覆盖谁。"},{"d":160,"t":"sync","x":"periodic 档：后台线程 10s 一拍 fsync；写返回从不等盘，最坏丢失窗口=10s。"},{"d":240,"t":"封账","x":"Memtable 满 → switchMemtable：新账接客，旧账转只读，上界钉死 pos 9408。"},{"d":320,"t":"flush","x":"旧账顺序写成 SSTable-00001，元数据夹上书签 [段1:0, 段1:9408]。"},{"d":400,"t":"回收","x":"PostFlush 报账 discardCompletedSegments：段 1 标净，整段无人认领即可回收复用。"},{"d":480,"t":"落段2","x":"id=48 大壮写入 → 书签之外的位置，自然落进新段 2。"},{"d":560,"t":"崩溃","x":"node2 掉电！内存账全灭；段 2 里没被上一次 fsync 覆盖的部分是唯一风险。"},{"d":640,"t":"回放过滤","x":"重启：收各表书签 → 段 1 的 id=47 已落盘，跳过；段 2 的 id=48 回放进 Memtable。"}];
+var PARTS={"write":["wrBox"],"commitlog":["clFrame","cseg1","cseg2"],"cseg1":["cseg1","s1a","s1b"],"memtable":["mtBox","mt1","mt2","mt3"],"flush":["fullBox","flushBox","bookMark","f1"],"recycle":["recycleBox","f2"],"crash":["crashBox","f4"],"replayer":["replayerBox","skipBox","replayBox","f5","f6"]};
+var CHIPS=[{"k":"seg1","l":"段 1"},{"k":"book","l":"书签"},{"k":"seg2","l":"段 2"},{"k":"mt","l":"内存行"}];
+var QUIZ=[{"q":"写返回「成功」时，这笔数据一定在磁盘上吗？","opts":["一定，CommitLog 每笔都 fsync","不一定：periodic 档只保证进了段缓冲，fsync 10s 一拍","一定，Memtable 会立即刷盘"],"a":1,"exp":"默认 periodic 档下写返回只等追加与内存；fsync 由后台按 commitlog_sync_period（10000ms）拍。要「返回即落盘」得用 batch 档。"},{"q":"periodic 档掉电，最坏丢多少数据？","opts":["全部","最后一本 SSTable","约一个 sync 周期内的写入（默认 ~10s）"],"a":2,"exp":"丢失窗口≈最后一次 fsync 到掉电的间隔，上界就是 commitlog_sync_period；更早的写入哪怕没 flush 也能从段文件回放回来。"},{"q":"users 表 flush 了，但同段的另一张表还没 flush。段 1 能删吗？","opts":["能，flush 过的表不管别的表","不能，要等所有表的书签都越过这段","能，回放时再读一次就行"],"a":1,"exp":"段回收的条件是所有表 markClean 越过整段（discardCompletedSegments）；这也是多表共享一本流水账的代价。"},{"q":"崩溃恢复时为什么段 1 的 id=47 不用回放？","opts":["它已经损坏","SSTable-00001 的书签覆盖了它的位置，数据已在盘上","id=47 是旧数据丢了没关系"],"a":1,"exp":"Replayer 收集各表 commitLogIntervals（persistedIntervals），落在区间内的逐笔跳过（shouldReplay）——书签机制的全部意义。"},{"q":"回放时捡回来的 Mutation 会再写一遍 CommitLog 吗？","opts":["会，走完整写路径","不会，apply 时 writeCommitLog=false","看配置 memtable_allocation_type"],"a":1,"exp":"回放走 apply 但 writeCommitLog=false（Replayer.java:325）——这段流水本来就在账上，重记只会让段文件越滚越多。"},{"q":"把 commitlog_sync 改成 batch，系统会发生什么？","opts":["吞吐上升","每笔写多等一次盘往返，换崩溃零丢失","段文件变小"],"a":1,"exp":"batch 档每笔 awaitDiskSync 才返回；写延迟上一个台阶，但「返回即落盘」。group 档用窗口折中两档。"}];
+var WP1=[[0,103,116],[30,318,108],[70,318,108],[100,500,205],[125,787,104],[160,318,128],[195,500,205],[225,787,126],[260,318,108],[300,118,287],[340,368,287],[380,638,287],[430,530,104],[480,787,148],[555,787,148]];
+var WP2=[[640,530,104],[665,530,205],[695,787,148],[720,787,148]];
+var btn=document.getElementById('engBtn'),spd=document.getElementById('engSpd'),spdV=document.getElementById('engSpdV');
+var stepBar=document.getElementById('stepBar'),stepT=document.getElementById('stepT'),stepX=document.getElementById('stepX');
+var reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var mode='auto',run=!reduced,speed=1,phase=0,last=performance.now();
+var stepFrom=0,stepTo=null,stepElapsed=0,STEP_DUR=650;
+var stepIdx=-1;
+var el={};
+document.querySelectorAll('#eng [id],#eng2 [id]').forEach(function(n){el[n.id]=n;});
+function setOp(id,v){var n=typeof id==='string'?el[id]:id;if(n)n.setAttribute('opacity',v.toFixed(2));}
+function setText(id,s){var n=el[id]||document.getElementById(id);if(n&&n.textContent!==s)n.textContent=s;}
+function setAttr(id,k,v){var n=el[id];if(n)n.setAttribute(k,v);}
+function norm(th){return ((th%PHASE_MAX)+PHASE_MAX)%PHASE_MAX;}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function smooth(t){return t*t*(3-2*t);}
+function posOn(wp,th){
+  if(!wp||wp.length<2)return null;
+  var p=norm(th);var i=0;while(i<wp.length-2&&p>wp[i+1][0])i++;
+  var a=wp[i],b=wp[i+1];var t=(p-a[0])/((b[0]-a[0])||1);t=clamp(t,0,1);
+  return [a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+}
+function band(id,a,b,lo,hi){setOp(id,(pr>=a&&pr<b)?(hi===undefined?1:hi):(lo===undefined?0.2:lo));}
+var pr=0;
+
+function renderScene(){
+  band('wrBox',0,80,0.5,1);
+  band('clFrame',0,720,0.8,0.9);
+  setOp('cseg1',pr<560?1:(pr<640?0.25:0.4));
+  setOp('s1a',pr>=70?1:0.25);
+  setOp('s1b',pr>=225?1:0.25);
+  setOp('cseg2',pr>=430?1:0.25);
+  setOp('s2a',pr>=480?1:0.15);
+  setOp('s2b',pr>=430?0.9:0.15);
+  setOp('mt1',pr<130?0.2:(pr<320?1:0.35));
+  setOp('mt2',pr<225?0.2:(pr<320?1:0.35));
+  setOp('mt3',pr<480?0.15:(pr<560?1:(pr<640?0.15:1)));
+  band('syncNote',160,240,0.45,0.95);
+  band('fullBox',240,320,0.25,1);band('f1',240,320,0.15,1);
+  band('flushBox',320,400,0.25,1);band('f2',320,400,0.15,1);
+  band('recycleBox',400,480,0.25,1);band('f3',400,480,0.15,1);
+  band('newSegBox',480,560,0.25,1);
+  setOp('bookMark',pr>=320?1:0.15);
+  band('crashBox',560,640,0.2,1);band('f4',560,640,0.1,1);
+  band('replayerBox',640,720,0.2,1);band('f5',640,720,0.1,1);
+  band('skipBox',640,720,0.2,1);
+  band('f6',640,720,0.1,1);band('replayBox',640,720,0.2,1);
+  setOp('resultNote',pr>=640?0.95:0.35);
+  var seg1='记账中';
+  if(pr>=640)seg1='跳过（已落盘）';
+  else if(pr>=560)seg1='崩溃后待判';
+  else if(pr>=320)seg1='已 flush · 可回收';
+  else if(pr>=240)seg1='已封账';
+  setText('roSeg1',seg1);
+  var mt='0 行';
+  if(pr>=640)mt='1 行（回放回来）';
+  else if(pr>=560)mt='0 行（崩溃）';
+  else if(pr>=480)mt='1 行（新账）';
+  else if(pr>=320)mt='0 行（新账）';
+  else if(pr>=225)mt='2 行（旧账）';
+  else if(pr>=130)mt='1 行';
+  setText('roMT',mt);
+  var lose='未到崩溃';
+  if(pr>=640)lose='0（fsync 过了）';
+  else if(pr>=560)lose='≤10s（periodic）';
+  setText('roLose',lose);
+  setChip('seg1',seg1.slice(0,6),pr>=240&&pr<560);
+  setChip('book',pr>=320?'已夹':'无',pr>=320);
+  setChip('seg2',pr>=430?'在写':'未建',pr>=430);
+  var rows=mt.charAt(0);
+  setChip('mt',rows+' 行',rows!=='0');
+}
+function setChip(k,v,on){var n=document.querySelector('#stateChips .chip[data-k="'+k+'"]');if(!n)return;var b=n.querySelector('b');if(b&&b.textContent!==v)b.textContent=v;n.classList.toggle('on',!!on);n.classList.toggle('off',!on);}
+
+function renderSub(th){
+  var p=norm(th); var si=0;
+  for(var i=0;i<STEPS.length;i++){if(p>=STEPS[i].d)si=i;}
+  for(var i=0;i<STEPS.length;i++){setOp('seg'+i,i===si?1:0.35);}
+  var x=40+(p/PHASE_MAX)*920;
+  setAttr('subNow','x1',x.toFixed(1)); setAttr('subNow','x2',x.toFixed(1));
+}
+
+function render(th){
+  pr=norm(th);
+  setText('roPhase',Math.round(pr)+'°');
+  var si=0;for(var i=0;i<STEPS.length;i++){if(pr>=STEPS[i].d)si=i;}
+  if(mode==='step'&&stepIdx>=0)si=stepIdx;
+  setText('roStep',STEPS[si]?STEPS[si].t:'—');
+  var p1=posOn(WP1,th),p2=posOn(WP2,th);
+  if(p1&&pr<560){setAttr('tok','cx',p1[0].toFixed(1));setAttr('tok','cy',p1[1].toFixed(1));setOp('tok',1);}else{setOp('tok',0);}
+  if(p2&&pr>=640){setAttr('tokB','cx',p2[0].toFixed(1));setAttr('tokB','cy',p2[1].toFixed(1));setOp('tokB',1);}else{setOp('tokB',0);}
+  renderScene();
+  if(typeof renderSub==='function')renderSub(th,pr,si);
+}
+function tick(now){
+  var dt=Math.min(50,now-last);last=now;
+  if(run&&mode==='auto')phase=(phase+dt*speed)%PERIOD;
+  if(mode==='step'&&stepTo!==null){
+    stepElapsed=Math.min(STEP_DUR,stepElapsed+dt);
+    var p=stepElapsed/STEP_DUR;var e=smooth(p);
+    phase=stepFrom+(stepTo-stepFrom)*e;
+    if(p>=1){phase=((stepTo%PERIOD)+PERIOD)%PERIOD;stepTo=null;}
+  }
+  render(phase/PERIOD*PHASE_MAX);
+  requestAnimationFrame(tick);
+}
+function setAuto(on){
+  mode='auto';run=on;stepTo=null;btn.textContent=on?'暂停':'播放';
+  if(on){stepIdx=-1;document.querySelectorAll('.stepnode').forEach(function(d){d.classList.remove('on');});
+  stepT.textContent='自动运转模式';stepX.textContent='点下方步骤点可切换到分步演示，随你点击定格。';}
+}
+window.goStep=function(i){
+  stepIdx=(i+STEPS.length)%STEPS.length;mode='step';run=false;
+  var target=STEPS[stepIdx].d/PHASE_MAX*PERIOD;var delta=target-phase;
+  if(reduced||Math.abs(delta)>PERIOD/3){phase=target;stepTo=null;render(target/PERIOD*PHASE_MAX+0.01);}
+  else{stepFrom=phase;stepTo=phase+delta;stepElapsed=0;render(phase/PERIOD*PHASE_MAX+0.01);}
+  btn.textContent='继续自动运转';
+  document.querySelectorAll('.stepnode').forEach(function(d,n){d.classList.toggle('on',n===stepIdx);});
+  stepT.textContent='第 '+(stepIdx+1)+'/'+STEPS.length+' 步 · 相位 '+STEPS[stepIdx].d+'° · '+STEPS[stepIdx].t;
+  stepX.textContent=STEPS[stepIdx].x;
+};
+window.prevStep=function(){goStep(stepIdx-1);};
+window.nextStep=function(){goStep(stepIdx+1);};
+btn.textContent=run?'暂停':'播放';
+btn.onclick=function(){if(mode==='step'){setAuto(true);return;}setAuto(!run);};
+spd.oninput=function(){speed=parseFloat(spd.value);spdV.textContent=speed+'×';};
+for(var s=0;s<STEPS.length;s++){(function(n){
+  var b=document.createElement('button');b.className='stepnode';
+  b.innerHTML='<span class="dot">'+(n+1)+'</span><span class="lab2">'+STEPS[n].t+'</span>';
+  b.onclick=function(){goStep(n);};stepBar.appendChild(b);
+})(s);}
+CHIPS.forEach(function(c){var s=document.createElement('span');s.className='chip';s.setAttribute('data-k',c.k);s.innerHTML=c.l+' <b>--</b>';document.getElementById('stateChips').appendChild(s);});
+document.querySelectorAll('.part').forEach(function(b){
+  b.onclick=function(){
+    var ids=PARTS[b.getAttribute('data-part')]||[];
+    ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.add('hl');});
+    document.getElementById('lab').scrollIntoView({behavior:'smooth',block:'start'});
+    setTimeout(function(){ids.forEach(function(id){var n=document.getElementById(id);if(n)n.classList.remove('hl');});},2200);
+  };
+});
+var qz=document.getElementById('quiz');
+QUIZ.forEach(function(it,qi){
+  var d=document.createElement('div');d.className='q';
+  var h='<div class="qt">'+(qi+1)+'. '+it.q+'</div>';
+  it.opts.forEach(function(o,oi){h+='<button class="opt" data-qi="'+qi+'" data-oi="'+oi+'">'+o+'</button>';});
+  h+='<div class="exp">'+it.exp+'</div>';d.innerHTML=h;qz.appendChild(d);
+});
+qz.addEventListener('click',function(e){
+  var b=e.target.closest('.opt');if(!b)return;var box2=b.parentElement;if(box2.classList.contains('done'))return;
+  box2.classList.add('done');
+  var qi=+b.getAttribute('data-qi'),oi=+b.getAttribute('data-oi');
+  box2.querySelectorAll('.opt').forEach(function(x,n){x.classList.add(n===QUIZ[qi].a?'right':'wrong');});
+});
+var BASE=(location.pathname.split('/cassandra-lab/')[0])||'';
+document.getElementById('lnkBack').href=BASE+'/cassandra/lab';
+document.getElementById('lnkArt').href=BASE+'/cassandra/engine/01-commitlog-memtable';
+
+requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

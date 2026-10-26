@@ -1,0 +1,139 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 710" width="1000" height="710" font-family="Microsoft YaHei, sans-serif">
+<defs>
+<marker id="cA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#C46A0A" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="cG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#639922" stroke-width="1.5" stroke-linecap="round"/></marker>
+<marker id="cR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round"/></marker>
+</defs>
+<rect x="0" y="0" width="1000" height="710" fill="#ffffff"/>
+<text x="500" y="34" font-size="20" fill="#1F1E1A" text-anchor="middle" font-weight="600">一致性与副本：同一笔写在三档确认下</text>
+<text x="500" y="56" font-size="12" fill="#6B695F" text-anchor="middle" font-weight="400">跟随 UPDATE users SET name='阿福2' WHERE id=47（副本 {node2, node4, node5}）：CL 档位、node4 挂掉的分支、读对账与 W+R&gt;RF 交集</text>
+<text x="976" y="26" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">橙色：请求 / 确认计数</text>
+<text x="976" y="42" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">绿色：成功 / 交集</text>
+<text x="976" y="58" font-size="11" fill="#6B695F" text-anchor="end" font-weight="400">红色：失败 / 副本挂掉</text>
+
+<!-- ============ 第一条：CL 旋钮与 blockFor ============ -->
+<rect x="28" y="76" width="944" height="150" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.3"/>
+<text x="44" y="98" font-size="13" fill="#C46A0A" text-anchor="start" font-weight="600">旋钮：CL 是每次请求的属性，blockFor 把它翻译成「等几个 ack」（ConsistencyLevel.java:138-179）</text>
+<rect x="44" y="112" width="250" height="98" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="169" y="134" font-size="12.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">协调者 node3（客串，第 1 章）</text>
+<text x="169" y="154" font-size="10.5" fill="#3B3A34" text-anchor="middle">算出副本名单（第 6 章顺时针数 3 个）</text>
+<text x="169" y="172" font-size="11" fill="#639922" text-anchor="middle" font-weight="600">写目标：{node2, node4, node5}</text>
+<text x="169" y="192" font-size="10.5" fill="#6B695F" text-anchor="middle">RF=3 是 keyspace 的属性；CL 每条请求随时换</text>
+
+<rect x="314" y="112" width="640" height="98" rx="8" fill="#ffffff" stroke="#D3D1C7" stroke-width="1.1"/>
+<text x="330" y="130" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="600">CL 档位</text>
+<text x="470" y="130" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="600">blockFor（RF=3）</text>
+<text x="650" y="130" font-size="11" fill="#1F1E1A" text-anchor="start" font-weight="600">语义一句话</text>
+<line x1="314" y1="136" x2="954" y2="136" stroke="#ECEAE2" stroke-width="1"/>
+<text x="330" y="152" font-size="10.5" fill="#3B3A34" text-anchor="start">ONE / LOCAL_ONE</text><text x="470" y="152" font-size="10.5" fill="#C46A0A" text-anchor="start" font-weight="600">1</text><text x="510" y="152" font-size="10.5" fill="#6B695F" text-anchor="start">任一副本回话即成功</text>
+<text x="330" y="168" font-size="10.5" fill="#3B3A34" text-anchor="start">QUORUM</text><text x="470" y="168" font-size="10.5" fill="#C46A0A" text-anchor="start" font-weight="600">2 = ⌊3/2⌋+1</text><text x="510" y="168" font-size="10.5" fill="#6B695F" text-anchor="start">过半数确认，任何两个过半集合必相交</text>
+<text x="330" y="184" font-size="10.5" fill="#3B3A34" text-anchor="start">ALL</text><text x="470" y="184" font-size="10.5" fill="#C46A0A" text-anchor="start" font-weight="600">3</text><text x="510" y="184" font-size="10.5" fill="#6B695F" text-anchor="start">一个都不能少，挂一台即 Unavailable</text>
+<text x="330" y="200" font-size="10.5" fill="#3B3A34" text-anchor="start">ANY</text><text x="470" y="200" font-size="10.5" fill="#C46A0A" text-anchor="start" font-weight="600">1（hint 可抵）</text><text x="510" y="200" font-size="10.5" fill="#6B695F" text-anchor="start">写专用：欠条落盘也算数，读被拒绝</text>
+
+<!-- ============ 第二条：三档确认过程 ============ -->
+<rect x="28" y="236" width="944" height="126" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.3"/>
+<text x="44" y="258" font-size="13" fill="#639922" text-anchor="start" font-weight="600">写路径：响应处理器从 blockFor 倒计时，减到 0 放行（WriteResponseHandler.java:56、73-74）</text>
+<g>
+<rect x="44" y="272" width="88" height="24" rx="5" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.1"/>
+<text x="88" y="288" font-size="10.5" fill="#854F0B" text-anchor="middle" font-weight="600">CL=ONE</text>
+<rect x="150" y="272" width="76" height="24" rx="5" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/>
+<text x="188" y="288" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">node2 ✓</text>
+<rect x="234" y="272" width="76" height="24" rx="5" fill="#ffffff" stroke="#B4B2A9" stroke-width="1.1" stroke-dasharray="4 3"/>
+<text x="272" y="288" font-size="10.5" fill="#6B695F" text-anchor="middle">node4（不等）</text>
+<rect x="318" y="272" width="76" height="24" rx="5" fill="#ffffff" stroke="#B4B2A9" stroke-width="1.1" stroke-dasharray="4 3"/>
+<text x="356" y="288" font-size="10.5" fill="#6B695F" text-anchor="middle">node5（不等）</text>
+<path d="M394 284 L424 284" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#cG)"/>
+<text x="432" y="288" font-size="10.5" fill="#639922" text-anchor="start" font-weight="600">1/1 归零 → 返回成功（毫秒级）</text>
+</g>
+<g>
+<rect x="44" y="304" width="88" height="24" rx="5" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.1"/>
+<text x="88" y="320" font-size="10.5" fill="#854F0B" text-anchor="middle" font-weight="600">CL=QUORUM</text>
+<rect x="150" y="304" width="76" height="24" rx="5" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/>
+<text x="188" y="320" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">node2 ✓</text>
+<rect x="234" y="304" width="76" height="24" rx="5" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/>
+<text x="272" y="320" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">node4 ✓</text>
+<rect x="318" y="304" width="76" height="24" rx="5" fill="#ffffff" stroke="#B4B2A9" stroke-width="1.1" stroke-dasharray="4 3"/>
+<text x="356" y="320" font-size="10.5" fill="#6B695F" text-anchor="middle">node5（不等）</text>
+<path d="M394 316 L424 316" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#cG)"/>
+<text x="432" y="320" font-size="10.5" fill="#639922" text-anchor="start" font-weight="600">2/2 归零 → 返回成功（node5 迟到不挡路）</text>
+</g>
+<g>
+<rect x="44" y="336" width="88" height="24" rx="5" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.1"/>
+<text x="88" y="352" font-size="10.5" fill="#854F0B" text-anchor="middle" font-weight="600">CL=ALL</text>
+<rect x="150" y="336" width="76" height="24" rx="5" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/>
+<text x="188" y="352" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">node2 ✓</text>
+<rect x="234" y="336" width="76" height="24" rx="5" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/>
+<text x="272" y="352" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">node4 ✓</text>
+<rect x="318" y="336" width="76" height="24" rx="5" fill="#EAF3DE" stroke="#639922" stroke-width="1.2"/>
+<text x="356" y="352" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">node5 ✓</text>
+<path d="M394 348 L424 348" fill="none" stroke="#639922" stroke-width="1.6" marker-end="url(#cG)"/>
+<text x="432" y="352" font-size="10.5" fill="#639922" text-anchor="start" font-weight="600">3/3 归零 → 返回成功（一台不回即超时）</text>
+</g>
+<text x="700" y="282" font-size="10.5" fill="#6B695F" text-anchor="start">体检先行：活副本 &lt; blockFor → 直接</text>
+<text x="700" y="298" font-size="10.5" fill="#E24B4A" text-anchor="start" font-weight="600">UnavailableException（ReplicaPlans.java:143）</text>
+<text x="700" y="314" font-size="10.5" fill="#6B695F" text-anchor="start">等待上限 write_request_timeout = 10s（yaml:1396）</text>
+
+<!-- ============ 第三条：node4 挂掉的分支 ============ -->
+<rect x="28" y="372" width="944" height="140" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.3"/>
+<text x="44" y="394" font-size="13" fill="#E24B4A" text-anchor="start" font-weight="600">node4 挂了（14:00:00 卡死，phi=8.0 在 14:00:18~:20 确认 DOWN，第 5 章）：活副本 {node2, node5} = 2 个</text>
+<g>
+<rect x="44" y="408" width="296" height="88" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="60" y="428" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">CL=QUORUM：2 ≥ 2 ✓ 照常成功</text>
+<text x="60" y="446" font-size="10.5" fill="#3B3A34" text-anchor="start">node2 ✓ + node5 ✓ → 2/2 归零</text>
+<text x="60" y="464" font-size="10.5" fill="#3B3A34" text-anchor="start">node4 的那份：shouldHint ✓（宕机 ≤ 3h）</text>
+<text x="60" y="482" font-size="10.5" fill="#C46A0A" text-anchor="start" font-weight="600">→ 写一张 hint 欠条，不计入 ack</text>
+</g>
+<path d="M340 452 L364 452" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#cA)"/>
+<g>
+<rect x="368" y="408" width="288" height="88" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="384" y="428" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">hint 欠条（Hint.java:61-68）</text>
+<text x="384" y="446" font-size="10.5" fill="#3B3A34" text-anchor="start">字段：{ Mutation, 开欠条时刻, min(gcgs) }</text>
+<text x="384" y="464" font-size="10.5" fill="#6B695F" text-anchor="start">写在协调者本地 hints 目录；派发 10s 一轮</text>
+<text x="384" y="482" font-size="10.5" fill="#6B695F" text-anchor="start">窗口 max_hint_window=3h（yaml:80），超窗不写</text>
+</g>
+<path d="M656 452 L680 452" fill="none" stroke="#C46A0A" stroke-width="1.6" marker-end="url(#cA)"/>
+<g>
+<rect x="684" y="408" width="270" height="42" rx="8" fill="#FCEBEB" stroke="#E24B4A" stroke-width="1.3"/>
+<text x="698" y="426" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">CL=ALL：2 &lt; 3 ✗ Unavailable</text>
+<text x="698" y="443" font-size="10.5" fill="#6B695F" text-anchor="start">发请求前就被拒，等都不等</text>
+<rect x="684" y="456" width="270" height="40" rx="8" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.3"/>
+<text x="698" y="473" font-size="11.5" fill="#1F1E1A" text-anchor="start" font-weight="600">CL=ANY：hint 落盘即 ack</text>
+<text x="698" y="490" font-size="10.5" fill="#6B695F" text-anchor="start">StorageProxy.java:3390「only for CL == ANY」</text>
+</g>
+
+<!-- ============ 第四条：读路径 ============ -->
+<rect x="28" y="522" width="600" height="118" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.3"/>
+<text x="44" y="544" font-size="13" fill="#2F6FA8" text-anchor="start" font-weight="600">读路径：1 份 data + R−1 份 digest，摘要不一致就修（默认 BLOCKING）</text>
+<rect x="44" y="558" width="128" height="66" rx="8" fill="#EAF2FA" stroke="#2F6FA8" stroke-width="1.3"/>
+<text x="108" y="578" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">data → node2</text>
+<text x="108" y="596" font-size="10.5" fill="#6B695F" text-anchor="middle">完整数据带路</text>
+<text x="108" y="613" font-size="10.5" fill="#6B695F" text-anchor="middle">AbstractReadExecutor:184</text>
+<path d="M172 591 L196 591" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#cA)"/>
+<rect x="200" y="558" width="128" height="66" rx="8" fill="#ffffff" stroke="#2F6FA8" stroke-width="1.3" stroke-dasharray="5 4"/>
+<text x="264" y="578" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">digest → 其余</text>
+<text x="264" y="596" font-size="10.5" fill="#6B695F" text-anchor="middle">整行压成 MD5（Digest.java:43）</text>
+<text x="264" y="613" font-size="10.5" fill="#6B695F" text-anchor="middle">一致=同值；差一字=不同</text>
+<path d="M328 591 L352 591" fill="none" stroke="#2F6FA8" stroke-width="1.6" marker-end="url(#cA)"/>
+<rect x="356" y="558" width="256" height="66" rx="8" fill="#EAF3DE" stroke="#639922" stroke-width="1.3"/>
+<text x="484" y="578" font-size="11.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">DigestResolver.responsesMatch 对账</text>
+<text x="484" y="596" font-size="10.5" fill="#3B3A34" text-anchor="middle">全一致 → 直接返回；node4 摘要 ≠ → 读修复</text>
+<text x="484" y="613" font-size="10.5" fill="#639922" text-anchor="middle" font-weight="600">补写落后副本，修完才返回（TableParams.java:460）</text>
+
+<!-- ============ 第五条：W+R>RF 交集 ============ -->
+<rect x="640" y="522" width="332" height="118" rx="10" fill="#FBFAF6" stroke="#ECEAE2" stroke-width="1.3"/>
+<text x="806" y="544" font-size="13" fill="#639922" text-anchor="middle" font-weight="600">W+R&gt;RF：QUORUM 写 ∩ QUORUM 读</text>
+<ellipse cx="742" cy="592" rx="92" ry="34" fill="#FFF6E8" stroke="#C46A0A" stroke-width="1.4" opacity="0.9"/>
+<ellipse cx="872" cy="592" rx="92" ry="34" fill="#EAF3DE" stroke="#639922" stroke-width="1.4" opacity="0.75"/>
+<text x="700" y="596" font-size="10.5" fill="#854F0B" text-anchor="middle" font-weight="600">写确认</text>
+<text x="730" y="596" font-size="10.5" fill="#854F0B" text-anchor="middle">node2</text>
+<text x="806" y="590" font-size="10.5" fill="#1F1E1A" text-anchor="middle" font-weight="600">node4</text>
+<text x="806" y="604" font-size="9.5" fill="#639922" text-anchor="middle" font-weight="600">交集 ≥ 1</text>
+<text x="884" y="596" font-size="10.5" fill="#3B3A34" text-anchor="middle">node5</text>
+<text x="920" y="596" font-size="10.5" fill="#3B3A34" text-anchor="middle">读凑</text>
+<text x="806" y="632" font-size="10.5" fill="#6B695F" text-anchor="middle">2+2=4 &gt; 3：读必见新值；ONE+QUORUM=3 ≤ 3 不保证</text>
+
+<!-- ============ 底部总结 ============ -->
+<rect x="28" y="650" width="944" height="44" rx="8" fill="#FBFAF6" stroke="#D3D1C7" stroke-width="1.3"/>
+<text x="44" y="668" font-size="12" fill="#1F1E1A" text-anchor="start" font-weight="600">一张图的一句话：CL 是每笔请求的旋钮——写等 blockFor 个 ack，读凑 R 份回话对账；W+R&gt;RF 的组合必见新值，hint 与读修复负责把没等到的补齐。</text>
+<text x="44" y="686" font-size="11" fill="#6B695F" text-anchor="start">数据来源：db/ConsistencyLevel.java:138-179（blockFor）· service/StorageProxy.java:3390（ANY 的 hint 计 ack）· conf/cassandra.yaml:80、1396（3h 窗口与 10s 超时）</text>
+</svg>
