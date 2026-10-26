@@ -1,0 +1,24 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { width: 1920px; height: 1080px; background: #0F172A;
+         font-family: "Microsoft YaHei", sans-serif; color: #F1F5F9;
+         display: flex; flex-direction: column; justify-content: center;
+         padding: 0 180px; }
+  .kicker { color: {{ACCENT}}; font-size: 30px; font-weight: 600;
+            letter-spacing: 4px; margin-bottom: 28px; }
+  h1 { font-size: 68px; font-weight: 800; margin-bottom: 60px; }
+  li { font-size: 42px; line-height: 1.55; color: #CBD5E1;
+       margin-bottom: 36px; padding-left: 52px; position: relative;
+       list-style: none; }
+  li::before { content: ""; position: absolute; left: 0; top: 22px;
+               width: 20px; height: 20px; border-radius: 6px;
+               background: {{ACCENT}}; }
+  .next { margin-top: 72px; font-size: 34px; color: #94A3B8; }
+</style></head>
+<body>
+  <div class="kicker">本章小结</div>
+  <h1>{{TITLE}}</h1>
+  <ul>{{POINTS_HTML}}</ul>
+  <div class="next">{{NEXT}}</div>
+</body></html>

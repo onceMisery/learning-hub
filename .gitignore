@@ -9,6 +9,11 @@ release/
 target/
 *.tsbuildinfo
 
+# 视频与字幕产物（article-to-video 管线）
+dist/videos/
+*.mp4
+*.srt
+
 # 站点生成物（由 npm run content 产出）
 site/public/content/
 site/public/_redirects

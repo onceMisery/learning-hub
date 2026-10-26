@@ -1,0 +1,22 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { width: 1920px; height: 1080px; background: #F8FAFC;
+         font-family: "Microsoft YaHei", sans-serif; color: #1E293B;
+         display: flex; flex-direction: column; justify-content: center;
+         padding: 0 160px; }
+  .track { color: {{ACCENT}}; font-size: 40px; font-weight: 600;
+           letter-spacing: 8px; margin-bottom: 36px; }
+  .no { font-size: 30px; color: #94A3B8; margin-bottom: 20px; }
+  h1 { font-size: 92px; font-weight: 800; line-height: 1.25; }
+  .sub { font-size: 40px; color: #475569; margin-top: 40px; line-height: 1.6; }
+  .rule { width: 160px; height: 8px; background: {{ACCENT}};
+          border-radius: 4px; margin-top: 56px; }
+</style></head>
+<body>
+  <div class="track">{{TRACK_TITLE}}</div>
+  <div class="no">第 {{CHAPTER_NO}} 章</div>
+  <h1>{{TITLE}}</h1>
+  <div class="sub">{{SUBTITLE}}</div>
+  <div class="rule"></div>
+</body></html>
