@@ -48,6 +48,8 @@ granule 2: [region=east, status=paid,    event_time=10:10]  ← primary.idx 第 
 ...
 ```
 
+注意：图里每个 granule 只写了一行排序键，真实 granule 有 8192 行，`status` 可能在中间变化；所以索引只能圈出「可能命中」的区间，不能保证整段都是 paid——这也是下面要讲「候选 granule 还要复核」的原因。
+
 索引里存的是每个 granule 的**第一行**的排序键值（或前缀）。查询 `WHERE region='east' AND status='paid'` 时，分析器用这些路标做二分/范围查找，得到「哪些 granule 可能包含 east+paid」，然后把 mark 区间传给读取器。
 
 `MergeTreeDataSelectExecutor::markRangesFromPKRange`（`src/Storages/MergeTree/MergeTreeDataSelectExecutor.cpp:2247`）就是做这件事的：把主键条件翻译成 mark 区间。它不是逐行判断，而是按 granule 判断：

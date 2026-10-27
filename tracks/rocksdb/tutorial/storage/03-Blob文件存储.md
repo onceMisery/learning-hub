@@ -58,7 +58,7 @@ flush 开始 →
                 → 追加 record → 拿到 (file=7, offset=30+32+len(key))；
   后续大值继续追加，直到 256 MB 上限 → 封口写 32B footer → 开 000008.blob；
   SST 构建器把 300 张 8 字节提货单写进 data block。
-结束：一个 ~2.3 MB 的 SST（原来要 600 MB），两个 blob 文件。
+结束：一个约 150 KB 的 SST（原来要 600 MB），三个 blob 文件（600 MB 未压缩；压缩后可能少一个）。
 ```
 
 ---
@@ -214,6 +214,21 @@ age_cutoff=0.25 ⇒ 后续压实路过它时继续搬走那 20 MB；
 数据湖实践里有一条和 blob 分流完全同构的军规：**宽表别把大 payload（原始报文、图片、长文本）塞进 Parquet 行组**。理由逐条对得上：大 payload 撑爆行组（≈ 大值撑爆 data block）；任何只查小列的扫描也要为它付 I/O（≈ 缓存被冷块挤占）；payload 一变就得重写整个行组（≈ 压实反复搬运大值）。两边的一致答案是「列/表里留指针，payload 另存」——Parquet 生态里通常外挂到对象存储再由元数据层引用，RocksDB 里就是 BlobIndex。
 
 回收机制的分野更值得细看。SST 只留指针 + 引用统计，GC 是**引用计数式**的：`BlobGarbageMeter` 数清楚每个 blob 文件还剩几个有效引用，降到零就整文件退役，回收粒度是单个 blob。Parquet 没有这条路——行组内部没有引用计数，删改只能**重写整个文件**（或引入 merge-on-read 的删除文件，把账记到表格式层）。换句话说，RocksDB 把「细粒度回收」做进了存储格式，Parquet 把这件事整个推给了上层的 Iceberg/Delta。不可变文件既然不改，垃圾回收就必然发生在「重写」这个动作里——区别只是重写的单位是一个 blob、一个 SST，还是一整个 Parquet 文件。
+
+---
+
+## 十、和 TiKV Titan、HBase MOB 比一比：大值分流的三种做法
+
+| 维度 | RocksDB BlobDB | TiKV Titan | HBase MOB |
+| --- | --- | --- | --- |
+| 触发方式 | flush/压实按 min_blob_size 分流 | 写入时按 value 大小分流 | 列族设 MOB 阈值，小文件合并 |
+| 指针形态 | BlobIndex（8 字节 + 压缩类型） | blob index 指向 blob 文件 | MOB 文件引用 |
+| 回收 | BlobGarbageMeter + 压实 GC | GC 任务回收失效 blob | MOB compaction 合并小文件 |
+| TTL | 无原生 TTL，靠上层删 | 无原生 TTL | 支持 MOB TTL |
+| 读路径 | SST → BlobIndex → blob cache/file | KV → blob index → blob 文件 | HFile → MOB 引用 → MOB 文件 |
+| 最适合 | 大值占比高、还要点查 | TiKV 上的大 value | HBase 的中大对象 |
+
+一句话：三家都把「大值别跟键挤在一起」当成同一道题，差别在**分流发生的时刻**：RocksDB 在 flush/压实时分流，Titan 更靠近写入路径，HBase 用列族级 MOB 阈值；回收则分别落在压实、GC 任务和 MOB compaction 上。选型时看两件事：大值占比多少、删除/更新频率多高——占比高但几乎不改，分流收益最大；频繁改大值，GC 成本会吃掉收益。
 
 ---
 

@@ -233,7 +233,7 @@ GROUP BY order_id;
 
 ### 4.2 用 Collapsing 表达「撤销」
 
-`CollapsingMergeTree(sign)` 的思路是：每次更新写一条 `sign=1` 的新行，再写一条 `sign=-1` 的旧行；合并时正负抵消。
+`CollapsingMergeTree(sign)` 的思路是：每次更新先写一条 `sign=-1` 的旧行撤销旧状态，再写一条 `sign=1` 的新行；合并时正负抵消。
 
 ```sql
 CREATE TABLE orders_collapsing
@@ -425,7 +425,7 @@ ORDER BY (region, status, event_time, order_id)
 TTL event_date + INTERVAL 365 DAY DELETE;
 ```
 
-排序键的前两列是低基数的 `region`、`status`，适合做前缀过滤；`event_time` 支持时间范围；`order_id` 放在最后保证同一个订单的行相邻。分区按月，part 不会太碎；TTL 自动清理一年前的数据。
+排序键的前两列是低基数的 `region`、`status`，适合做前缀过滤；`event_time` 支持时间范围。`order_id` 放在最后并不能保证同一个订单的行相邻——只有前三列都相同时它们才相邻；要让同一订单的行聚在一起，得把 `order_id` 提前，代价是牺牲 `region/status` 的前缀过滤能力。分区按月，part 不会太碎；TTL 自动清理一年前的数据。
 
 ---
 

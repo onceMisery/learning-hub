@@ -201,7 +201,7 @@ SET select_sequential_consistency = 1;
 
 副本重启后，从 `log_pointer` 继续拉日志。落后的 `GET_PART` 会从其他副本拉取；落后的 `MERGE_PARTS` 会在本地重放。追赶期间，副本可能处于只读或部分可用状态；`system.replicas` 的 `absolute_delay` 会上升。
 
-如果落后太多，日志已经被清理（`replicated_deduplication_window` 只保留一定数量的条目），副本可能无法从日志追上，需要执行 `SYSTEM RESTART REPLICA` 或重新同步。严重情况下，副本会被标记为 `is_lost`，需要重建。
+如果落后太多，日志已经被清理（日志保留由各副本的 `log_pointer` 推着走，清理线程只删所有副本都已消费的条目；`replicated_deduplication_window` 管的是另一件事——块去重哈希的保留窗口，别把它当成复制日志长度），副本可能无法从日志追上，需要执行 `SYSTEM RESTART REPLICA` 或重新同步。严重情况下，副本会被标记为 `is_lost`，需要重建。
 
 **故障二：Keeper 会话断开。**
 

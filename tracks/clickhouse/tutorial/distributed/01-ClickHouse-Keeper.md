@@ -82,13 +82,14 @@ Keeper 的数据模型是一棵树，每个节点叫 **znode**：
 - **子节点列表**：树形结构；
 - **stat**：创建/修改时间、版本、ephemeral owner 等。
 
-znode 有三种生命周期：
+znode 有两种生命周期，外加一个可选的顺序命名开关：
 
 | 类型 | 生命周期 | 典型用途 |
 | --- | --- | --- |
 | persistent | 永久，直到显式删除 | 表元数据、复制日志 |
 | ephemeral | 随会话消失 | 副本的 is_active、临时锁 |
-| sequential | 持久，名字带递增序号 | 队列、锁等待 |
+
+`sequential` 不是第三种生命周期，而是一个命名选项：创建时名字自动追加递增序号，可以和 persistent 或 ephemeral 组合（例如「持久 + 顺序」做队列，「临时 + 顺序」做锁等待）。
 
 `ReplicatedMergeTree` 的副本根节点 `/replicas/<name>` 是持久节点；`/replicas/<name>/is_active` 才是 ephemeral。副本启动时创建 `is_active`，会话断开后它消失，其他副本就知道该副本下线了；副本根节点和 `log_pointer` 仍然保留。
 

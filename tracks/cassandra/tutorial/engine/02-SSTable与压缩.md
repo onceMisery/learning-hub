@@ -211,6 +211,18 @@ t+  11-04 14:01  十天整刚过：gcBefore > 10-25 14:00 成立
 
 第二处分岔在「并账的分组维度」：RocksDB 一个库一棵 LSM 树，压实只关心层和大小；Cassandra 的账本先按**修复状态**（repaired/unrepaired）分成互不掺和的两组、再按数据目录分组，每组各配一份策略实例（`db/compaction/CompactionStrategyManager.java:93-108`）。这是修复语义压进存储引擎的形状——修复没做完的账本不跟已修复的一起合并，否则一次 repair 期间的重写会把修复成果搅乱。RocksDB 没有副本与修复，自然也没有这层分账。
 
+再把 HBase 和 ScyllaDB 放进来，三家的压实/删除策略各偏一头：
+
+| 维度 | Cassandra | HBase | ScyllaDB |
+| --- | --- | --- | --- |
+| 压实单位 | SSTable 集合（按大小/层/时间窗） | HFile（minor/major/stripe） | SSTable，按 shard 并行 |
+| 删除语义 | 墓碑 + gc_grace + 修复状态 | 墓碑 + TTL，major compaction 清理 | 墓碑 + gc_grace，语义与 Cassandra 对齐 |
+| 读放大来源 | 多 SSTable + 布隆 + 分区索引 | 多 HFile + BlockCache | 多 SSTable + 布隆 |
+| 运维特征 | 自运维，repair 与压实互相牵制 | 依赖 HDFS/ZK，major compaction 是重活 | 自运维，shard-per-core 把压实摊到多核 |
+| 最适合 | 多 DC 宽表、写多 | Hadoop 生态、强一致单行 | 想保留 CQL、压低尾延迟 |
+
+一句话：HBase 的压实更像「周期性大扫除」（major compaction 把 Region 的 HFile 重写一遍），Cassandra 的压实是「持续并账」，ScyllaDB 则把同一套并账按 shard 拆开并行。选型时别只看策略名字，要看**删除的物理完成要等多久、读放大由谁买单、运维窗口有多长**——这三件事才是压实在生产里的手感。
+
 ---
 
 ## 这一章留下的线索
