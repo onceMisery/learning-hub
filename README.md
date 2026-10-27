@@ -33,6 +33,7 @@
 | [Agent 开发](tracks/agent/) | 已发布 | 11 篇工程实践教程 + 10 章互动实验室 + 31 张原理图 | MCP · 上下文工程 · RAG · Coding Agent · 事件驱动 · 评估与治理 · 后训练边界 · 高频 23 问 |
 | [分析引擎](tracks/clickhouse/) | 已发布 | 13 篇 ClickHouse 源码剖析 + 13 章互动实验室 + 13 张原理图 | ClickHouse 26.11 · MergeTree · 向量化执行 · 复制与 Keeper |
 | [存储引擎](tracks/rocksdb/) | 已发布 | 12 篇 RocksDB 源码剖析 + 12 章互动实验室 + 12 张原理图 | RocksDB 11.13.0 · LSM-Tree · WAL · SST · 压实 · Blob · 缓存 |
+| [分布式数据库](tracks/cassandra/) | 已发布 | 15 篇 Cassandra 源码剖析 + 15 章互动实验室 + 15 张原理图 | Cassandra 7.0-SNAPSHOT · CommitLog · SSTable · Gossip · 令牌环 · SAI |
 | [Go](tracks/golang/) | 规划中 | — | — |
 | [Python](tracks/python/) | 规划中 | — | — |
 
